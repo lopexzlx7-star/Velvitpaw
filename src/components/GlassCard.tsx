@@ -31,13 +31,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
-  const [clickCount, setClickCount] = useState(0);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const clickTimer = useRef<NodeJS.Timeout | null>(null);
-  
-  const x = useMotionValue(0);
-  const deleteOpacity = useTransform(x, [-80, -40], [1, 0]);
-  const deleteScale = useTransform(x, [-80, -40], [1, 0.8]);
 
   useEffect(() => {
     if (!onView) return;
@@ -59,42 +54,13 @@ const GlassCard: React.FC<GlassCardProps> = ({
     return () => observer.disconnect();
   }, [item.id, onView]);
 
-  const handleTripleClick = () => {
-    if (isLiked && !isUserPost) {
-      onLike(item.id); // Toggle off
-    }
-  };
-
-  const handleInteraction = (e: React.MouseEvent) => {
-    // If we've swiped, don't trigger clicks
-    if (Math.abs(x.get()) > 10) return;
-
+  const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    const newCount = clickCount + 1;
-    setClickCount(newCount);
-
-    if (clickTimer.current) {
-      clearTimeout(clickTimer.current);
+    if (!isLiked && !isUserPost) {
+      onLike(item.id);
+      setShowHeartAnim(true);
+      setTimeout(() => setShowHeartAnim(false), 800);
     }
-
-    if (newCount === 2) {
-      // Double click logic
-      if (!isLiked && !isUserPost) {
-        onLike(item.id);
-        setShowHeartAnim(true);
-        setTimeout(() => setShowHeartAnim(false), 800);
-      }
-    } else if (newCount === 3) {
-      // Triple click logic
-      handleTripleClick();
-      setClickCount(0);
-      return;
-    }
-
-    clickTimer.current = setTimeout(() => {
-      setClickCount(0);
-    }, 300); // 300ms window for clicks
   };
 
   const handleLikeClick = (e: React.MouseEvent) => {
@@ -104,42 +70,90 @@ const GlassCard: React.FC<GlassCardProps> = ({
     }
   };
 
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  useEffect(() => {
+    if (isConfirmingDelete) {
+      const timer = setTimeout(() => setIsConfirmingDelete(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isConfirmingDelete]);
+
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onDelete) {
+    if (!onDelete) return;
+    
+    if (isConfirmingDelete) {
       onDelete(item.id);
-      // Reset swipe position
-      x.set(0);
+      setIsConfirmingDelete(false);
+    } else {
+      setIsConfirmingDelete(true);
+    }
+  };
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    // On mobile/touch devices, a single click on user post shows the delete menu
+    if (isUserPost && onDelete) {
+      setShowMobileMenu(true);
     }
   };
 
   return (
     <div className="relative mb-4 break-inside-avoid group">
-      {/* Delete Action (Behind) */}
-      {isUserPost && onDelete && (
-        <motion.div 
-          style={{ opacity: deleteOpacity, scale: deleteScale }}
-          className="absolute inset-y-0 right-0 w-20 flex items-center justify-center bg-red-500 rounded-2xl z-0 cursor-pointer"
-          onClick={handleDeleteClick}
-        >
-          <Trash2 size={24} className="text-white" />
-        </motion.div>
-      )}
-
       <motion.div
         ref={cardRef}
         layout
-        style={{ x }}
-        drag={isUserPost ? "x" : false}
-        dragConstraints={{ left: -80, right: 0 }}
-        dragElastic={0.1}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        whileHover={{ scale: 1.02 }}
-        className="relative z-10 cursor-grab active:cursor-grabbing"
-        onClick={handleInteraction}
+        whileHover={{ scale: 1.01 }}
+        className="relative z-10 cursor-pointer"
+        onDoubleClick={handleDoubleClick}
+        onClick={handleCardClick}
       >
-        <div className="glass-panel rounded-2xl overflow-hidden transition-all duration-500 group-hover:border-white/20 relative">
+        <div className="glass-panel rounded-2xl overflow-hidden transition-all duration-300 group-hover:border-white/20 relative">
+          {/* Mobile Delete Menu */}
+          <AnimatePresence>
+            {showMobileMenu && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 gap-4"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMobileMenu(false);
+                }}
+              >
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="w-full flex flex-col gap-3"
+                >
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onDelete) onDelete(item.id);
+                      setShowMobileMenu(false);
+                    }}
+                    className="w-full py-4 bg-red-600 text-white font-bold rounded-2xl uppercase tracking-[0.2em] text-[10px] flex items-center justify-center gap-2 shadow-xl"
+                  >
+                    <Trash2 size={16} />
+                    Excluir Post
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMobileMenu(false);
+                    }}
+                    className="w-full py-4 bg-white/10 text-white font-bold rounded-2xl uppercase tracking-[0.2em] text-[10px] backdrop-blur-md"
+                  >
+                    Cancelar
+                  </button>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Persistent Like Indicator */}
           {isLiked && (
             <div className="absolute top-3 left-3 z-20 p-1.5 bg-black/40 backdrop-blur-md rounded-full text-red-500 shadow-lg">
@@ -147,11 +161,19 @@ const GlassCard: React.FC<GlassCardProps> = ({
             </div>
           )}
 
-          {/* Archived Badge */}
-          {item.archived && (
-            <div className="absolute top-3 right-3 z-20 px-2 py-1 bg-yellow-500/80 backdrop-blur-md rounded-full text-white text-[8px] font-bold uppercase tracking-widest flex items-center gap-1 shadow-lg">
-              <Archive size={10} /> Arquivado
-            </div>
+          {/* Delete Button for User Posts */}
+          {isUserPost && onDelete && (
+            <button 
+              onClick={handleDeleteClick}
+              className={`absolute top-3 right-3 z-20 p-2 backdrop-blur-md rounded-full text-white shadow-lg transition-all flex items-center gap-2 ${
+                isConfirmingDelete 
+                  ? 'bg-red-600 px-4 ring-2 ring-white/50' 
+                  : 'bg-red-500/80 hover:bg-red-500 opacity-0 group-hover:opacity-100'
+              }`}
+            >
+              <Trash2 size={16} />
+              {isConfirmingDelete && <span className="text-[10px] font-bold uppercase tracking-widest">Confirmar?</span>}
+            </button>
           )}
 
           {/* Skeleton Placeholder */}
@@ -169,107 +191,74 @@ const GlassCard: React.FC<GlassCardProps> = ({
             alt={item.title}
             referrerPolicy="no-referrer"
             onLoad={() => setIsLoaded(true)}
-            className={`w-full object-cover transition-all duration-700 group-hover:scale-110 ${
-              isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+            onError={() => setIsLoaded(true)}
+            className={`w-full object-cover transition-all duration-500 ${
+              isLoaded ? 'opacity-100' : 'opacity-0'
             }`}
-            style={{ minHeight: '200px', height: isLoaded ? 'auto' : (item.height || 300) }}
+            style={{ 
+              minHeight: '150px', 
+              height: isLoaded ? 'auto' : (item.height || 300),
+              maxHeight: item.height ? `${item.height}px` : 'none'
+            }}
           />
 
           {/* Double Click Heart Animation */}
           <AnimatePresence>
             {showHeartAnim && (
               <motion.div
-                initial={{ scale: 0, opacity: 0, rotate: -20 }}
-                animate={{ scale: [0, 1.2, 1], opacity: 1, rotate: 0 }}
-                exit={{ scale: 1.5, opacity: 0, rotate: 20 }}
-                transition={{ duration: 0.4, ease: "backOut" }}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: [0, 1.2, 1], opacity: 1 }}
+                exit={{ scale: 1.5, opacity: 0 }}
                 className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
               >
-                <div className="relative">
-                  <Heart size={100} fill="white" className="text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.8)]" />
-                  <motion.div 
-                    initial={{ scale: 0 }}
-                    animate={{ scale: [1, 2], opacity: [0.5, 0] }}
-                    className="absolute inset-0 bg-white rounded-full blur-2xl"
-                  />
-                </div>
+                <Heart size={80} fill="white" className="text-white drop-shadow-2xl" />
               </motion.div>
             )}
           </AnimatePresence>
           
-          <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 flex flex-col justify-end p-4 ${
-            isLoaded ? 'opacity-0 group-hover:opacity-100' : 'opacity-0'
-          }`}>
-            <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
+            <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-medium text-white/90 truncate">{item.title}</h3>
+                <h3 className="text-sm font-medium text-white truncate">{item.title || "Sem título"}</h3>
                 {(item as any).authorName && (
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] text-white/50 truncate">@{ (item as any).authorName }</span>
+                    <span className="text-[10px] text-white/60 truncate">@{ (item as any).authorName }</span>
                     {!isUserPost && onFollow && (
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           onFollow((item as any).authorUid);
                         }}
-                        className="text-[10px] font-bold text-white/70 hover:text-white transition-colors"
+                        className="text-[10px] font-bold text-white/80 hover:text-white transition-colors"
                       >
-                        {isFollowing ? <UserMinus size={12} /> : <UserPlus size={12} />}
+                        {isFollowing ? "Seguindo" : "Seguir"}
                       </button>
                     )}
                   </div>
                 )}
               </div>
-              {!isUserPost && (
-                <div className="flex flex-col gap-2">
-                  <motion.button
-                    whileTap={{ scale: 0.6 }}
+              
+              <div className="flex items-center gap-2">
+                {!isUserPost && (
+                  <button
                     onClick={handleLikeClick}
-                    className={`p-2 rounded-full transition-colors relative ${isLiked ? 'text-red-500' : 'text-white/50 hover:text-white'}`}
+                    className={`p-2 rounded-full transition-colors ${isLiked ? 'text-red-500' : 'text-white/60 hover:text-white'}`}
                   >
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={isLiked ? 'liked' : 'unliked'}
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.8, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <Heart size={18} fill={isLiked ? "currentColor" : "none"} />
-                      </motion.div>
-                    </AnimatePresence>
-                    {isLiked && (
-                      <motion.div
-                        initial={{ scale: 0, opacity: 1 }}
-                        animate={{ scale: 2.5, opacity: 0 }}
-                        className="absolute inset-0 border-2 border-red-500 rounded-full pointer-events-none"
-                      />
-                    )}
-                  </motion.button>
-
-                  {onSave && (
-                    <motion.button
-                      whileTap={{ scale: 0.6 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSave(item.id);
-                      }}
-                      className={`p-2 rounded-full transition-colors ${isSaved ? 'text-yellow-500' : 'text-white/50 hover:text-white'}`}
-                    >
-                      <Bookmark size={18} fill={isSaved ? "currentColor" : "none"} />
-                    </motion.button>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-widest text-white/50">
-                {item.type}
-              </span>
-              {item.type === 'gif' && (
-                <Play size={14} className="text-white/70" />
-              )}
+                    <Heart size={18} fill={isLiked ? "currentColor" : "none"} />
+                  </button>
+                )}
+                {onSave && !isUserPost && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSave(item.id);
+                    }}
+                    className={`p-2 rounded-full transition-colors ${isSaved ? 'text-yellow-500' : 'text-white/60 hover:text-white'}`}
+                  >
+                    <Bookmark size={18} fill={isSaved ? "currentColor" : "none"} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

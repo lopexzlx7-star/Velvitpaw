@@ -17,9 +17,8 @@ service cloud.firestore {
     }
 
     function isValidPost(data) {
-      return data.keys().hasAll(['id', 'url', 'title', 'type', 'height', 'authorUid', 'authorName', 'createdAt']) &&
-             data.id is string &&
-             data.url is string && data.url.size() < 2048 &&
+      return data.keys().hasAll(['url', 'title', 'type', 'height', 'authorUid', 'authorName', 'createdAt']) &&
+             data.url is string && data.url.size() < 1000000 &&
              data.title is string && data.title.size() <= 100 &&
              data.type in ['image', 'gif'] &&
              data.height is number &&

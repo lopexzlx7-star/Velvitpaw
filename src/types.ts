@@ -6,6 +6,7 @@ export interface ContentItem {
   type: 'image' | 'gif';
   height: number;
   width?: number;
+  aspectRatio?: 'portrait' | 'landscape' | 'square' | 'wide' | 'original';
   authorUid: string;
   authorName: string;
   createdAt: string;

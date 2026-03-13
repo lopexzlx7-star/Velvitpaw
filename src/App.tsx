@@ -30,7 +30,6 @@ import { ContentItem, Notification } from './types';
 import GlassCard from './components/GlassCard';
 import FloatingNav from './components/FloatingNav';
 import PublishModal from './components/PublishModal';
-import DeleteBottomSheet from './components/DeleteBottomSheet';
 
 enum OperationType {
   CREATE = 'create',
@@ -147,8 +146,6 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showPlaceholderModal, setShowPlaceholderModal] = useState<string | null>(null);
   const [showPublishModal, setShowPublishModal] = useState(false);
-  const [isDeleteSheetOpen, setIsDeleteSheetOpen] = useState(false);
-  const [postToDelete, setPostToDelete] = useState<string | null>(null);
   const [bgImage, setBgImage] = useState<string | null>(() => localStorage.getItem('velvit_bg'));
   const [profilePic, setProfilePic] = useState<string | null>(() => localStorage.getItem('velvit_profile_pic'));
   const [username, setUsername] = useState<string>(() => localStorage.getItem('velvit_username') || 'Usuário');
@@ -179,7 +176,7 @@ export default function App() {
   });
   const [showHistory, setShowHistory] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [isGeneratingFeed, setIsGeneratingFeed] = useState(false);
+  const [isGeneratingFeed, setIsGeneratingFeed] = useState(true);
   const [followingUids, setFollowingUids] = useState<string[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [trendingPosts, setTrendingPosts] = useState<ContentItem[]>([]);
@@ -230,13 +227,20 @@ export default function App() {
     });
 
     // Global Posts listener
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(100));
+    const q = query(collection(db, 'posts'), limit(100));
     const unsubscribePosts = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
       })) as ContentItem[];
       
+      // Sort client-side to avoid index issues
+      fetchedPosts.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+
       // Filter out archived posts for global feed
       const visiblePosts = fetchedPosts.filter(p => !(p as any).archived);
       setGlobalPosts(visiblePosts);
@@ -251,8 +255,12 @@ export default function App() {
       if (auth.currentUser) {
         setUserPosts(fetchedPosts.filter(p => (p as any).authorUid === auth.currentUser?.uid));
       }
+      
+      setIsGeneratingFeed(false);
     }, (err) => {
       console.error("Error fetching posts:", err);
+      setError("Erro ao carregar posts: " + err.message);
+      setIsGeneratingFeed(false);
     });
 
     // Following listener
@@ -287,116 +295,9 @@ export default function App() {
 
   useEffect(() => {
     if (!searchQuery.trim()) {
-      generateFeed();
-    }
-  }, [activeTab, globalPosts]);
-
-  const generateFeed = async () => {
-    if (searchQuery.trim()) return;
-    
-    setIsGeneratingFeed(true);
-    setError(null);
-
-    try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey || apiKey === 'undefined') {
-        setError("Configuração pendente: GEMINI_API_KEY não encontrada. O feed inteligente está desativado.");
-        setItems(globalPosts);
-        setIsGeneratingFeed(false);
-        return;
-      }
-
-      if (!aiRef.current) {
-        aiRef.current = new GoogleGenAI({ apiKey });
-      }
-
-      const likedThemes = likedItems.map(item => item.title).join(', ');
-      const historyContext = searchHistory.slice(0, 5).join(', ');
-      
-      let prompt = '';
-      if (activeTab === 'foryou') {
-        prompt = `You are an intelligent aesthetic curator for VELVIT's "For You" feed. 
-        The user has liked these themes: ${likedThemes}. 
-        Recent searches: ${historyContext}.
-        
-        Generate a JSON list of 15 high-quality, visually stunning image and GIF URLs that perfectly match this user's unique aesthetic.
-        Focus on creating a cohesive, personalized experience.
-        
-        Return an array of objects with: id (string), url (string), title (string), type ("image" or "gif"), height (number between 300 and 600).
-        Use reliable public image hosting URLs (like Unsplash, Pexels, or Giphy). 
-        IMPORTANT: Return ONLY the JSON array.`;
-      } else {
-        prompt = `You are an intelligent aesthetic curator for VELVIT's "Explore" feed. 
-        Generate a JSON list of 15 high-quality, visually stunning image and GIF URLs representing current trending aesthetics (e.g., cyber-minimalism, organic brutalism, high-fashion editorial, ethereal tech).
-        
-        Return an array of objects with: id (string), url (string), title (string), type ("image" or "gif"), height (number between 300 and 600).
-        Use reliable public image hosting URLs (like Unsplash, Pexels, or Giphy). 
-        IMPORTANT: Return ONLY the JSON array.`;
-      }
-
-      const response = await aiRef.current.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        }
-      });
-
-      const aiDiscovery = JSON.parse(response.text || '[]');
-      
-      // Algorithmic Mix (70% Following, 20% Discovery, 10% Trending)
-      let finalFeed: ContentItem[] = [];
-
-      if (activeTab === 'foryou' && auth.currentUser) {
-        // 70% Following
-        const followingPosts = globalPosts.filter(p => followingUids.includes((p as any).authorUid));
-        const followingCount = Math.floor(20 * 0.7);
-        finalFeed.push(...followingPosts.slice(0, followingCount));
-
-        // 20% Discovery (AI)
-        const discoveryCount = Math.floor(20 * 0.2);
-        finalFeed.push(...aiDiscovery.slice(0, discoveryCount));
-
-        // 10% Trending
-        const trendingCount = Math.floor(20 * 0.1);
-        finalFeed.push(...trendingPosts.slice(0, trendingCount));
-
-        // Fill remaining with global posts if needed
-        if (finalFeed.length < 20) {
-          const remaining = globalPosts.filter(p => !finalFeed.find(f => f.id === p.id));
-          finalFeed.push(...remaining.slice(0, 20 - finalFeed.length));
-        }
-      } else {
-        // Explore: Mix AI and Global
-        finalFeed = [...aiDiscovery, ...globalPosts.slice(0, 10)];
-      }
-
-      // Temporal Decay & Re-ranking
-      // Weight = (Interactions + 1) / (HoursSinceCreation + 2)^1.5
-      const now = new Date().getTime();
-      const rankedFeed = finalFeed.map(item => {
-        const createdAt = new Date((item as any).createdAt || now).getTime();
-        const hoursOld = (now - createdAt) / (1000 * 60 * 60);
-        const interactions = ((item as any).likesCount || 0) + ((item as any).savesCount || 0);
-        const score = (interactions + 1) / Math.pow(hoursOld + 2, 1.5);
-        return { item, score };
-      })
-      .sort((a, b) => b.score - a.score)
-      .map(entry => entry.item);
-
-      // Avoid duplicates
-      const unique = rankedFeed.filter((item, index, self) =>
-        index === self.findIndex((t) => t.url === item.url)
-      );
-
-      setItems(unique);
-    } catch (err) {
-      console.error("Feed generation error:", err);
       setItems(globalPosts);
-    } finally {
-      setIsGeneratingFeed(false);
     }
-  };
+  }, [globalPosts, searchQuery]);
 
   const handleLogin = async () => {
     if (!loginUsername || loginUsername.length < 3) {
@@ -408,7 +309,12 @@ export default function App() {
       return;
     }
 
-    const cleanName = loginUsername.trim().toLowerCase().replace(/\s+/g, '_');
+    const cleanName = loginUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    if (cleanName.length < 3) {
+      setLoginError('O nome de usuário resultante é muito curto ou inválido.');
+      setLoginLoading(false);
+      return;
+    }
     const email = `${cleanName}@velvit.app`;
     setLoginLoading(true);
     setLoginError(null);
@@ -419,17 +325,11 @@ export default function App() {
       
       if (userDoc.exists()) {
         setLoginError('Este nome de usuário já existe.');
+        setLoginLoading(false);
         return;
       } else {
         // Create user in Firebase Auth
-        let userCredential;
-        try {
-          userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        } catch (authErr) {
-          handleFirestoreError(authErr, 'auth', null);
-          return;
-        }
-        
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCredential.user.uid;
         
         // Create user doc in Firestore
@@ -443,9 +343,29 @@ export default function App() {
         setIsLoggedIn(true);
         localStorage.setItem('velvit_username', cleanName);
       }
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('auth')) throw err;
-      handleFirestoreError(err, OperationType.WRITE, `users/${cleanName}`);
+    } catch (err: any) {
+      let displayError = "Erro ao criar conta. Tente novamente.";
+      
+      // Handle Firebase Auth errors specifically
+      if (err.code === 'auth/email-already-in-use') {
+        displayError = "Este nome de usuário já está em uso.";
+      } else if (err.code === 'auth/invalid-email') {
+        displayError = "Nome de usuário inválido.";
+      } else if (err.code === 'auth/operation-not-allowed') {
+        displayError = "O login por e-mail/senha não está ativado no Firebase.";
+      } else if (err.code === 'auth/weak-password') {
+        displayError = "A senha é muito fraca.";
+      } else if (err.message && err.message.includes('{')) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed.error) displayError = parsed.error;
+        } catch {
+          displayError = err.message;
+        }
+      }
+      
+      setLoginError(displayError);
+      console.error("Login Error:", err);
     } finally {
       setLoginLoading(false);
     }
@@ -461,20 +381,18 @@ export default function App() {
       return;
     }
 
-    const cleanName = loginUsername.trim().toLowerCase().replace(/\s+/g, '_');
+    const cleanName = loginUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    if (cleanName.length < 3) {
+      setLoginError('O nome de usuário resultante é muito curto ou inválido.');
+      setLoginLoading(false);
+      return;
+    }
     const email = `${cleanName}@velvit.app`;
     setLoginLoading(true);
     setLoginError(null);
 
     try {
-      let userCredential;
-      try {
-        userCredential = await signInWithEmailAndPassword(auth, email, password);
-      } catch (authErr) {
-        handleFirestoreError(authErr, 'auth', null);
-        return;
-      }
-      
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
       
       // Verify if firestore doc exists (it should)
@@ -496,9 +414,24 @@ export default function App() {
       setUsername(cleanName);
       setIsLoggedIn(true);
       localStorage.setItem('velvit_username', cleanName);
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('auth')) throw err;
-      handleFirestoreError(err, OperationType.GET, `users/${cleanName}`);
+    } catch (err: any) {
+      let displayError = "Usuário ou senha incorretos.";
+      
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        displayError = "Usuário ou senha incorretos.";
+      } else if (err.code === 'auth/too-many-requests') {
+        displayError = "Muitas tentativas. Tente novamente mais tarde.";
+      } else if (err.message && err.message.includes('{')) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed.error) displayError = parsed.error;
+        } catch {
+          displayError = err.message;
+        }
+      }
+      
+      setLoginError(displayError);
+      console.error("SignIn Error:", err);
     } finally {
       setLoginLoading(false);
     }
@@ -539,9 +472,6 @@ export default function App() {
   };
 
   const handleLike = async (id: string) => {
-    // Prevent liking own posts
-    if (userPosts.some(p => p.id === id)) return;
-
     const itemToLike = [...items, ...userPosts].find(i => i.id === id);
     if (!itemToLike) return;
 
@@ -564,34 +494,6 @@ export default function App() {
             type: 'like',
             createdAt: new Date().toISOString()
           });
-          
-          // Trigger smart notification logic (simulated)
-          // In a real app, this would be a Cloud Function
-          if ((itemToLike as any).authorUid) {
-            const recipientUid = (itemToLike as any).authorUid;
-            const notifId = `${recipientUid}_like_group`;
-            const notifDoc = await getDoc(doc(db, 'notifications', notifId));
-            
-            if (notifDoc.exists()) {
-              const data = notifDoc.data();
-              await setDoc(doc(db, 'notifications', notifId), {
-                ...data,
-                count: (data.count || 1) + 1,
-                message: `Seu post está bombando! +${(data.count || 1) + 1} curtidas recentemente.`,
-                read: false,
-                createdAt: new Date().toISOString()
-              });
-            } else {
-              await setDoc(doc(db, 'notifications', notifId), {
-                recipientUid,
-                type: 'like_group',
-                message: `Alguém curtiu seu post!`,
-                count: 1,
-                read: false,
-                createdAt: new Date().toISOString()
-              });
-            }
-          }
         }
       } catch (err) {
         console.error("Error updating like:", err);
@@ -657,48 +559,20 @@ export default function App() {
           followingUid: targetUid,
           createdAt: new Date().toISOString()
         });
-        
-        // Notify user
-        await addDoc(collection(db, 'notifications'), {
-          recipientUid: targetUid,
-          type: 'new_post', // Reusing type for simplicity
-          message: `Um novo usuário começou a seguir você!`,
-          read: false,
-          createdAt: new Date().toISOString()
-        });
       }
     } catch (err) {
       console.error("Error updating follow:", err);
     }
   };
 
-  const handleDeletePost = (id: string) => {
-    setPostToDelete(id);
-    setIsDeleteSheetOpen(true);
-  };
-
-  const confirmDeletePost = async () => {
-    if (!postToDelete) return;
+  const handleDeletePost = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'posts', postToDelete));
-      setItems(prev => prev.filter(item => item.id !== postToDelete));
-      setPostToDelete(null);
+      await deleteDoc(doc(db, 'posts', id));
+      setItems(prev => prev.filter(item => item.id !== id));
+      setGlobalPosts(prev => prev.filter(item => item.id !== id));
+      setUserPosts(prev => prev.filter(item => item.id !== id));
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `posts/${postToDelete}`);
-    }
-  };
-
-  const handleArchivePost = async () => {
-    if (!postToDelete) return;
-    try {
-      await updateDoc(doc(db, 'posts', postToDelete), {
-        archived: true,
-        updatedAt: new Date().toISOString()
-      });
-      setItems(prev => prev.filter(item => item.id !== postToDelete));
-      setPostToDelete(null);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `posts/${postToDelete}`);
+      handleFirestoreError(err, OperationType.DELETE, `posts/${id}`);
     }
   };
 
@@ -753,71 +627,17 @@ export default function App() {
     });
     
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey || apiKey === 'undefined') {
-        setError("Configuração pendente: GEMINI_API_KEY não encontrada.");
-        setLoading(false);
-        return;
-      }
-
-      if (!aiRef.current) {
-        aiRef.current = new GoogleGenAI({ apiKey });
-      }
-
-      // Algorithm logic: Get themes from liked items and search history
-      const likedItems = items.filter(item => likedIds.includes(item.id));
-      const likedThemes = likedItems.map(item => item.title).join(', ');
-      const historyContext = searchHistory.slice(0, 5).join(', ');
-      
-      const algoContext = activeTab === 'foryou' 
-        ? `The user likes these themes: ${likedThemes}. Recent searches: ${historyContext}. Prioritize similar aesthetic content.`
-        : '';
-
-      const prompt = `You are an intelligent aesthetic search engine for VELVIT. 
-      The user is searching for: "${query}". 
-      ${algoContext}
-      
-      Based on this query and user preferences, generate a JSON list of 15 high-quality, visually stunning image and GIF URLs.
-      Prioritize content that matches the user's specific aesthetic if provided in the context.
-      
-      Return an array of objects with: id (string), url (string), title (string), type ("image" or "gif"), height (number between 300 and 600).
-      Use reliable public image hosting URLs (like Unsplash, Pexels, or Giphy). 
-      IMPORTANT: Return ONLY the JSON array.`;
-
-      const response = await aiRef.current.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        }
-      });
-
-      const aiData = JSON.parse(response.text || '[]');
-      
-      // Integrate Global Posts into search
+      // Search only real posts from Firestore
       const matchingGlobalPosts = globalPosts.filter(post => 
         post.title.toLowerCase().includes(query.toLowerCase()) ||
         query.toLowerCase().includes(post.title.toLowerCase())
       );
 
-      // Combine and remove duplicates (by URL)
-      const combined = [...matchingGlobalPosts, ...aiData];
-      const unique = combined.filter((item, index, self) =>
-        index === self.findIndex((t) => t.url === item.url)
-      );
-
-      setItems(unique);
+      setItems(matchingGlobalPosts);
     } catch (err) {
       console.error(err);
       setError("Failed to fetch content. Please try again.");
-      // Fallback data if API fails
-      setItems([
-        { id: '1', url: 'https://picsum.photos/seed/velvit1/400/600', title: 'Velvit Aesthetic 01', type: 'image', height: 600 },
-        { id: '2', url: 'https://picsum.photos/seed/velvit2/400/400', title: 'Velvit Aesthetic 02', type: 'image', height: 400 },
-        { id: '3', url: 'https://picsum.photos/seed/velvit3/400/700', title: 'Velvit Aesthetic 03', type: 'image', height: 700 },
-        { id: '4', url: 'https://picsum.photos/seed/velvit4/400/500', title: 'Velvit Aesthetic 04', type: 'image', height: 500 },
-        { id: '5', url: 'https://picsum.photos/seed/velvit5/400/800', title: 'Velvit Aesthetic 05', type: 'image', height: 800 },
-      ]);
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -1088,7 +908,7 @@ export default function App() {
                           Limpar
                         </button>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 mb-6">
                         {searchHistory.map((q, i) => (
                           <button
                             key={i}
@@ -1099,6 +919,27 @@ export default function App() {
                             className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-full text-xs text-white/70 hover:text-white transition-all border border-white/5"
                           >
                             {q}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendações</span>
+                      </div>
+                      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                        {globalPosts.slice(0, 6).map(item => (
+                          <button
+                            key={`search-rec-${item.id}`}
+                            onClick={() => {
+                              setSearchQuery(item.title);
+                              handleSearch(item.title);
+                            }}
+                            className="min-w-[120px] aspect-[4/5] rounded-xl overflow-hidden relative group"
+                          >
+                            <img src={item.url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
+                              <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
+                            </div>
                           </button>
                         ))}
                       </div>
@@ -1135,17 +976,6 @@ export default function App() {
               {activeTab === 'foryou' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
             </button>
           </div>
-
-          {!searchQuery && activeTab === 'foryou' && (
-            <button 
-              onClick={() => generateFeed()}
-              disabled={isGeneratingFeed}
-              className="pb-4 text-[10px] font-bold uppercase tracking-widest text-white/30 hover:text-white transition-all flex items-center gap-2 disabled:opacity-50"
-            >
-              <RotateCcw size={12} className={isGeneratingFeed ? 'animate-spin' : ''} />
-              {isGeneratingFeed ? 'Atualizando...' : 'Atualizar Algoritmo'}
-            </button>
-          )}
         </div>
 
         {/* Recommendations Section */}
@@ -1166,12 +996,19 @@ export default function App() {
                     onLike={handleLike}
                     onSave={handleSave}
                     onFollow={handleFollow}
-                    onView={handleView}
                     isUserPost={(item as any).authorUid === auth.currentUser?.uid}
                   />
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {auth.currentUser?.email === 'lopexz.lx7@gmail.com' && (
+          <div className="mb-8 p-4 glass-panel rounded-xl text-[10px] text-white/40 uppercase tracking-[0.2em] flex gap-8">
+            <span>Posts no Banco: {globalPosts.length}</span>
+            <span>Posts no Feed: {items.length}</span>
+            <span>Status: {isGeneratingFeed ? 'Carregando...' : 'Pronto'}</span>
           </div>
         )}
 
@@ -1185,7 +1022,7 @@ export default function App() {
         <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
           {isGeneratingFeed && items.length === 0 ? (
             Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: 300 + Math.random() * 200 }} />
+              <div key={i} className="mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: [250, 300, 400, 600][i % 4] }} />
             ))
           ) : (
             items.map((item) => (
@@ -1198,7 +1035,6 @@ export default function App() {
                 onLike={handleLike}
                 onSave={handleSave}
                 onFollow={handleFollow}
-                onView={handleView}
                 onDelete={handleDeletePost}
                 isUserPost={(item as any).authorUid === auth.currentUser?.uid}
               />
@@ -1206,11 +1042,15 @@ export default function App() {
           )}
         </div>
 
-        {items.length === 0 && !loading && (
-          <div className="flex flex-col items-center justify-center py-40 text-white/30">
-            <Search size={48} className="mb-4 opacity-20" />
-            <p className="text-xl font-medium">Explore o VELVIT</p>
-            <p className="text-sm mt-2">Faça uma busca para começar sua jornada estética.</p>
+        {items.length === 0 && !loading && !isGeneratingFeed && (
+          <div className="flex flex-col items-center justify-center py-40 text-center">
+            <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
+              <ImageIcon size={32} className="text-white/10" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2 uppercase tracking-tighter">O feed está vazio</h3>
+            <p className="text-white/40 text-xs max-w-xs leading-relaxed uppercase tracking-widest mx-auto">
+              Nenhuma publicação encontrada no banco de dados. Seja o primeiro a compartilhar algo incrível.
+            </p>
           </div>
         )}
       </main>
@@ -1223,21 +1063,10 @@ export default function App() {
       />
 
       {/* Modals */}
-      <DeleteBottomSheet 
-        isOpen={isDeleteSheetOpen}
-        onClose={() => {
-          setIsDeleteSheetOpen(false);
-          setPostToDelete(null);
-        }}
-        onDelete={confirmDeletePost}
-        onArchive={handleArchivePost}
-      />
-
       <PublishModal 
         isOpen={showPublishModal} 
         onClose={() => setShowPublishModal(false)}
         onSuccess={() => {
-          generateFeed();
           setShowPublishModal(false);
         }}
       />
@@ -1395,6 +1224,7 @@ export default function App() {
                               item={item} 
                               isLiked={likedIds.includes(item.id)}
                               onLike={handleLike}
+                              onDelete={handleDeletePost}
                               isUserPost={(item as any).authorUid === auth.currentUser?.uid}
                             />
                           ))}
