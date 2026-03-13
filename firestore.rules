@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isValidUser(data) {
+      return data.keys().hasAll(['username', 'createdAt', 'uid']) &&
+             data.keys().hasOnly(['username', 'createdAt', 'uid', 'lastLogin']) &&
+             data.username is string && 
+             data.username.size() >= 3 && 
+             data.username.size() <= 20 &&
+             data.username.matches("^[a-zA-Z0-9_]+$") &&
+             data.uid == request.auth.uid;
+    }
+
+    function isValidPost(data) {
+      return data.keys().hasAll(['id', 'url', 'title', 'type', 'height', 'authorUid', 'authorName', 'createdAt']) &&
+             data.id is string &&
+             data.url is string && data.url.size() < 2048 &&
+             data.title is string && data.title.size() <= 100 &&
+             data.type in ['image', 'gif'] &&
+             data.height is number &&
+             data.authorUid == request.auth.uid &&
+             data.authorName is string &&
+             data.createdAt is string;
+    }
+
+    function isValidFollowing(data) {
+      return data.keys().hasAll(['followerUid', 'followingUid', 'createdAt']) &&
+             data.followerUid == request.auth.uid &&
+             data.followingUid is string &&
+             data.createdAt is string;
+    }
+
+    function isValidInteraction(data) {
+      return data.keys().hasAll(['uid', 'postId', 'type', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.postId is string &&
+             data.type in ['like', 'save', 'view'] &&
+             data.createdAt is string;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['recipientUid', 'type', 'message', 'read', 'createdAt']) &&
+             data.recipientUid is string &&
+             data.type in ['like_group', 'trending', 'new_post'] &&
+             data.message is string &&
+             data.read is bool &&
+             data.createdAt is string;
+    }
+
+    match /users/{username} {
+      allow get: if true;
+      allow create: if isValidUser(request.resource.data) && username == request.resource.data.username;
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && isValidUser(request.resource.data);
+      allow delete: if false;
+    }
+    
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidPost(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.authorUid == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'savesCount', 'viewsCount'])
+      );
+    }
+
+    match /following/{followId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidFollowing(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.followerUid == request.auth.uid;
+    }
+
+    match /interactions/{interactionId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && isValidInteraction(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.recipientUid == request.auth.uid;
+      allow create: if false; // Only created via backend/system logic (simulated here)
+      allow update: if isAuthenticated() && resource.data.recipientUid == request.auth.uid && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAuthenticated() && resource.data.recipientUid == request.auth.uid;
+    }
+  }
+}

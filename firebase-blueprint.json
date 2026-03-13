@@ -1,0 +1,100 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "Unique username chosen by the user"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the user joined"
+        }
+      },
+      "required": ["username", "createdAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A post shared by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["image", "gif"] },
+        "height": { "type": "number" },
+        "authorUid": { "type": "string" },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "likesCount": { "type": "number" },
+        "savesCount": { "type": "number" },
+        "viewsCount": { "type": "number" }
+      },
+      "required": ["id", "url", "title", "type", "height", "authorUid", "authorName", "createdAt"]
+    },
+    "Following": {
+      "title": "Following",
+      "description": "User following relationship",
+      "type": "object",
+      "properties": {
+        "followerUid": { "type": "string" },
+        "followingUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerUid", "followingUid", "createdAt"]
+    },
+    "Interaction": {
+      "title": "Interaction",
+      "description": "User interaction with a post",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "postId": { "type": "string" },
+        "type": { "type": "string", "enum": ["like", "save", "view"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "postId", "type", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Smart notification for a user",
+      "type": "object",
+      "properties": {
+        "recipientUid": { "type": "string" },
+        "type": { "type": "string", "enum": ["like_group", "trending", "new_post"] },
+        "message": { "type": "string" },
+        "count": { "type": "number" },
+        "relatedIds": { "type": "array", "items": { "type": "string" } },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recipientUid", "type", "message", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{username}": {
+      "schema": "User",
+      "description": "Collection of users indexed by their unique username"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Global collection of all posts"
+    },
+    "/following/{followId}": {
+      "schema": "Following",
+      "description": "User following relationships"
+    },
+    "/interactions/{interactionId}": {
+      "schema": "Interaction",
+      "description": "User interactions with posts"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Smart notifications for users"
+    }
+  }
+}
