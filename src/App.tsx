@@ -196,10 +196,11 @@ export default function App() {
 
   useEffect(() => {
     // One-time reset to ensure app starts "zerado" as requested
-    const hasReset = localStorage.getItem('velvit_v1_reset');
-    if (!hasReset) {
+    const resetVersion = 'v2_total_reset';
+    const hasReset = localStorage.getItem('velvit_reset_flag');
+    if (hasReset !== resetVersion) {
       localStorage.clear();
-      localStorage.setItem('velvit_v1_reset', 'true');
+      localStorage.setItem('velvit_reset_flag', resetVersion);
       window.location.reload();
       return;
     }
@@ -297,8 +298,16 @@ export default function App() {
     setError(null);
 
     try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === 'undefined') {
+        setError("Configuração pendente: GEMINI_API_KEY não encontrada. O feed inteligente está desativado.");
+        setItems(globalPosts);
+        setIsGeneratingFeed(false);
+        return;
+      }
+
       if (!aiRef.current) {
-        aiRef.current = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        aiRef.current = new GoogleGenAI({ apiKey });
       }
 
       const likedThemes = likedItems.map(item => item.title).join(', ');
@@ -744,8 +753,15 @@ export default function App() {
     });
     
     try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === 'undefined') {
+        setError("Configuração pendente: GEMINI_API_KEY não encontrada.");
+        setLoading(false);
+        return;
+      }
+
       if (!aiRef.current) {
-        aiRef.current = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        aiRef.current = new GoogleGenAI({ apiKey });
       }
 
       // Algorithm logic: Get themes from liked items and search history
