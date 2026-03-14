@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
 import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
-import { motion, AnimatePresence, useScroll, useTransform } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from "@google/genai";
 import { 
   doc, 
@@ -224,13 +224,8 @@ export default function App() {
   const [newUsername, setNewUsername] = useState('');
   
   const aiRef = useRef<GoogleGenAI | null>(null);
-  const { scrollY } = useScroll();
-  
-  // Header opacity and scale based on scroll
-  const headerOpacity = 1;
-  const headerScale = 1;
-  const headerY = 0;
-  const headerPointerEvents = "auto";
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  const [headerVisible, setHeaderVisible] = useState(true);
 
   useEffect(() => {
     // One-time reset to ensure app starts "zerado" as requested
@@ -929,12 +924,14 @@ export default function App() {
         <div className="liquid-blob w-[300px] h-[300px] bg-white/5 top-[40%] right-[20%]" style={{ animationDelay: '-10s' }} />
       </div>
 
-      {/* Header / Search - Animated to hide on scroll */}
-      <motion.header 
+      {/* Header - hides on scroll */}
+      <motion.header
+        animate={{ y: headerVisible ? 0 : -100, opacity: headerVisible ? 1 : 0 }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
         className="sticky top-0 z-50 px-6 py-8"
       >
         <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={handleHomeClick}
@@ -951,10 +948,15 @@ export default function App() {
           {currentTab === 'feed' && (
             <motion.div
               key="feed"
+              ref={feedRef}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
+              onScroll={(e) => {
+                const scrollTop = (e.target as HTMLDivElement).scrollTop;
+                setHeaderVisible(scrollTop < 60);
+              }}
             >
               <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
                 {/* Search and Notifications Row */}

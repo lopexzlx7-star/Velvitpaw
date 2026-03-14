@@ -74,9 +74,9 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setError(null);
     const isVideo = file.type.startsWith('video/');
     const isGif = file.type === 'image/gif';
-    
-    if (isVideo && file.size > 50 * 1024 * 1024) { // 50MB limit
-      setError('Vídeo muito grande. Máximo 50MB.');
+
+    if (isVideo && file.size > 100 * 1024 * 1024) {
+      setError('Vídeo muito grande. Máximo 100MB.');
       return;
     }
 
@@ -84,23 +84,48 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       const reader = new FileReader();
       reader.onload = async (event) => {
         const mediaUrl = event.target?.result as string;
-        
+
         if (isVideo) {
+          // Validate duration (max 60 seconds)
+          const videoEl = document.createElement('video');
+          videoEl.preload = 'metadata';
+          videoEl.src = mediaUrl;
+          await new Promise<void>((resolve) => {
+            videoEl.onloadedmetadata = () => resolve();
+            videoEl.onerror = () => resolve();
+          });
+
+          if (videoEl.duration > 60) {
+            setError('Vídeo muito longo. Máximo 1 minuto.');
+            return;
+          }
+
           setDraft(prev => ({
             ...prev,
             file,
             mediaUrl,
             mediaType: 'video',
+            duration: videoEl.duration,
+            title: prev.title || file.name.split('.')[0]
+          }));
+        } else if (isGif) {
+          // GIFs must not go through canvas — it destroys the animation
+          setDraft(prev => ({
+            ...prev,
+            file,
+            mediaUrl,
+            mediaType: 'gif',
             title: prev.title || file.name.split('.')[0]
           }));
         } else {
+          // Compress static images via canvas
           const img = new Image();
           img.src = mediaUrl;
           await img.decode();
 
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
-          
+
           const maxDim = 1200;
           let width = img.width;
           let height = img.height;
@@ -116,14 +141,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           canvas.width = width;
           canvas.height = height;
           ctx?.drawImage(img, 0, 0, width, height);
-          
-          const compressedUrl = canvas.toDataURL(isGif ? 'image/gif' : 'image/jpeg', 0.7);
+
+          const compressedUrl = canvas.toDataURL('image/jpeg', 0.8);
 
           setDraft(prev => ({
             ...prev,
             file,
             mediaUrl: compressedUrl,
-            mediaType: isGif ? 'gif' : 'image',
+            mediaType: 'image',
             title: prev.title || file.name.split('.')[0]
           }));
         }
