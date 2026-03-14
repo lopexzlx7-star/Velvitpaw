@@ -186,15 +186,17 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       };
 
       xhr.onload = () => {
+        console.log('[Cloudinary] status:', xhr.status, xhr.responseText);
         if (xhr.status === 200) {
           const data = JSON.parse(xhr.responseText);
           resolve(data.secure_url);
         } else {
           try {
             const err = JSON.parse(xhr.responseText);
-            reject(new Error(err?.error?.message || 'Upload falhou.'));
+            const msg = err?.error?.message || `Erro ${xhr.status}`;
+            reject(new Error(`Cloudinary: ${msg}`));
           } catch {
-            reject(new Error('Upload falhou. Verifique o upload preset no Cloudinary.'));
+            reject(new Error(`Upload falhou (status ${xhr.status}). Verifique se o preset está como Unsigned.`));
           }
         }
       };
