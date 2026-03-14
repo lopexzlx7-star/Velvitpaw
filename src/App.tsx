@@ -1124,7 +1124,7 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Search History Dropdown */}
+                  {/* Search History & Image Recommendations Dropdown */}
                   <AnimatePresence>
                     {showHistory && (
                       <>
@@ -1141,71 +1141,64 @@ export default function App() {
                           exit={{ opacity: 0, y: 10 }}
                           className="absolute top-full left-0 right-0 mt-2 p-4 glass-panel rounded-2xl z-50 border border-white/10 max-h-[70vh] overflow-y-auto no-scrollbar"
                         >
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-[10px] uppercase tracking-widest text-white/30">Buscas Recentes</span>
-                            <button 
-                              onClick={() => {
-                                setSearchHistory([]);
-                                localStorage.removeItem('velvit_search_history');
-                              }}
-                              className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white transition-colors"
-                            >
-                              Limpar
-                            </button>
-                          </div>
-                          <div className="flex flex-wrap gap-2 mb-6">
-                            {searchHistory.map((q, i) => (
-                              <button
-                                key={i}
-                                onClick={() => {
-                                  setSearchQuery(q);
-                                  handleSearch(q);
-                                  setShowHistory(false);
-                                }}
-                                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-full text-xs text-white/70 hover:text-white transition-all border border-white/5"
-                              >
-                                {q}
-                              </button>
-                            ))}
-                          </div>
+                          {/* Search History */}
+                          {searchHistory.length > 0 && (
+                            <>
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="text-[10px] uppercase tracking-widest text-white/30">Buscas Recentes</span>
+                                <button 
+                                  onClick={() => {
+                                    setSearchHistory([]);
+                                    localStorage.removeItem('velvit_search_history');
+                                  }}
+                                  className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white transition-colors"
+                                >
+                                  Limpar
+                                </button>
+                              </div>
+                              <div className="flex flex-wrap gap-2 mb-6">
+                                {searchHistory.map((q, i) => (
+                                  <button
+                                    key={i}
+                                    onClick={() => {
+                                      setSearchQuery(q);
+                                      handleSearch(q);
+                                      setShowHistory(false);
+                                    }}
+                                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-full text-xs text-white/70 hover:text-white transition-all border border-white/5"
+                                  >
+                                    {q}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
 
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="text-[10px] uppercase tracking-widest text-white/30">Sugestões da IA</span>
-                            {isGeneratingAI && <Loader2 size={10} className="animate-spin text-white/30" />}
+                          {/* Image Recommendations */}
+                          <div className="flex items-center gap-2 mb-4">
+                            <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendados para Você</span>
                           </div>
-                          <div className="flex flex-wrap gap-2 mb-6">
-                            {aiSuggestedTags.slice(0, 4).map((tag, i) => (
-                              <button
-                                key={`ai-sug-${i}`}
-                                onClick={() => {
-                                  setSearchQuery(tag);
-                                  handleSearch(tag);
-                                  setShowHistory(false);
-                                }}
-                                className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-full text-xs text-emerald-400 hover:text-emerald-300 transition-all border border-emerald-500/20"
-                              >
-                                {tag}
-                              </button>
-                            ))}
-                          </div>
-
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendações</span>
-                          </div>
-                          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                            {globalPosts.slice(0, 6).map(item => (
+                          <div className="grid grid-cols-3 gap-3">
+                            {globalPosts.slice(0, 9).map(item => (
                               <button
                                 key={`search-rec-${item.id}`}
                                 onClick={() => {
-                                  setSearchQuery(item.title);
-                                  handleSearch(item.title);
                                   setShowHistory(false);
+                                  setSelectedPost(item);
                                 }}
-                                className="min-w-[120px] aspect-[4/5] rounded-xl overflow-hidden relative group"
+                                className="aspect-square rounded-xl overflow-hidden relative group"
                               >
-                                <img src={item.url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="" />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
-                                  <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
+                                <img 
+                                  src={item.url} 
+                                  className="w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300" 
+                                  alt={item.title}
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <div className="w-full">
+                                    <span className="text-[9px] text-white font-bold truncate block uppercase tracking-tight">{item.title}</span>
+                                    <span className="text-[8px] text-white/50">@{item.authorName}</span>
+                                  </div>
                                 </div>
                               </button>
                             ))}
@@ -1216,32 +1209,7 @@ export default function App() {
                   </AnimatePresence>
                 </div>
 
-                <div className="glass-panel p-8 rounded-3xl mb-8">
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-3xl font-black tracking-tighter uppercase">Explorar</h2>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase tracking-widest text-white/30">Curadoria IA</span>
-                      {isGeneratingAI && <Loader2 size={12} className="animate-spin text-white/30" />}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {aiSuggestedTags.map(tag => (
-                      <button
-                        key={tag}
-                        onClick={() => {
-                          setSearchQuery(tag);
-                          handleSearch(tag);
-                          setCurrentTab('feed');
-                        }}
-                        className="aspect-video rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-sm font-bold uppercase tracking-widest transition-all group overflow-hidden relative"
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <span className="relative z-10">{tag}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
+                {/* Search Results Grid */}
                 <div className="columns-2 md:columns-3 lg:columns-4 gap-4">
                   {globalPosts.slice(0, 20).map(item => (
                     <GlassCard 
