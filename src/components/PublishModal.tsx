@@ -38,6 +38,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [draft, setDraft] = useState<Draft>(BLANK_DRAFT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState<'sending' | 'processing'>('sending');
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,6 +62,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     if (draft.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(draft.previewUrl);
     setDraft(BLANK_DRAFT);
     setUploadProgress(0);
+    setUploadPhase('sending');
     setError(null);
   };
 
@@ -183,6 +185,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         if (e.lengthComputable) {
           setUploadProgress(Math.round((e.loaded / e.total) * 100));
         }
+      };
+
+      xhr.upload.onload = () => {
+        setUploadProgress(100);
+        setUploadPhase('processing');
       };
 
       xhr.onload = () => {
@@ -349,12 +356,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 >
                   {draft.mediaType === 'video' ? (
                     <video
-                      src={draft.previewUrl}
+                      key={draft.previewUrl}
+                      src={draft.previewUrl ?? undefined}
                       className="w-full h-full object-cover"
                       autoPlay
                       loop
                       muted
                       playsInline
+                      onError={(e) => console.warn('Video preview error:', e)}
                     />
                   ) : (
                     <img src={draft.previewUrl} className="w-full h-full object-cover" alt="Preview" />
@@ -434,14 +443,23 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               className="px-5 pb-2"
             >
               <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-white rounded-full"
-                  animate={{ width: `${uploadProgress}%` }}
-                  transition={{ duration: 0.3 }}
-                />
+                {uploadPhase === 'processing' ? (
+                  <motion.div
+                    className="h-full bg-white/60 rounded-full"
+                    animate={{ x: ['-100%', '200%'] }}
+                    transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{ width: '50%' }}
+                  />
+                ) : (
+                  <motion.div
+                    className="h-full bg-white rounded-full"
+                    animate={{ width: `${uploadProgress}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                )}
               </div>
               <p className="text-[9px] text-white/30 uppercase tracking-widest mt-1.5 text-center">
-                Enviando... {uploadProgress}%
+                {uploadPhase === 'processing' ? 'Processando no servidor...' : `Enviando... ${uploadProgress}%`}
               </p>
             </motion.div>
           )}
@@ -457,7 +475,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
             {isSubmitting ? (
               <>
                 <Loader2 className="animate-spin" size={15} />
-                {isMediaOnly ? `Enviando ${uploadProgress}%` : 'Publicando...'}
+                {isMediaOnly
+                  ? uploadPhase === 'processing'
+                    ? 'Processando...'
+                    : `Enviando ${uploadProgress}%`
+                  : 'Publicando...'}
               </>
             ) : (
               <>
