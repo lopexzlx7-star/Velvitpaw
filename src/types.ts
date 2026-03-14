@@ -10,6 +10,7 @@ export interface ContentItem {
   aspectRatio?: 'portrait' | 'landscape' | 'square' | 'wide' | 'original';
   authorUid: string;
   authorName: string;
+  authorProfilePic?: string;
   createdAt: string;
   likesCount?: number;
   savesCount?: number;

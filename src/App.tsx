@@ -651,13 +651,20 @@ export default function App() {
   };
 
   const handleHomeClick = () => {
+    setHeaderVisible(true);
     if (currentTab !== 'feed') {
       setCurrentTab('feed');
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      feedRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setSearchQuery('');
     setItems(globalPosts);
+  };
+
+  const handleProfileClick = () => {
+    setHeaderVisible(true);
+    setCurrentTab('profile');
   };
 
   const handleUpdateUsername = async () => {
@@ -1195,6 +1202,10 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
+              onScroll={(e) => {
+                const scrollTop = (e.target as HTMLDivElement).scrollTop;
+                setHeaderVisible(scrollTop < 60);
+              }}
             >
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl">
@@ -1343,7 +1354,7 @@ export default function App() {
       <FloatingNav 
         onHomeClick={handleHomeClick}
         onAddClick={() => setShowPublishModal(true)}
-        onProfileClick={() => setCurrentTab('profile')}
+        onProfileClick={handleProfileClick}
       />
 
       {/* Modals */}

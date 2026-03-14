@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Volume2, VolumeX, Heart, Bookmark, User } from 'lucide-react';
+import { X, Volume2, VolumeX, Heart, User } from 'lucide-react';
 import { ContentItem } from '../types';
 
 interface PostDetailModalProps {
@@ -17,8 +17,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   onClose,
   onLike,
   isLiked,
+  currentUserUid,
 }) => {
   const [isMuted, setIsMuted] = useState(true);
+  const [likeAnim, setLikeAnim] = useState(false);
+
+  const isOwn = currentUserUid && item.authorUid === currentUserUid;
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -30,6 +34,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
+
+  const handleLike = () => {
+    if (isOwn) return;
+    onLike(item.id);
+    if (!isLiked) {
+      setLikeAnim(true);
+      setTimeout(() => setLikeAnim(false), 700);
+    }
+  };
 
   return (
     <motion.div
@@ -60,7 +73,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         }}
       >
         {/* Inner glow top highlight */}
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent rounded-t-[2.5rem]" />
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent rounded-t-[2.5rem] pointer-events-none" />
 
         {/* Close button */}
         <button
@@ -76,11 +89,11 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         </button>
 
         {/* Media */}
-        <div className="relative flex-1 overflow-hidden min-h-0 rounded-t-[2.5rem]">
+        <div className="relative overflow-hidden rounded-t-[2.5rem]">
           {item.type === 'video' ? (
             <video
               src={item.url}
-              className="w-full h-full object-cover"
+              className="w-full object-cover"
               style={{ maxHeight: '65vh' }}
               autoPlay
               loop
@@ -91,14 +104,29 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
             <img
               src={item.url}
               alt={item.title}
-              className="w-full h-full object-cover"
+              className="w-full object-cover"
               style={{ maxHeight: '65vh' }}
               referrerPolicy="no-referrer"
             />
           )}
 
-          {/* Media gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+          {/* Gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+
+          {/* Double-tap like overlay animation */}
+          <AnimatePresence>
+            {likeAnim && (
+              <motion.div
+                initial={{ scale: 0.4, opacity: 1 }}
+                animate={{ scale: 1.4, opacity: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.6, ease: 'easeOut' }}
+                className="absolute inset-0 flex items-center justify-center pointer-events-none"
+              >
+                <Heart size={80} className="text-white fill-white drop-shadow-2xl" />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Video mute toggle */}
           {item.type === 'video' && (
@@ -121,39 +149,55 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
           className="px-5 py-4 flex items-center justify-between gap-3"
           style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
         >
+          {/* Author info */}
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-              style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.15)' }}
+              className="w-9 h-9 rounded-full overflow-hidden shrink-0 flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.18)' }}
             >
-              <User size={14} className="text-white/60" />
+              {item.authorProfilePic ? (
+                <img
+                  src={item.authorProfilePic}
+                  alt={item.authorName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <User size={16} className="text-white/50" />
+              )}
             </div>
             <div className="min-w-0">
-              <p className="text-white font-bold text-sm truncate">{item.title || 'Sem título'}</p>
+              <p className="text-white font-bold text-sm truncate leading-tight">{item.title || 'Sem título'}</p>
               <p className="text-white/40 text-[10px] uppercase tracking-widest truncate">
-                @{(item as any).authorName || 'user'}
+                @{item.authorName || 'user'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => onLike(item.id)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl transition-all hover:scale-105 active:scale-95"
+          {/* Like button — hidden for own posts */}
+          {!isOwn && (
+            <motion.button
+              onClick={handleLike}
+              whileTap={{ scale: 0.82 }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl transition-colors shrink-0"
               style={{
                 background: isLiked ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.08)',
                 border: `1px solid ${isLiked ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.12)'}`,
               }}
             >
-              <Heart
-                size={15}
-                className={isLiked ? 'text-red-400 fill-red-400' : 'text-white/60'}
-              />
-              <span className={`text-[11px] font-bold ${isLiked ? 'text-red-400' : 'text-white/50'}`}>
+              <motion.div
+                animate={isLiked ? { scale: [1, 1.4, 1] } : { scale: 1 }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+              >
+                <Heart
+                  size={15}
+                  className={isLiked ? 'text-red-400 fill-red-400' : 'text-white/60'}
+                />
+              </motion.div>
+              <span className={`text-[11px] font-bold tabular-nums ${isLiked ? 'text-red-400' : 'text-white/50'}`}>
                 {(item as any).likesCount || 0}
               </span>
-            </button>
-          </div>
+            </motion.button>
+          )}
         </div>
       </motion.div>
     </motion.div>
