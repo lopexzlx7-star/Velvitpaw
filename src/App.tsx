@@ -945,23 +945,6 @@ export default function App() {
         <div className="liquid-blob w-[300px] h-[300px] bg-white/5 top-[40%] right-[20%]" style={{ animationDelay: '-10s' }} />
       </div>
 
-      {/* Header / Search - Animated to hide on scroll */}
-      <motion.header 
-        style={{ opacity: headerOpacity, scale: headerScale, y: headerY }}
-        className="sticky top-0 z-50 px-6 py-8 pointer-events-none"
-      >
-        <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <motion.h1 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            onClick={handleHomeClick}
-            className="text-3xl md:text-4xl font-black tracking-tighter text-white cursor-pointer pointer-events-auto"
-          >
-            VELVIT
-          </motion.h1>
-        </div>
-      </motion.header>
-
       {/* Main Content */}
       <main className="relative min-h-screen">
         <AnimatePresence initial={false}>
@@ -972,8 +955,25 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
+              className="fixed inset-0 overflow-y-auto no-scrollbar z-30"
             >
+              {/* Header inside scroll container */}
+              <motion.header 
+                style={{ opacity: headerOpacity, scale: headerScale, y: headerY }}
+                className="sticky top-0 z-50 px-6 py-8 pointer-events-none"
+              >
+                <div className="max-w-7xl mx-auto flex items-center justify-center">
+                  <motion.h1 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    onClick={handleHomeClick}
+                    className="text-3xl md:text-4xl font-black tracking-tighter text-white cursor-pointer pointer-events-auto"
+                  >
+                    VELVIT
+                  </motion.h1>
+                </div>
+              </motion.header>
+              
               <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
                 {/* Search and Notifications Row */}
                 <div className="flex items-center justify-between mb-8">
@@ -1224,8 +1224,25 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
+              className="fixed inset-0 overflow-y-auto no-scrollbar z-30"
             >
+              {/* Header inside scroll container */}
+              <motion.header 
+                style={{ opacity: headerOpacity, scale: headerScale, y: headerY }}
+                className="sticky top-0 z-50 px-6 py-8 pointer-events-none"
+              >
+                <div className="max-w-7xl mx-auto flex items-center justify-center">
+                  <motion.h1 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    onClick={handleHomeClick}
+                    className="text-3xl md:text-4xl font-black tracking-tighter text-white cursor-pointer pointer-events-auto"
+                  >
+                    VELVIT
+                  </motion.h1>
+                </div>
+              </motion.header>
+              
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl">
                   <div className="flex flex-col md:flex-row items-center gap-8 border-b border-white/10 pb-8 mb-8">
