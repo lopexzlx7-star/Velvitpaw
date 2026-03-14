@@ -54,11 +54,11 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         </button>
 
         {/* Media Section */}
-        <div className="relative">
+        <div className="relative p-3 pb-16">
           {item.type === 'video' ? (
             <video
               src={item.url}
-              className="max-w-[90vw] max-h-[70vh] object-contain"
+              className="max-w-[85vw] max-h-[65vh] object-contain rounded-2xl"
               autoPlay
               loop
               muted={isMuted}
@@ -69,14 +69,14 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
             <img 
               src={item.url} 
               alt={item.title}
-              className="max-w-[90vw] max-h-[70vh] object-contain"
+              className="max-w-[85vw] max-h-[65vh] object-contain rounded-2xl"
               referrerPolicy="no-referrer"
             />
           ) : (
             <img 
               src={item.url} 
               alt={item.title}
-              className="max-w-[90vw] max-h-[70vh] object-contain"
+              className="max-w-[85vw] max-h-[65vh] object-contain rounded-2xl"
               referrerPolicy="no-referrer"
             />
           )}
@@ -84,23 +84,25 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
           {item.type === 'video' && (
             <button 
               onClick={() => setIsMuted(!isMuted)}
-              className="absolute bottom-4 right-4 p-3 bg-black/30 hover:bg-black/50 rounded-full text-white backdrop-blur-md border border-white/10 transition-all"
+              className="absolute bottom-20 right-6 p-2.5 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-md border border-white/10 transition-all"
             >
-              {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+              {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
           )}
-        </div>
 
-        {/* Post Info Footer */}
-        <div className="px-6 py-5 bg-gradient-to-t from-black/40 to-transparent border-t border-white/10">
-          <h3 className="text-lg font-bold text-white tracking-tight mb-2 line-clamp-2">
-            {item.title}
-          </h3>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-              <User size={14} className="text-white/70" />
+          {/* Post Info Footer - Compact Glassmorphism */}
+          <div className="absolute bottom-3 left-3 right-3 px-4 py-2.5 bg-white/15 backdrop-blur-2xl rounded-xl border border-white/25 shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-xs font-medium text-white truncate flex-1">
+                {item.title}
+              </h3>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div className="w-4 h-4 rounded-full bg-white/25 flex items-center justify-center">
+                  <User size={8} className="text-white/90" />
+                </div>
+                <span className="text-[10px] text-white/70">@{item.authorName}</span>
+              </div>
             </div>
-            <span className="text-sm text-white/60">@{item.authorName}</span>
           </div>
         </div>
       </motion.div>
