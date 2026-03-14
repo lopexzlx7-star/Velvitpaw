@@ -1043,21 +1043,37 @@ export default function App() {
                             </div>
 
                             <div className="flex items-center gap-2 mb-3">
-                              <span className="text-[10px] uppercase tracking-widest text-white/30">Sugestões</span>
-                              {isGeneratingAI && <Loader2 size={10} className="animate-spin text-white/30" />}
+                              <span className="text-[10px] uppercase tracking-widest text-white/30">Posts Recomendados</span>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              {aiSuggestedTags.slice(0, 8).map((tag, i) => (
+                            <div className="grid grid-cols-3 gap-2">
+                              {globalPosts.slice(0, 6).map((post) => (
                                 <button
-                                  key={`ai-sug-${i}`}
+                                  key={`rec-${post.id}`}
                                   onClick={() => {
-                                    setSearchQuery(tag);
-                                    handleSearch(tag);
                                     setShowHistory(false);
+                                    setSelectedPost(post);
                                   }}
-                                  className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-full text-xs text-emerald-400 hover:text-emerald-300 transition-all border border-emerald-500/20"
+                                  className="relative aspect-square rounded-xl overflow-hidden group"
                                 >
-                                  {tag}
+                                  {post.type === 'video' ? (
+                                    <video
+                                      src={post.url}
+                                      className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"
+                                      muted
+                                      playsInline
+                                    />
+                                  ) : (
+                                    <img
+                                      src={post.url}
+                                      alt={post.title}
+                                      className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"
+                                    />
+                                  )}
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-2">
+                                    <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter leading-tight line-clamp-2">
+                                      {post.title}
+                                    </span>
+                                  </div>
                                 </button>
                               ))}
                             </div>
@@ -1375,6 +1391,7 @@ export default function App() {
             onDelete={handleDeletePost}
             isLiked={likedIds.includes(selectedPost.id)}
             currentUserUid={auth.currentUser?.uid}
+            currentUserProfilePic={profilePic ?? undefined}
           />
         )}
       </AnimatePresence>

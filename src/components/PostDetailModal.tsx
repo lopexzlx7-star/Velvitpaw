@@ -10,6 +10,7 @@ interface PostDetailModalProps {
   onDelete?: (id: string) => void;
   isLiked: boolean;
   currentUserUid?: string;
+  currentUserProfilePic?: string;
 }
 
 const PostDetailModal: React.FC<PostDetailModalProps> = ({
@@ -18,6 +19,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   onLike,
   isLiked,
   currentUserUid,
+  currentUserProfilePic,
 }) => {
   const [isMuted, setIsMuted] = useState(true);
   const [likeAnim, setLikeAnim] = useState(false);
@@ -155,9 +157,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
               className="w-9 h-9 rounded-full overflow-hidden shrink-0 flex items-center justify-center"
               style={{ background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.18)' }}
             >
-              {item.authorProfilePic ? (
+              {(isOwn ? currentUserProfilePic : item.authorProfilePic) ? (
                 <img
-                  src={item.authorProfilePic}
+                  src={(isOwn ? currentUserProfilePic : item.authorProfilePic) as string}
                   alt={item.authorName}
                   className="w-full h-full object-cover"
                 />
