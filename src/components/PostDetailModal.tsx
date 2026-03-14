@@ -69,99 +69,97 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
           <X size={20} />
         </button>
 
-        {/* Media Container with rounded corners */}
-        <div className="relative rounded-3xl overflow-hidden shadow-2xl">
-          {item.type === 'video' ? (
-            <video
-              src={item.url}
-              className="max-w-[90vw] max-h-[70vh] object-contain bg-black/50"
-              autoPlay
-              loop
-              muted={isMuted}
-              playsInline
-              onClick={() => setIsPlaying(!isPlaying)}
-            />
-          ) : (
-            <img 
-              src={item.url} 
-              alt={item.title}
-              className="max-w-[90vw] max-h-[70vh] object-contain"
-              referrerPolicy="no-referrer"
-            />
-          )}
-
-          {/* Like Animation Overlay */}
-          <AnimatePresence>
-            {showLikeAnimation && (
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1.2, opacity: 1 }}
-                exit={{ scale: 1.5, opacity: 0 }}
-                transition={{ duration: 0.4 }}
-                className="absolute inset-0 flex items-center justify-center pointer-events-none"
-              >
-                <Heart size={80} className="text-red-500 fill-red-500 drop-shadow-lg" />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {item.type === 'video' && (
-            <button 
-              onClick={() => setIsMuted(!isMuted)}
-              className="absolute bottom-4 right-4 p-2.5 bg-black/40 hover:bg-black/60 rounded-full text-white/80 hover:text-white backdrop-blur-md transition-all"
-            >
-              {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-            </button>
-          )}
-        </div>
-
-        {/* Info Bar - Glassmorphism Pill */}
-        <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="mt-5 px-4 py-3 bg-white/10 backdrop-blur-2xl rounded-2xl border border-white/20 flex items-center gap-3 shadow-xl"
-        >
-          {/* Author Photo */}
-          <div className="w-9 h-9 rounded-full overflow-hidden bg-white/15 flex items-center justify-center shrink-0 border border-white/10">
-            {authorPhoto ? (
-              <img 
-                src={authorPhoto} 
-                alt={item.authorName} 
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
+        {/* Post Container - Image + Info connected */}
+        <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-white/5 backdrop-blur-xl border border-white/10">
+          {/* Media */}
+          <div className="relative">
+            {item.type === 'video' ? (
+              <video
+                src={item.url}
+                className="max-w-[90vw] max-h-[65vh] object-contain bg-black/30"
+                autoPlay
+                loop
+                muted={isMuted}
+                playsInline
+                onClick={() => setIsPlaying(!isPlaying)}
               />
             ) : (
-              <User size={16} className="text-white/50" />
+              <img 
+                src={item.url} 
+                alt={item.title}
+                className="max-w-[90vw] max-h-[65vh] object-contain"
+                referrerPolicy="no-referrer"
+              />
+            )}
+
+            {/* Like Animation Overlay */}
+            <AnimatePresence>
+              {showLikeAnimation && (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1.2, opacity: 1 }}
+                  exit={{ scale: 1.5, opacity: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                >
+                  <Heart size={80} className="text-red-500 fill-red-500 drop-shadow-lg" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {item.type === 'video' && (
+              <button 
+                onClick={() => setIsMuted(!isMuted)}
+                className="absolute bottom-4 right-4 p-2.5 bg-black/40 hover:bg-black/60 rounded-full text-white/80 hover:text-white backdrop-blur-md transition-all"
+              >
+                {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </button>
             )}
           </div>
-          
-          {/* Title & Author */}
-          <div className="flex flex-col min-w-0 flex-1">
-            <span className="text-sm text-white font-semibold truncate max-w-[220px]">
-              {item.title}
-            </span>
-            <span className="text-xs text-white/50">@{item.authorName}</span>
-          </div>
 
-          {/* Like Button - Only show if not own post */}
-          {!isOwnPost && (
-            <button
-              onClick={handleLike}
-              className="ml-2 p-2 rounded-full hover:bg-white/10 transition-all"
-            >
-              <motion.div
-                animate={liked ? { scale: [1, 1.3, 1] } : {}}
-                transition={{ duration: 0.3 }}
-              >
-                <Heart 
-                  size={20} 
-                  className={`transition-colors ${liked ? 'text-red-500 fill-red-500' : 'text-white/50 hover:text-white'}`} 
+          {/* Info Bar - Connected to image with glassmorphism */}
+          <div className="px-4 py-3 bg-white/10 backdrop-blur-2xl border-t border-white/10 flex items-center gap-3">
+            {/* Author Photo */}
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-white/15 flex items-center justify-center shrink-0 border border-white/15">
+              {authorPhoto ? (
+                <img 
+                  src={authorPhoto} 
+                  alt={item.authorName} 
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
                 />
-              </motion.div>
-            </button>
-          )}
-        </motion.div>
+              ) : (
+                <User size={18} className="text-white/50" />
+              )}
+            </div>
+            
+            {/* Title & Author */}
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-sm text-white font-semibold truncate">
+                {item.title}
+              </span>
+              <span className="text-xs text-white/50">@{item.authorName}</span>
+            </div>
+
+            {/* Like Button - Only show if not own post */}
+            {!isOwnPost && (
+              <button
+                onClick={handleLike}
+                className="p-2.5 rounded-full hover:bg-white/10 transition-all"
+              >
+                <motion.div
+                  animate={liked ? { scale: [1, 1.3, 1] } : {}}
+                  transition={{ duration: 0.3 }}
+                >
+                  <Heart 
+                    size={22} 
+                    className={`transition-colors ${liked ? 'text-red-500 fill-red-500' : 'text-white/50 hover:text-white'}`} 
+                  />
+                </motion.div>
+              </button>
+            )}
+          </div>
+        </div>
       </motion.div>
     </motion.div>
   );

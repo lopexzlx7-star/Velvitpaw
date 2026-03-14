@@ -1059,7 +1059,7 @@ export default function App() {
                             <div className="mb-3">
                               <span className="text-[10px] uppercase tracking-widest text-white/40 font-medium">Recomendados</span>
                             </div>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-3 gap-2.5">
                               {globalPosts.slice(0, 6).map(item => (
                                 <button
                                   key={`search-rec-${item.id}`}
@@ -1067,18 +1067,18 @@ export default function App() {
                                     setShowHistory(false);
                                     setSelectedPost(item);
                                   }}
-                                  className="flex flex-col rounded-2xl overflow-hidden relative group bg-white/5 hover:bg-white/10 transition-all"
+                                  className="flex flex-col rounded-xl overflow-hidden bg-white/5 hover:bg-white/12 border border-white/5 hover:border-white/15 transition-all group"
                                 >
                                   <div className="aspect-square overflow-hidden">
                                     <img 
                                       src={item.url} 
-                                      className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300" 
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                                       alt={item.title}
                                       referrerPolicy="no-referrer"
                                     />
                                   </div>
-                                  <div className="px-2 py-2">
-                                    <span className="text-[10px] text-white/70 font-medium truncate block leading-tight">{item.title}</span>
+                                  <div className="p-2 border-t border-white/5">
+                                    <span className="text-[10px] text-white/80 font-medium line-clamp-2 leading-tight block text-left">{item.title}</span>
                                   </div>
                                 </button>
                               ))}
