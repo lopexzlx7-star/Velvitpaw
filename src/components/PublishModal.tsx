@@ -1,11 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  X, Image as ImageIcon, Loader2, AlertTriangle,
-  Maximize2, Square, Smartphone, Plus, Film, Zap
+import { 
+  X, Image as ImageIcon, Check, Loader2, AlertTriangle, 
+  ChevronRight, ChevronLeft, Lock, Globe, Users, MessageSquare, 
+  Repeat, Tag, Info, Maximize2, Square, Smartphone, Plus,
+  Film, Play, Pause
 } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
 import { db, auth } from '../firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 
 interface PublishModalProps {
   isOpen: boolean;
@@ -17,245 +20,168 @@ type AspectRatio = 'portrait' | 'landscape' | 'square' | 'wide' | 'original';
 
 interface Draft {
   title: string;
+  tags: string[];
+  privacy: 'public' | 'followers' | 'private';
+  allowComments: boolean;
+  allowRepins: boolean;
+  boardId: string;
   aspectRatio: AspectRatio;
-  previewUrl: string | null;
+  mediaUrl: string | null;
   mediaType: 'image' | 'video' | 'gif';
   file: File | null;
-  base64Url: string | null;
   duration?: number;
 }
 
-const BLANK_DRAFT: Draft = {
-  title: '',
-  aspectRatio: 'original',
-  previewUrl: null,
-  mediaType: 'image',
-  file: null,
-  base64Url: null,
-};
-
 const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [draft, setDraft] = useState<Draft>(BLANK_DRAFT);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadPhase, setUploadPhase] = useState<'sending' | 'processing'>('sending');
-  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft>({
+    title: '',
+    tags: [],
+    privacy: 'public',
+    allowComments: true,
+    allowRepins: true,
+    boardId: '',
+    aspectRatio: 'original',
+    mediaUrl: null,
+    mediaType: 'image',
+    file: null
+  });
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Scroll lock
   useEffect(() => {
-    document.body.style.overflow = isOpen ? 'hidden' : 'unset';
-    return () => { document.body.style.overflow = 'unset'; };
-  }, [isOpen]);
-
-  // Cleanup object URLs on unmount / draft change
-  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
     return () => {
-      if (draft.previewUrl && draft.previewUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(draft.previewUrl);
-      }
+      document.body.style.overflow = 'unset';
     };
-  }, [draft.previewUrl]);
-
-  const resetDraft = () => {
-    if (draft.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(draft.previewUrl);
-    setDraft(BLANK_DRAFT);
-    setUploadProgress(0);
-    setUploadPhase('sending');
-    setError(null);
-  };
+  }, [isOpen]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) processFile(file);
-    e.target.value = '';
+    if (file) {
+      processFile(file);
+    }
   };
 
   const processFile = async (file: File) => {
     setError(null);
     const isVideo = file.type.startsWith('video/');
     const isGif = file.type === 'image/gif';
-
-    if (isVideo) {
-      if (file.size > 200 * 1024 * 1024) {
-        setError('Vídeo muito grande. Máximo 200MB.');
-        return;
-      }
-      // Validate duration via object URL
-      const objUrl = URL.createObjectURL(file);
-      const videoEl = document.createElement('video');
-      videoEl.preload = 'metadata';
-      videoEl.src = objUrl;
-      await new Promise<void>((resolve) => {
-        videoEl.onloadedmetadata = () => resolve();
-        videoEl.onerror = () => resolve();
-      });
-
-      if (videoEl.duration > 60) {
-        URL.revokeObjectURL(objUrl);
-        setError('Vídeo muito longo. Máximo 1 minuto.');
-        return;
-      }
-
-      setDraft(prev => ({
-        ...prev,
-        file,
-        previewUrl: objUrl,
-        base64Url: null,
-        mediaType: 'video',
-        aspectRatio: 'portrait',
-        duration: videoEl.duration,
-        title: prev.title || file.name.replace(/\.[^/.]+$/, ''),
-      }));
+    
+    if (isVideo && file.size > 50 * 1024 * 1024) { // 50MB limit
+      setError('Vídeo muito grande. Máximo 50MB.');
       return;
     }
 
-    if (isGif) {
-      if (file.size > 20 * 1024 * 1024) {
-        setError('GIF muito grande. Máximo 20MB.');
-        return;
-      }
-      const objUrl = URL.createObjectURL(file);
-      setDraft(prev => ({
-        ...prev,
-        file,
-        previewUrl: objUrl,
-        base64Url: null,
-        mediaType: 'gif',
-        aspectRatio: 'portrait',
-        title: prev.title || file.name.replace(/\.[^/.]+$/, ''),
-      }));
-      return;
-    }
-
-    // Static image — compress via canvas, store base64
     try {
       const reader = new FileReader();
       reader.onload = async (event) => {
-        const dataUrl = event.target?.result as string;
-        const img = new Image();
-        img.src = dataUrl;
-        await img.decode();
+        const mediaUrl = event.target?.result as string;
+        
+        if (isVideo) {
+          setDraft(prev => ({
+            ...prev,
+            file,
+            mediaUrl,
+            mediaType: 'video',
+            title: prev.title || file.name.split('.')[0]
+          }));
+        } else {
+          const img = new Image();
+          img.src = mediaUrl;
+          await img.decode();
 
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d')!;
-        const maxDim = 1200;
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) { height = (height / width) * maxDim; width = maxDim; }
-          else { width = (width / height) * maxDim; height = maxDim; }
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          const maxDim = 1200;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = (height / width) * maxDim;
+              width = maxDim;
+            } else {
+              width = (width / height) * maxDim;
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          const compressedUrl = canvas.toDataURL(isGif ? 'image/gif' : 'image/jpeg', 0.7);
+
+          setDraft(prev => ({
+            ...prev,
+            file,
+            mediaUrl: compressedUrl,
+            mediaType: isGif ? 'gif' : 'image',
+            title: prev.title || file.name.split('.')[0]
+          }));
         }
-        canvas.width = width;
-        canvas.height = height;
-        ctx.drawImage(img, 0, 0, width, height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.82);
-
-        setDraft(prev => ({
-          ...prev,
-          file,
-          previewUrl: compressed,
-          base64Url: compressed,
-          mediaType: 'image',
-          title: prev.title || file.name.replace(/\.[^/.]+$/, ''),
-        }));
       };
       reader.readAsDataURL(file);
-    } catch {
-      setError('Erro ao processar imagem.');
+    } catch (err) {
+      setError('Erro ao processar arquivo.');
     }
-  };
-
-  const uploadToCloudinary = (file: File): Promise<string> => {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
-    if (!cloudName || !uploadPreset) {
-      return Promise.reject(new Error('Cloudinary não configurado. Adicione VITE_CLOUDINARY_CLOUD_NAME e VITE_CLOUDINARY_UPLOAD_PRESET nas variáveis de ambiente.'));
-    }
-
-    return new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', uploadPreset);
-
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          setUploadProgress(Math.round((e.loaded / e.total) * 100));
-        }
-      };
-
-      xhr.upload.onload = () => {
-        setUploadProgress(100);
-        setUploadPhase('processing');
-      };
-
-      xhr.onload = () => {
-        console.log('[Cloudinary] status:', xhr.status, xhr.responseText);
-        if (xhr.status === 200) {
-          const data = JSON.parse(xhr.responseText);
-          resolve(data.secure_url);
-        } else {
-          try {
-            const err = JSON.parse(xhr.responseText);
-            const msg = err?.error?.message || `Erro ${xhr.status}`;
-            reject(new Error(`Cloudinary: ${msg}`));
-          } catch {
-            reject(new Error(`Upload falhou (status ${xhr.status}). Verifique se o preset está como Unsigned.`));
-          }
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('Erro de rede ao fazer upload.'));
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`);
-      xhr.send(formData);
-    });
   };
 
   const submitPost = async () => {
-    if (!auth.currentUser || !draft.previewUrl) return;
+    if (!auth.currentUser || !draft.mediaUrl) return;
     setIsSubmitting(true);
     setError(null);
-    setUploadProgress(0);
 
     try {
-      let finalUrl: string;
-
-      if (draft.mediaType === 'video' || draft.mediaType === 'gif') {
-        if (!draft.file) throw new Error('Arquivo não encontrado.');
-        finalUrl = await uploadToCloudinary(draft.file);
-      } else {
-        finalUrl = draft.base64Url!;
+      let height = 450;
+      switch (draft.aspectRatio) {
+        case 'portrait': height = 600; break;
+        case 'square': height = 400; break;
+        case 'landscape': height = 300; break;
+        case 'wide': height = 220; break;
+        default: height = 450;
       }
 
-      const heightMap: Record<AspectRatio, number> = {
-        portrait: 600, square: 400, landscape: 300, wide: 220, original: 450,
-      };
-
-      await addDoc(collection(db, 'posts'), {
+      const postData = {
         title: draft.title || 'Sem título',
-        url: finalUrl,
+        url: draft.mediaUrl,
         type: draft.mediaType,
-        height: heightMap[draft.aspectRatio],
+        height: height,
         aspectRatio: draft.aspectRatio,
         authorUid: auth.currentUser.uid,
         authorName: localStorage.getItem('velvit_username') || 'User',
-        authorProfilePic: (() => { const p = localStorage.getItem('velvit_profile_pic'); return p && p.length < 100000 ? p : null; })(),
         createdAt: new Date().toISOString(),
         likesCount: 0,
         savesCount: 0,
         viewsCount: 0,
-        duration: draft.duration || 0,
-      });
+        duration: draft.duration || 0
+      };
 
+      await addDoc(collection(db, 'posts'), postData);
       onSuccess();
       onClose();
-      resetDraft();
-    } catch (err: any) {
-      console.error('Publish error:', err);
-      setError(err?.message || 'Erro ao publicar. Tente novamente.');
+      setDraft({
+        title: '',
+        tags: [],
+        privacy: 'public',
+        allowComments: true,
+        allowRepins: true,
+        boardId: '',
+        aspectRatio: 'original',
+        mediaUrl: null,
+        mediaType: 'image',
+        file: null
+      });
+    } catch (err) {
+      console.error("Error submitting post:", err);
+      setError('Erro ao publicar. Verifique o tamanho do arquivo.');
     } finally {
       setIsSubmitting(false);
     }
@@ -263,15 +189,13 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const getAspectClass = () => {
     switch (draft.aspectRatio) {
-      case 'portrait': return 'aspect-[9/16]';
+      case 'portrait': return 'aspect-[3/4]';
       case 'landscape': return 'aspect-[4/3]';
       case 'square': return 'aspect-square';
       case 'wide': return 'aspect-[16/9]';
-      default: return 'aspect-auto min-h-[280px]';
+      default: return 'aspect-auto min-h-[300px]';
     }
   };
-
-  const isMediaOnly = draft.mediaType === 'video' || draft.mediaType === 'gif';
 
   if (!isOpen) return null;
 
@@ -281,209 +205,154 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
-        className="glass-panel w-full max-w-md overflow-hidden flex flex-col rounded-[2.5rem] border border-white/10 shadow-2xl max-h-[92vh]"
+        className="glass-panel w-full max-w-xl overflow-hidden flex flex-col rounded-[2.5rem] border border-white/10 shadow-2xl max-h-[90vh]"
       >
         {/* Header */}
-        <div className="p-5 border-b border-white/5 flex items-center justify-between bg-white/5 shrink-0">
+        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-white/10 flex items-center justify-center">
-              <Plus className="text-white" size={18} />
+            <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
+              <Plus className="text-white" size={20} />
             </div>
-            <h2 className="text-base font-black tracking-tighter uppercase text-white">Criar Post</h2>
+            <h2 className="text-lg font-black tracking-tighter uppercase text-white">Criar Post</h2>
           </div>
-          <button onClick={() => { onClose(); resetDraft(); }} className="p-2.5 hover:bg-white/10 rounded-2xl transition-colors text-white/30 hover:text-white">
-            <X size={18} />
+          <button onClick={onClose} className="p-3 hover:bg-white/10 rounded-2xl transition-colors text-white/30 hover:text-white">
+            <X size={20} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-6 no-scrollbar">
-          {/* Error */}
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400 text-xs font-bold uppercase tracking-widest"
-              >
-                <AlertTriangle size={14} />
-                {error}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {!draft.previewUrl ? (
-            /* Drop zone */
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full aspect-[4/5] rounded-[2rem] border-2 border-dashed border-white/10 hover:border-white/30 hover:bg-white/5 transition-all cursor-pointer flex flex-col items-center justify-center gap-5 group"
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-500 text-xs font-bold uppercase tracking-widest"
             >
-              <div className="w-16 h-16 rounded-3xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform group-hover:bg-white/10">
+              <AlertTriangle size={16} />
+              {error}
+            </motion.div>
+          )}
+
+          {!draft.mediaUrl ? (
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full aspect-square rounded-[2.5rem] border-2 border-dashed border-white/10 hover:border-white/30 hover:bg-white/5 transition-all cursor-pointer flex flex-col items-center justify-center gap-6 group"
+            >
+              <div className="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform group-hover:bg-white/10">
                 <div className="relative">
-                  <ImageIcon size={32} className="text-white/20 group-hover:text-white/50 transition-colors" />
-                  <Film size={16} className="absolute -bottom-1.5 -right-1.5 text-white/10 group-hover:text-white/30" />
+                  <ImageIcon size={40} className="text-white/20 group-hover:text-white/50 transition-colors" />
+                  <Film size={20} className="absolute -bottom-2 -right-2 text-white/10 group-hover:text-white/30" />
                 </div>
               </div>
-              <div className="text-center space-y-1.5">
+              <div className="text-center space-y-2">
                 <p className="text-white font-black uppercase tracking-[0.2em] text-xs">Selecionar Mídia</p>
-                <p className="text-white/30 font-bold uppercase tracking-widest text-[8px]">Fotos · GIFs · Vídeos até 1 min</p>
+                <p className="text-white/30 font-bold uppercase tracking-widest text-[8px]">Fotos, GIFs ou Vídeos</p>
               </div>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept="image/*,video/*"
-                className="hidden"
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileChange} 
+                accept="image/*,video/*" 
+                className="hidden" 
               />
             </div>
           ) : (
-            <div className="space-y-5">
-              {/* Preview */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Pré-visualização</label>
-                  {isMediaOnly && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 bg-white/10 rounded-full border border-white/15 text-[8px] font-black uppercase tracking-widest text-white/60">
-                      <Zap size={8} />
-                      {draft.mediaType === 'video' ? 'Shorts · 9:16' : 'GIF · 9:16'}
-                    </span>
-                  )}
-                </div>
-
-                <motion.div
+            <div className="space-y-8">
+              {/* Animated Preview */}
+              <div className="space-y-3">
+                <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Pré-visualização</label>
+                <motion.div 
                   layout
-                  className={`relative w-full overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 transition-all duration-500 ${getAspectClass()}`}
+                  className={`relative w-full overflow-hidden rounded-[2.5rem] border border-white/10 bg-white/5 transition-all duration-500 ${getAspectClass()}`}
                 >
                   {draft.mediaType === 'video' ? (
-                    <video
-                      key={draft.previewUrl}
-                      src={draft.previewUrl ?? undefined}
+                    <video 
+                      ref={videoRef}
+                      src={draft.mediaUrl} 
                       className="w-full h-full object-cover"
                       autoPlay
                       loop
                       muted
                       playsInline
-                      onError={(e) => console.warn('Video preview error:', e)}
                     />
                   ) : (
-                    <img src={draft.previewUrl} className="w-full h-full object-cover" alt="Preview" />
+                    <img src={draft.mediaUrl} className="w-full h-full object-cover" alt="Preview" />
                   )}
-
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
-
-                  <button
-                    onClick={resetDraft}
-                    className="absolute top-3 right-3 p-2.5 bg-black/50 backdrop-blur-xl rounded-xl text-white hover:bg-red-500 transition-all border border-white/10"
+                  
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+                  
+                  <button 
+                    onClick={() => setDraft(prev => ({ ...prev, mediaUrl: null, file: null }))}
+                    className="absolute top-4 right-4 p-3 bg-black/50 backdrop-blur-xl rounded-2xl text-white hover:bg-red-500 transition-all border border-white/10"
                   >
-                    <X size={14} />
+                    <X size={16} />
                   </button>
 
-                  {draft.mediaType === 'video' && draft.duration && (
-                    <div className="absolute bottom-4 left-4 flex items-center gap-1.5 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-full border border-white/10">
-                      <Film size={10} className="text-white/60" />
-                      <span className="text-[8px] font-black text-white uppercase tracking-widest">
-                        {Math.round(draft.duration)}s
-                      </span>
+                  {draft.mediaType === 'video' && (
+                    <div className="absolute bottom-6 left-6 flex items-center gap-2 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-full border border-white/10">
+                      <Film size={12} className="text-white/50" />
+                      <span className="text-[8px] font-black text-white uppercase tracking-widest">Vídeo</span>
                     </div>
                   )}
                 </motion.div>
               </div>
 
-              {/* Format selection — images only */}
-              {!isMediaOnly && (
-                <div className="space-y-3">
-                  <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Formato</label>
-                  <div className="grid grid-cols-5 gap-2">
-                    {[
-                      { id: 'portrait', label: 'Retrato', icon: <Smartphone size={13} /> },
-                      { id: 'square', label: 'Quadrado', icon: <Square size={13} /> },
-                      { id: 'original', label: 'Padrão', icon: <Maximize2 size={13} /> },
-                      { id: 'landscape', label: 'Paisagem', icon: <ImageIcon size={13} /> },
-                      { id: 'wide', label: 'Largo', icon: <ImageIcon size={13} className="rotate-90" /> },
-                    ].map((fmt) => (
-                      <button
-                        key={fmt.id}
-                        onClick={() => setDraft(prev => ({ ...prev, aspectRatio: fmt.id as AspectRatio }))}
-                        className={`flex flex-col items-center justify-center gap-1.5 py-3 px-1 rounded-2xl border transition-all duration-300 ${
-                          draft.aspectRatio === fmt.id
-                            ? 'bg-white text-black border-white scale-105 shadow-xl'
-                            : 'bg-white/5 text-white/40 border-white/10 hover:border-white/20'
-                        }`}
-                      >
-                        {fmt.icon}
-                        <span className="text-[6px] font-black uppercase tracking-tighter">{fmt.label}</span>
-                      </button>
-                    ))}
-                  </div>
+              {/* Format Selection */}
+              <div className="space-y-4">
+                <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Formato do Post</label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[
+                    { id: 'portrait', label: 'Retrato', icon: <Smartphone size={14} /> },
+                    { id: 'square', label: 'Quadrado', icon: <Square size={14} /> },
+                    { id: 'original', label: 'Padrão', icon: <Maximize2 size={14} /> },
+                    { id: 'landscape', label: 'Paisagem', icon: <ImageIcon size={14} /> },
+                    { id: 'wide', label: 'Largo', icon: <ImageIcon size={14} className="rotate-90" /> },
+                  ].map((format) => (
+                    <button
+                      key={format.id}
+                      onClick={() => setDraft(prev => ({ ...prev, aspectRatio: format.id as AspectRatio }))}
+                      className={`flex flex-col items-center justify-center gap-2 py-4 px-2 rounded-2xl border transition-all duration-300 ${
+                        draft.aspectRatio === format.id 
+                          ? 'bg-white text-black border-white scale-105 shadow-xl' 
+                          : 'bg-white/5 text-white/40 border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      {format.icon}
+                      <span className="text-[7px] font-black uppercase tracking-tighter">{format.label}</span>
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
 
-              {/* Title */}
-              <div className="space-y-2">
+              {/* Title Input */}
+              <div className="space-y-3">
                 <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Título</label>
-                <input
-                  type="text"
+                <input 
+                  type="text" 
                   value={draft.title}
                   onChange={(e) => setDraft(prev => ({ ...prev, title: e.target.value }))}
                   placeholder="Dê um nome marcante..."
-                  className="w-full h-12 px-5 bg-white/5 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-white/30 transition-all text-sm font-bold placeholder:text-white/10"
+                  className="w-full h-14 px-6 bg-white/5 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-white/30 transition-all text-sm font-bold placeholder:text-white/10"
                 />
               </div>
             </div>
           )}
         </div>
 
-        {/* Upload progress bar */}
-        <AnimatePresence>
-          {isSubmitting && isMediaOnly && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="px-5 pb-2"
-            >
-              <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                {uploadPhase === 'processing' ? (
-                  <motion.div
-                    className="h-full bg-white/60 rounded-full"
-                    animate={{ x: ['-100%', '200%'] }}
-                    transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-                    style={{ width: '50%' }}
-                  />
-                ) : (
-                  <motion.div
-                    className="h-full bg-white rounded-full"
-                    animate={{ width: `${uploadProgress}%` }}
-                    transition={{ duration: 0.3 }}
-                  />
-                )}
-              </div>
-              <p className="text-[9px] text-white/30 uppercase tracking-widest mt-1.5 text-center">
-                {uploadPhase === 'processing' ? 'Processando no servidor...' : `Enviando... ${uploadProgress}%`}
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Publish button */}
-        <div className="p-5 border-t border-white/5 bg-white/5 backdrop-blur-xl shrink-0">
-          <button
+        {/* Action Button - Moved up/Fixed for mobile */}
+        <div className="p-6 border-t border-white/5 bg-white/5 backdrop-blur-xl">
+          <button 
             onClick={submitPost}
-            disabled={!draft.previewUrl || isSubmitting}
-            className="w-full py-4 bg-white text-black rounded-[1.25rem] font-black uppercase tracking-[0.3em] text-[10px] hover:bg-white/90 transition-all disabled:opacity-40 flex items-center justify-center gap-3 shadow-2xl active:scale-95"
+            disabled={!draft.mediaUrl || isSubmitting}
+            className="w-full py-5 bg-white text-black rounded-[1.5rem] font-black uppercase tracking-[0.3em] text-[10px] hover:bg-white/90 transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-2xl active:scale-95"
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="animate-spin" size={15} />
-                {isMediaOnly
-                  ? uploadPhase === 'processing'
-                    ? 'Processando...'
-                    : `Enviando ${uploadProgress}%`
-                  : 'Publicando...'}
+                <Loader2 className="animate-spin" size={16} />
+                Publicando...
               </>
             ) : (
               <>
-                <Plus size={15} />
+                <Plus size={16} />
                 Publicar Agora
               </>
             )}

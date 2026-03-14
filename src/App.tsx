@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
 import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useScroll, useTransform } from 'motion/react';
 import { GoogleGenAI } from "@google/genai";
 import { 
   doc, 
@@ -218,14 +218,19 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [trendingPosts, setTrendingPosts] = useState<ContentItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [currentTab, setCurrentTab] = useState<'feed' | 'profile'>('feed');
+  const [currentTab, setCurrentTab] = useState<'feed' | 'search' | 'profile'>('feed');
   const [selectedPost, setSelectedPost] = useState<ContentItem | null>(null);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   
   const aiRef = useRef<GoogleGenAI | null>(null);
-  const feedRef = useRef<HTMLDivElement | null>(null);
-  const [headerVisible, setHeaderVisible] = useState(true);
+  const { scrollY } = useScroll();
+  
+  // Header opacity and scale based on scroll
+  const headerOpacity = 1;
+  const headerScale = 1;
+  const headerY = 0;
+  const headerPointerEvents = "auto";
 
   useEffect(() => {
     // One-time reset to ensure app starts "zerado" as requested
@@ -651,20 +656,13 @@ export default function App() {
   };
 
   const handleHomeClick = () => {
-    setHeaderVisible(true);
     if (currentTab !== 'feed') {
       setCurrentTab('feed');
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      feedRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setSearchQuery('');
     setItems(globalPosts);
-  };
-
-  const handleProfileClick = () => {
-    setHeaderVisible(true);
-    setCurrentTab('profile');
   };
 
   const handleUpdateUsername = async () => {
@@ -731,25 +729,12 @@ export default function App() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onloadend = async () => {
+    reader.onloadend = () => {
       const base64String = reader.result as string;
       if (type === 'bg') {
         updateBackground(base64String);
       } else if (type === 'profile') {
-        const img = new Image();
-        img.src = base64String;
-        await new Promise(r => { img.onload = r; });
-        const canvas = document.createElement('canvas');
-        const size = 200;
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d')!;
-        const min = Math.min(img.width, img.height);
-        const sx = (img.width - min) / 2;
-        const sy = (img.height - min) / 2;
-        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
-        const compressed = canvas.toDataURL('image/jpeg', 0.8);
-        updateProfilePic(compressed);
+        updateProfilePic(base64String);
       }
     };
     reader.readAsDataURL(file);
@@ -944,14 +929,12 @@ export default function App() {
         <div className="liquid-blob w-[300px] h-[300px] bg-white/5 top-[40%] right-[20%]" style={{ animationDelay: '-10s' }} />
       </div>
 
-      {/* Header - hides on scroll */}
-      <motion.header
-        animate={{ y: headerVisible ? 0 : -100, opacity: headerVisible ? 1 : 0 }}
-        transition={{ duration: 0.3, ease: 'easeInOut' }}
+      {/* Header / Search - Animated to hide on scroll */}
+      <motion.header 
         className="sticky top-0 z-50 px-6 py-8"
       >
         <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <motion.h1
+          <motion.h1 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={handleHomeClick}
@@ -968,132 +951,22 @@ export default function App() {
           {currentTab === 'feed' && (
             <motion.div
               key="feed"
-              ref={feedRef}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
-              onScroll={(e) => {
-                const scrollTop = (e.target as HTMLDivElement).scrollTop;
-                setHeaderVisible(scrollTop < 60);
-              }}
             >
               <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
                 {/* Search and Notifications Row */}
-                <div className="flex items-center justify-between mb-8 gap-4">
-                  <div className="flex-1 relative">
-                    <input
-                      type="text"
-                      placeholder="Pesquisar..."
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        if (!e.target.value.trim()) setItems(globalPosts);
-                      }}
-                      onFocus={() => setShowHistory(true)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchQuery)}
-                      className="w-full h-12 pl-12 pr-4 bg-white/5 hover:bg-white/8 border border-white/10 rounded-full text-white placeholder-white/30 focus:outline-none focus:border-white/30 transition-all text-sm"
-                    />
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-                    {searchQuery && (
-                      <button
-                        onClick={() => { setSearchQuery(''); setItems(globalPosts); }}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors"
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
-
-                    {/* Search History Dropdown */}
-                    <AnimatePresence>
-                      {showHistory && (
-                        <>
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setShowHistory(false)}
-                            className="fixed inset-0 z-40"
-                          />
-                          <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 10 }}
-                            className="absolute top-full left-0 right-0 mt-2 p-4 glass-panel rounded-2xl z-50 border border-white/10 max-h-[70vh] overflow-y-auto no-scrollbar"
-                          >
-                            <div className="flex items-center justify-between mb-3">
-                              <span className="text-[10px] uppercase tracking-widest text-white/30">Buscas Recentes</span>
-                              {searchHistory.length > 0 && (
-                                <button
-                                  onClick={() => {
-                                    setSearchHistory([]);
-                                    localStorage.removeItem('velvit_search_history');
-                                  }}
-                                  className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white transition-colors"
-                                >
-                                  Limpar
-                                </button>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-2 mb-6">
-                              {searchHistory.length === 0 ? (
-                                <span className="text-[10px] text-white/20">Nenhuma busca recente</span>
-                              ) : (
-                                searchHistory.map((q, i) => (
-                                  <button
-                                    key={i}
-                                    onClick={() => {
-                                      setSearchQuery(q);
-                                      handleSearch(q);
-                                      setShowHistory(false);
-                                    }}
-                                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-full text-xs text-white/70 hover:text-white transition-all border border-white/5"
-                                  >
-                                    {q}
-                                  </button>
-                                ))
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-2 mb-3">
-                              <span className="text-[10px] uppercase tracking-widest text-white/30">Posts Recomendados</span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              {globalPosts.slice(0, 6).map((post) => (
-                                <button
-                                  key={`rec-${post.id}`}
-                                  onClick={() => {
-                                    setShowHistory(false);
-                                    setSelectedPost(post);
-                                  }}
-                                  className="relative aspect-square rounded-xl overflow-hidden group"
-                                >
-                                  {post.type === 'video' ? (
-                                    <video
-                                      src={post.url}
-                                      className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"
-                                      muted
-                                      playsInline
-                                    />
-                                  ) : (
-                                    <img
-                                      src={post.url}
-                                      alt={post.title}
-                                      className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"
-                                    />
-                                  )}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-2">
-                                    <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter leading-tight line-clamp-2">
-                                      {post.title}
-                                    </span>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </motion.div>
-                        </>
-                      )}
-                    </AnimatePresence>
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => setCurrentTab('search')}
+                      className="p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/50 hover:text-white transition-all flex items-center gap-3"
+                    >
+                      <Search size={20} />
+                      <span className="text-[10px] uppercase tracking-widest font-bold">Pesquisar</span>
+                    </button>
                   </div>
 
                   <div className="relative">
@@ -1224,6 +1097,166 @@ export default function App() {
             </motion.div>
           )}
 
+          {currentTab === 'search' && (
+            <motion.div
+              key="search"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar bg-black/40 backdrop-blur-sm z-30"
+            >
+              <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
+                {/* Search Bar in Search Tab */}
+                <div className="relative mb-8">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Pesquisar..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onFocus={() => setShowHistory(true)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchQuery)}
+                      className="w-full h-16 pl-14 pr-6 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl text-white placeholder-white/30 focus:outline-none focus:border-white/30 transition-all"
+                    />
+                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/30" size={20} />
+                    {loading && (
+                      <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 text-white/30 animate-spin" size={20} />
+                    )}
+                  </div>
+
+                  {/* Search History Dropdown */}
+                  <AnimatePresence>
+                    {showHistory && (
+                      <>
+                        <motion.div 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          onClick={() => setShowHistory(false)}
+                          className="fixed inset-0 z-40"
+                        />
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          className="absolute top-full left-0 right-0 mt-2 p-4 glass-panel rounded-2xl z-50 border border-white/10 max-h-[70vh] overflow-y-auto no-scrollbar"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-[10px] uppercase tracking-widest text-white/30">Buscas Recentes</span>
+                            <button 
+                              onClick={() => {
+                                setSearchHistory([]);
+                                localStorage.removeItem('velvit_search_history');
+                              }}
+                              className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white transition-colors"
+                            >
+                              Limpar
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-2 mb-6">
+                            {searchHistory.map((q, i) => (
+                              <button
+                                key={i}
+                                onClick={() => {
+                                  setSearchQuery(q);
+                                  handleSearch(q);
+                                  setShowHistory(false);
+                                }}
+                                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-full text-xs text-white/70 hover:text-white transition-all border border-white/5"
+                              >
+                                {q}
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-[10px] uppercase tracking-widest text-white/30">Sugestões da IA</span>
+                            {isGeneratingAI && <Loader2 size={10} className="animate-spin text-white/30" />}
+                          </div>
+                          <div className="flex flex-wrap gap-2 mb-6">
+                            {aiSuggestedTags.slice(0, 4).map((tag, i) => (
+                              <button
+                                key={`ai-sug-${i}`}
+                                onClick={() => {
+                                  setSearchQuery(tag);
+                                  handleSearch(tag);
+                                  setShowHistory(false);
+                                }}
+                                className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-full text-xs text-emerald-400 hover:text-emerald-300 transition-all border border-emerald-500/20"
+                              >
+                                {tag}
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendações</span>
+                          </div>
+                          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                            {globalPosts.slice(0, 6).map(item => (
+                              <button
+                                key={`search-rec-${item.id}`}
+                                onClick={() => {
+                                  setSearchQuery(item.title);
+                                  handleSearch(item.title);
+                                  setShowHistory(false);
+                                }}
+                                className="min-w-[120px] aspect-[4/5] rounded-xl overflow-hidden relative group"
+                              >
+                                <img src={item.url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
+                                  <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="glass-panel p-8 rounded-3xl mb-8">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-3xl font-black tracking-tighter uppercase">Explorar</h2>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-widest text-white/30">Curadoria IA</span>
+                      {isGeneratingAI && <Loader2 size={12} className="animate-spin text-white/30" />}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {aiSuggestedTags.map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => {
+                          setSearchQuery(tag);
+                          handleSearch(tag);
+                          setCurrentTab('feed');
+                        }}
+                        className="aspect-video rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-sm font-bold uppercase tracking-widest transition-all group overflow-hidden relative"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <span className="relative z-10">{tag}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="columns-2 md:columns-3 lg:columns-4 gap-4">
+                  {globalPosts.slice(0, 20).map(item => (
+                    <GlassCard 
+                      key={`explore-${item.id}`}
+                      item={item}
+                      isLiked={likedIds.includes(item.id)}
+                      onLike={handleLike}
+                      onClick={() => setSelectedPost(item)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {currentTab === 'profile' && (
             <motion.div
               key="profile"
@@ -1231,10 +1264,6 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
-              onScroll={(e) => {
-                const scrollTop = (e.target as HTMLDivElement).scrollTop;
-                setHeaderVisible(scrollTop < 60);
-              }}
             >
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl">
@@ -1383,7 +1412,7 @@ export default function App() {
       <FloatingNav 
         onHomeClick={handleHomeClick}
         onAddClick={() => setShowPublishModal(true)}
-        onProfileClick={handleProfileClick}
+        onProfileClick={() => setCurrentTab('profile')}
       />
 
       {/* Modals */}
@@ -1404,7 +1433,6 @@ export default function App() {
             onDelete={handleDeletePost}
             isLiked={likedIds.includes(selectedPost.id)}
             currentUserUid={auth.currentUser?.uid}
-            currentUserProfilePic={profilePic ?? undefined}
           />
         )}
       </AnimatePresence>
