@@ -48,6 +48,18 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Scroll lock
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -188,13 +200,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-6 bg-black/95 backdrop-blur-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-black/80 backdrop-blur-md">
       <motion.div
-        initial={{ y: "100%" }}
-        animate={{ y: 0 }}
-        exit={{ y: "100%" }}
-        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="glass-panel w-full max-w-xl overflow-hidden flex flex-col rounded-t-[2.5rem] md:rounded-[2.5rem] border border-white/10 shadow-2xl max-h-[95vh]"
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="glass-panel w-full max-w-xl overflow-hidden flex flex-col rounded-[2.5rem] border border-white/10 shadow-2xl max-h-[90vh]"
       >
         {/* Header */}
         <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">

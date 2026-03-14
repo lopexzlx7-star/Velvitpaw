@@ -20,7 +20,7 @@ service cloud.firestore {
       return data.keys().hasAll(['url', 'title', 'type', 'height', 'authorUid', 'authorName', 'createdAt']) &&
              data.url is string && data.url.size() < 1000000 &&
              data.title is string && data.title.size() <= 100 &&
-             data.type in ['image', 'gif'] &&
+             data.type in ['image', 'gif', 'video'] &&
              data.height is number &&
              data.authorUid == request.auth.uid &&
              data.authorName is string &&
@@ -63,6 +63,7 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidPost(request.resource.data);
       allow delete: if isAuthenticated() && resource.data.authorUid == request.auth.uid;
       allow update: if isAuthenticated() && (
+        (resource.data.authorUid == request.auth.uid && isValidPost(request.resource.data)) ||
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'savesCount', 'viewsCount'])
       );
     }
@@ -76,6 +77,7 @@ service cloud.firestore {
     match /interactions/{interactionId} {
       allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
       allow create: if isAuthenticated() && isValidInteraction(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && isValidInteraction(request.resource.data);
       allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
     }
 

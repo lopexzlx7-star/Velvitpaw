@@ -17,7 +17,8 @@ import {
   limit, 
   deleteDoc, 
   updateDoc,
-  onSnapshot 
+  onSnapshot,
+  increment 
 } from 'firebase/firestore';
 import { 
   signInAnonymously, 
@@ -170,6 +171,42 @@ export default function App() {
   });
   const [profileTab, setProfileTab] = useState<'posts' | 'liked'>('posts');
   const [activeTab, setActiveTab] = useState<'home' | 'foryou'>('home');
+  const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>(['Aesthetic', 'Nature', 'Art', 'Tech', 'Fashion', 'Architecture', 'Travel', 'Food']);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
+  // AI Recommendation Engine
+  useEffect(() => {
+    const generateAIRecommendations = async () => {
+      if (likedItems.length === 0 || isGeneratingAI) return;
+      
+      setIsGeneratingAI(true);
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const likedTitles = likedItems.map(i => i.title).join(', ');
+        const prompt = `Based on these liked posts: "${likedTitles}", suggest 8 short, one-word, uppercase trending search categories or tags for a visual social media app. Return ONLY a JSON array of strings.`;
+        
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-latest",
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
+
+        const suggestions = JSON.parse(response.text);
+        if (Array.isArray(suggestions) && suggestions.length > 0) {
+          setAiSuggestedTags(suggestions);
+        }
+      } catch (error) {
+        console.error("AI Recommendation Error:", error);
+      } finally {
+        setIsGeneratingAI(false);
+      }
+    };
+
+    // Generate every 5 likes or on first like
+    if (likedItems.length > 0 && likedItems.length % 3 === 0) {
+      generateAIRecommendations();
+    }
+  }, [likedItems.length]);
   const [searchHistory, setSearchHistory] = useState<string[]>(() => {
     const saved = localStorage.getItem('velvit_search_history');
     return saved ? JSON.parse(saved) : [];
@@ -190,10 +227,10 @@ export default function App() {
   const { scrollY } = useScroll();
   
   // Header opacity and scale based on scroll
-  const headerOpacity = useTransform(scrollY, [0, 80], [1, 0]);
-  const headerScale = useTransform(scrollY, [0, 80], [1, 0.9]);
-  const headerY = useTransform(scrollY, [0, 80], [0, -40]);
-  const headerPointerEvents = useTransform(scrollY, [0, 80], ["auto", "none"]);
+  const headerOpacity = 1;
+  const headerScale = 1;
+  const headerY = 0;
+  const headerPointerEvents = "auto";
 
   useEffect(() => {
     // One-time reset to ensure app starts "zerado" as requested
@@ -481,16 +518,39 @@ export default function App() {
 
     const isLiked = likedIds.includes(id);
     
-    // Local state update
+    // Optimistic UI update for counts
+    const updateItems = (prev: ContentItem[]) => prev.map(item => {
+      if (item.id === id) {
+        return {
+          ...item,
+          likesCount: Math.max(0, (item.likesCount || 0) + (isLiked ? -1 : 1))
+        };
+      }
+      return item;
+    });
+
+    setItems(updateItems);
+    setGlobalPosts(updateItems);
+    setUserPosts(updateItems);
+    
+    // Local state update for liked IDs
     setLikedIds(prev => isLiked ? prev.filter(i => i !== id) : [...prev, id]);
-    setLikedItems(prev => isLiked ? prev.filter(i => i.id !== id) : [...prev, itemToLike]);
+    setLikedItems(prev => isLiked ? prev.filter(i => i.id !== id) : [...prev, { ...itemToLike, likesCount: Math.max(0, (itemToLike.likesCount || 0) + (isLiked ? -1 : 1)) }]);
 
     // Firestore update
     if (auth.currentUser) {
+      const interactionId = `${auth.currentUser.uid}_${id}_like`;
       try {
-        const interactionId = `${auth.currentUser.uid}_${id}_like`;
+        const postRef = doc(db, 'posts', id);
+
         if (isLiked) {
           await deleteDoc(doc(db, 'interactions', interactionId));
+          // Only decrement if current count is > 0
+          if ((itemToLike.likesCount || 0) > 0) {
+            await updateDoc(postRef, {
+              likesCount: increment(-1)
+            });
+          }
         } else {
           await setDoc(doc(db, 'interactions', interactionId), {
             uid: auth.currentUser.uid,
@@ -498,9 +558,12 @@ export default function App() {
             type: 'like',
             createdAt: new Date().toISOString()
           });
+          await updateDoc(postRef, {
+            likesCount: increment(1)
+          });
         }
       } catch (err) {
-        console.error("Error updating like:", err);
+        handleFirestoreError(err, isLiked ? OperationType.DELETE : OperationType.WRITE, `interactions/${interactionId}`);
       }
     }
   };
@@ -514,10 +577,13 @@ export default function App() {
 
     try {
       const interactionId = `${auth.currentUser.uid}_${id}_save`;
-      const interactionDoc = await getDoc(doc(db, 'interactions', interactionId));
+      const postRef = doc(db, 'posts', id);
       
-      if (interactionDoc.exists()) {
+      if (isSaved) {
         await deleteDoc(doc(db, 'interactions', interactionId));
+        await updateDoc(postRef, {
+          savesCount: increment(-1)
+        });
       } else {
         await setDoc(doc(db, 'interactions', interactionId), {
           uid: auth.currentUser.uid,
@@ -525,9 +591,12 @@ export default function App() {
           type: 'save',
           createdAt: new Date().toISOString()
         });
+        await updateDoc(postRef, {
+          savesCount: increment(1)
+        });
       }
     } catch (err) {
-      console.error("Error updating save:", err);
+      handleFirestoreError(err, isSaved ? OperationType.DELETE : OperationType.WRITE, `interactions/${auth.currentUser.uid}_${id}_save`);
     }
   };
 
@@ -537,14 +606,20 @@ export default function App() {
     // Simple view tracking (throttle in real app)
     try {
       const interactionId = `${auth.currentUser.uid}_${id}_view`;
+      const postRef = doc(db, 'posts', id);
+      
       await setDoc(doc(db, 'interactions', interactionId), {
         uid: auth.currentUser.uid,
         postId: id,
         type: 'view',
         createdAt: new Date().toISOString()
       });
+      
+      await updateDoc(postRef, {
+        viewsCount: increment(1)
+      });
     } catch (err) {
-      // Silent fail for views
+      // Silent fail for views or log if needed
     }
   };
 
@@ -673,7 +748,7 @@ export default function App() {
     
     // Save to history
     setSearchHistory(prev => {
-      const newHistory = [query, ...prev.filter(q => q !== query)].slice(0, 10);
+      const newHistory = [query, ...prev.filter(q => q !== query)].slice(0, 4);
       localStorage.setItem('velvit_search_history', JSON.stringify(newHistory));
       return newHistory;
     });
@@ -856,15 +931,9 @@ export default function App() {
 
       {/* Header / Search - Animated to hide on scroll */}
       <motion.header 
-        style={{ 
-          opacity: headerOpacity, 
-          scale: headerScale, 
-          y: headerY,
-          pointerEvents: headerPointerEvents as any
-        }}
-        className="sticky top-0 z-40 px-6 py-8"
+        className="sticky top-0 z-50 px-6 py-8"
       >
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="max-w-7xl mx-auto flex items-center justify-center">
           <motion.h1 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -873,166 +942,75 @@ export default function App() {
           >
             VELVIT
           </motion.h1>
-
-          <div className="relative w-full md:w-[500px] flex items-center gap-4">
-            <div className="relative flex-1">
-              <input
-                type="text"
-                placeholder="Search anything..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setShowHistory(true)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchQuery)}
-                className="w-full h-14 pl-14 pr-6 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-white placeholder-white/30 focus:outline-none focus:border-white/30 transition-all relative z-50"
-              />
-              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/30 z-50" size={20} />
-              {loading && (
-                <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 text-white/30 animate-spin z-50" size={20} />
-              )}
-            </div>
-
-            <button 
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-4 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-white/50 hover:text-white transition-all z-50"
-            >
-              <Bell size={20} />
-              {notifications.some(n => !n.read) && (
-                <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full" />
-              )}
-            </button>
-
-            {/* Notifications Panel */}
-            <AnimatePresence>
-              {showNotifications && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute top-full right-0 mt-4 w-80 glass-panel rounded-3xl z-[60] border border-white/10 overflow-hidden shadow-2xl"
-                >
-                  <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-widest text-white">Notificações</span>
-                    <button onClick={() => setShowNotifications(false)} className="text-white/30 hover:text-white"><X size={16} /></button>
-                  </div>
-                  <div className="max-h-96 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="p-8 text-center text-white/20 text-xs uppercase tracking-widest">Nenhuma notificação</div>
-                    ) : (
-                      notifications.map(n => (
-                        <div key={n.id} className={`p-4 border-b border-white/5 hover:bg-white/5 transition-colors ${!n.read ? 'bg-white/5' : ''}`}>
-                          <p className="text-xs text-white/80 leading-relaxed">{n.message}</p>
-                          <span className="text-[10px] text-white/30 mt-2 block">{new Date(n.createdAt).toLocaleDateString()}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Search History Dropdown */}
-            <AnimatePresence>
-              {showHistory && (
-                <>
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => setShowHistory(false)}
-                    className="fixed inset-0 z-40"
-                  />
-                  {searchHistory.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="absolute top-full left-0 right-0 mt-2 p-4 glass-panel rounded-2xl z-50 border border-white/10"
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-[10px] uppercase tracking-widest text-white/30">Buscas Recentes</span>
-                        <button 
-                          onClick={() => {
-                            setSearchHistory([]);
-                            localStorage.removeItem('velvit_search_history');
-                          }}
-                          className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white transition-colors"
-                        >
-                          Limpar
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-2 mb-6">
-                        {searchHistory.map((q, i) => (
-                          <button
-                            key={i}
-                            onClick={() => {
-                              setSearchQuery(q);
-                              handleSearch(q);
-                            }}
-                            className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-full text-xs text-white/70 hover:text-white transition-all border border-white/5"
-                          >
-                            {q}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendações</span>
-                      </div>
-                      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                        {globalPosts.slice(0, 6).map(item => (
-                          <button
-                            key={`search-rec-${item.id}`}
-                            onClick={() => {
-                              setSearchQuery(item.title);
-                              handleSearch(item.title);
-                            }}
-                            className="min-w-[120px] aspect-[4/5] rounded-xl overflow-hidden relative group"
-                          >
-                            <img src={item.url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
-                              <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </>
-              )}
-            </AnimatePresence>
-          </div>
         </div>
       </motion.header>
 
       {/* Main Content */}
-      <main className="min-h-screen pt-24">
-        <motion.div
-          drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          onDragEnd={(_, info) => {
-            if (info.offset.x > 100) {
-              // Swipe Right -> Previous Tab
-              const tabs: ('feed' | 'search' | 'profile')[] = ['feed', 'search', 'profile'];
-              const idx = tabs.indexOf(currentTab);
-              if (idx > 0) setCurrentTab(tabs[idx - 1]);
-            } else if (info.offset.x < -100) {
-              // Swipe Left -> Next Tab
-              const tabs: ('feed' | 'search' | 'profile')[] = ['feed', 'search', 'profile'];
-              const idx = tabs.indexOf(currentTab);
-              if (idx < tabs.length - 1) setCurrentTab(tabs[idx + 1]);
-            }
-          }}
-          className="w-full h-full"
-        >
-          <AnimatePresence mode="wait">
-            {currentTab === 'feed' && (
-              <motion.div
-                key="feed"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="px-4 md:px-6 pb-24 max-w-7xl mx-auto"
-              >
+      <main className="relative min-h-screen">
+        <AnimatePresence initial={false}>
+          {currentTab === 'feed' && (
+            <motion.div
+              key="feed"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
+            >
+              <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
+                {/* Search and Notifications Row */}
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => setCurrentTab('search')}
+                      className="p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/50 hover:text-white transition-all flex items-center gap-3"
+                    >
+                      <Search size={20} />
+                      <span className="text-[10px] uppercase tracking-widest font-bold">Pesquisar</span>
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <button 
+                      onClick={() => setShowNotifications(!showNotifications)}
+                      className="relative p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/50 hover:text-white transition-all"
+                    >
+                      <Bell size={20} />
+                      {notifications.some(n => !n.read) && (
+                        <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full" />
+                      )}
+                    </button>
+
+                    {/* Notifications Panel */}
+                    <AnimatePresence>
+                      {showNotifications && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          className="absolute top-full right-0 mt-4 w-80 glass-panel rounded-3xl z-[60] border border-white/10 overflow-hidden shadow-2xl"
+                        >
+                          <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                            <span className="text-xs font-bold uppercase tracking-widest text-white">Notificações</span>
+                            <button onClick={() => setShowNotifications(false)} className="text-white/30 hover:text-white"><X size={16} /></button>
+                          </div>
+                          <div className="max-h-96 overflow-y-auto">
+                            {notifications.length === 0 ? (
+                              <div className="p-8 text-center text-white/20 text-xs uppercase tracking-widest">Nenhuma notificação</div>
+                            ) : (
+                              notifications.map(n => (
+                                <div key={n.id} className={`p-4 border-b border-white/5 hover:bg-white/5 transition-colors ${!n.read ? 'bg-white/5' : ''}`}>
+                                  <p className="text-xs text-white/80 leading-relaxed">{n.message}</p>
+                                  <span className="text-[10px] text-white/30 mt-2 block">{new Date(n.createdAt).toLocaleDateString()}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
                 {/* Tabs */}
                 <div className="flex items-center justify-between mb-8 border-b border-white/5">
                   <div className="flex items-center gap-6 md:gap-8 overflow-x-auto no-scrollbar">
@@ -1115,21 +1093,139 @@ export default function App() {
                     </p>
                   </div>
                 )}
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-            {currentTab === 'search' && (
-              <motion.div
-                key="search"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="px-4 md:px-6 pb-24 max-w-7xl mx-auto"
-              >
+          {currentTab === 'search' && (
+            <motion.div
+              key="search"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar bg-black/40 backdrop-blur-sm z-30"
+            >
+              <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
+                {/* Search Bar in Search Tab */}
+                <div className="relative mb-8">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Pesquisar..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onFocus={() => setShowHistory(true)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchQuery)}
+                      className="w-full h-16 pl-14 pr-6 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl text-white placeholder-white/30 focus:outline-none focus:border-white/30 transition-all"
+                    />
+                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/30" size={20} />
+                    {loading && (
+                      <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 text-white/30 animate-spin" size={20} />
+                    )}
+                  </div>
+
+                  {/* Search History Dropdown */}
+                  <AnimatePresence>
+                    {showHistory && (
+                      <>
+                        <motion.div 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          onClick={() => setShowHistory(false)}
+                          className="fixed inset-0 z-40"
+                        />
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          className="absolute top-full left-0 right-0 mt-2 p-4 glass-panel rounded-2xl z-50 border border-white/10 max-h-[70vh] overflow-y-auto no-scrollbar"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-[10px] uppercase tracking-widest text-white/30">Buscas Recentes</span>
+                            <button 
+                              onClick={() => {
+                                setSearchHistory([]);
+                                localStorage.removeItem('velvit_search_history');
+                              }}
+                              className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white transition-colors"
+                            >
+                              Limpar
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-2 mb-6">
+                            {searchHistory.map((q, i) => (
+                              <button
+                                key={i}
+                                onClick={() => {
+                                  setSearchQuery(q);
+                                  handleSearch(q);
+                                  setShowHistory(false);
+                                }}
+                                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-full text-xs text-white/70 hover:text-white transition-all border border-white/5"
+                              >
+                                {q}
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-[10px] uppercase tracking-widest text-white/30">Sugestões da IA</span>
+                            {isGeneratingAI && <Loader2 size={10} className="animate-spin text-white/30" />}
+                          </div>
+                          <div className="flex flex-wrap gap-2 mb-6">
+                            {aiSuggestedTags.slice(0, 4).map((tag, i) => (
+                              <button
+                                key={`ai-sug-${i}`}
+                                onClick={() => {
+                                  setSearchQuery(tag);
+                                  handleSearch(tag);
+                                  setShowHistory(false);
+                                }}
+                                className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-full text-xs text-emerald-400 hover:text-emerald-300 transition-all border border-emerald-500/20"
+                              >
+                                {tag}
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendações</span>
+                          </div>
+                          <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                            {globalPosts.slice(0, 6).map(item => (
+                              <button
+                                key={`search-rec-${item.id}`}
+                                onClick={() => {
+                                  setSearchQuery(item.title);
+                                  handleSearch(item.title);
+                                  setShowHistory(false);
+                                }}
+                                className="min-w-[120px] aspect-[4/5] rounded-xl overflow-hidden relative group"
+                              >
+                                <img src={item.url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
+                                  <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 <div className="glass-panel p-8 rounded-3xl mb-8">
-                  <h2 className="text-3xl font-black tracking-tighter uppercase mb-6">Explorar</h2>
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-3xl font-black tracking-tighter uppercase">Explorar</h2>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-widest text-white/30">Curadoria IA</span>
+                      {isGeneratingAI && <Loader2 size={12} className="animate-spin text-white/30" />}
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {['Aesthetic', 'Nature', 'Art', 'Tech', 'Fashion', 'Architecture', 'Travel', 'Food'].map(tag => (
+                    {aiSuggestedTags.map(tag => (
                       <button
                         key={tag}
                         onClick={() => {
@@ -1137,9 +1233,10 @@ export default function App() {
                           handleSearch(tag);
                           setCurrentTab('feed');
                         }}
-                        className="aspect-video rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-sm font-bold uppercase tracking-widest transition-all"
+                        className="aspect-video rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-sm font-bold uppercase tracking-widest transition-all group overflow-hidden relative"
                       >
-                        {tag}
+                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <span className="relative z-10">{tag}</span>
                       </button>
                     ))}
                   </div>
@@ -1156,17 +1253,19 @@ export default function App() {
                     />
                   ))}
                 </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-            {currentTab === 'profile' && (
-              <motion.div
-                key="profile"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="px-4 md:px-6 pb-24 max-w-4xl mx-auto"
-              >
+          {currentTab === 'profile' && (
+            <motion.div
+              key="profile"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
+            >
+              <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl">
                   <div className="flex flex-col md:flex-row items-center gap-8 border-b border-white/10 pb-8 mb-8">
                     <div className="relative group">
@@ -1225,6 +1324,42 @@ export default function App() {
                         </div>
                       </div>
 
+                      <div className="flex flex-wrap gap-4 justify-center md:justify-start mb-6">
+                        <label className="flex flex-col gap-1 cursor-pointer">
+                          <span className="text-[10px] uppercase tracking-widest text-white/30">Mudar Fundo</span>
+                          <div className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-xs hover:bg-white/10 transition-colors flex items-center gap-2">
+                            <ImageIcon size={14} /> Escolher Foto
+                          </div>
+                          <input 
+                            type="file" 
+                            accept="image/*"
+                            className="hidden" 
+                            onChange={(e) => handleFileSelect(e, 'bg')}
+                          />
+                        </label>
+                        
+                        <label className="flex flex-col gap-1 cursor-pointer">
+                          <span className="text-[10px] uppercase tracking-widest text-white/30">Mudar Perfil</span>
+                          <div className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-xs hover:bg-white/10 transition-colors flex items-center gap-2">
+                            <User size={14} /> Escolher Foto
+                          </div>
+                          <input 
+                            type="file" 
+                            accept="image/*"
+                            className="hidden" 
+                            onChange={(e) => handleFileSelect(e, 'profile')}
+                          />
+                        </label>
+
+                        <button 
+                          onClick={resetBackground}
+                          className="mt-auto p-2 bg-white/5 border border-white/10 rounded-lg text-white/50 hover:text-white transition-colors"
+                          title="Resetar Fundo"
+                        >
+                          <RotateCcw size={16} />
+                        </button>
+                      </div>
+
                       <div className="flex gap-4 justify-center md:justify-start">
                         <button 
                           onClick={handleDeleteAccount}
@@ -1267,10 +1402,10 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
           </AnimatePresence>
-        </motion.div>
       </main>
 
       {/* Floating Navigation */}
@@ -1295,6 +1430,7 @@ export default function App() {
             item={selectedPost}
             onClose={() => setSelectedPost(null)}
             onLike={handleLike}
+            onDelete={handleDeletePost}
             isLiked={likedIds.includes(selectedPost.id)}
             currentUserUid={auth.currentUser?.uid}
           />

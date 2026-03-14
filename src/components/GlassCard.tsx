@@ -75,13 +75,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
   };
 
   useEffect(() => {
-    if (videoRef.current) {
-      if (isHovered) {
-        videoRef.current.play().catch(() => {});
-      } else {
-        videoRef.current.pause();
-      }
-    }
+    // Video is now autoPlay for preview
   }, [isHovered]);
 
   return (
@@ -117,6 +111,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                 loop
                 muted={isMuted}
                 playsInline
+                autoPlay
                 onLoadedData={() => setIsLoaded(true)}
                 className={`w-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 style={{ maxHeight: item.height ? `${item.height}px` : 'none' }}
@@ -124,6 +119,16 @@ const GlassCard: React.FC<GlassCardProps> = ({
               <div className="absolute top-4 left-4 p-2 bg-black/40 backdrop-blur-md rounded-xl text-white/70">
                 <Film size={14} />
               </div>
+              {isUserPost && onDelete && (
+                <button 
+                  onClick={handleDeleteClick}
+                  className={`absolute top-4 right-4 p-2.5 backdrop-blur-xl rounded-2xl text-white transition-all z-20 ${
+                    isConfirmingDelete ? 'bg-red-600 px-4' : 'bg-black/40 hover:bg-red-500'
+                  }`}
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
               {isHovered && (
                 <button 
                   onClick={(e) => {
@@ -151,29 +156,29 @@ const GlassCard: React.FC<GlassCardProps> = ({
             />
           )}
 
+          {isUserPost && onDelete && item.type !== 'video' && (
+            <button 
+              onClick={handleDeleteClick}
+              className={`absolute top-4 right-4 p-2.5 backdrop-blur-xl rounded-2xl text-white transition-all z-20 ${
+                isConfirmingDelete ? 'bg-red-600 px-4' : 'bg-black/40 hover:bg-red-500'
+              }`}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+
           {/* Overlay Actions */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-between p-4">
             <div className="flex justify-end gap-2">
-              {isUserPost && onDelete ? (
+              {!isUserPost && onFollow && (
                 <button 
-                  onClick={handleDeleteClick}
-                  className={`p-2.5 backdrop-blur-xl rounded-2xl text-white transition-all ${
-                    isConfirmingDelete ? 'bg-red-600 px-4' : 'bg-white/10 hover:bg-red-500'
+                  onClick={(e) => { e.stopPropagation(); onFollow(item.authorUid); }}
+                  className={`p-2.5 backdrop-blur-xl rounded-2xl transition-all ${
+                    isFollowing ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
                   }`}
                 >
-                  <Trash2 size={16} />
+                  {isFollowing ? <UserCheck size={16} /> : <UserPlus size={16} />}
                 </button>
-              ) : (
-                onFollow && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onFollow(item.authorUid); }}
-                    className={`p-2.5 backdrop-blur-xl rounded-2xl transition-all ${
-                      isFollowing ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
-                    }`}
-                  >
-                    {isFollowing ? <UserCheck size={16} /> : <UserPlus size={16} />}
-                  </button>
-                )
               )}
             </div>
 
@@ -226,9 +231,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
           <h3 className="text-[11px] font-black text-white uppercase tracking-wider truncate group-hover:text-white/80 transition-colors">
             {item.title}
           </h3>
-          <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mt-0.5">
-            @{item.authorName}
-          </p>
         </div>
         <div className="flex items-center gap-2 text-white/20">
           <div className="flex items-center gap-1">
