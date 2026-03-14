@@ -91,16 +91,27 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
           )}
 
           {/* Post Info Footer - Compact Glassmorphism */}
-          <div className="absolute bottom-3 left-3 right-3 px-4 py-2.5 bg-white/15 backdrop-blur-2xl rounded-xl border border-white/25 shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-xs font-medium text-white truncate flex-1">
-                {item.title}
-              </h3>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <div className="w-4 h-4 rounded-full bg-white/25 flex items-center justify-center">
-                  <User size={8} className="text-white/90" />
-                </div>
-                <span className="text-[10px] text-white/70">@{item.authorName}</span>
+          <div className="absolute bottom-3 left-3 right-3 px-3 py-2 bg-white/10 backdrop-blur-2xl rounded-xl border border-white/20 shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
+            <div className="flex items-center gap-2.5">
+              {/* Author Photo */}
+              <div className="w-7 h-7 rounded-full overflow-hidden bg-white/20 flex items-center justify-center shrink-0 border border-white/10">
+                {item.authorPhotoUrl ? (
+                  <img 
+                    src={item.authorPhotoUrl} 
+                    alt={item.authorName} 
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <User size={12} className="text-white/70" />
+                )}
+              </div>
+              {/* Post Info */}
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[11px] font-medium text-white truncate leading-tight">
+                  {item.title}
+                </h3>
+                <span className="text-[10px] text-white/50">@{item.authorName}</span>
               </div>
             </div>
           </div>
