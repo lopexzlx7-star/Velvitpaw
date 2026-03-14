@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
 import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
-import { motion, AnimatePresence, useScroll, useTransform } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from "@google/genai";
 import { 
   doc, 
@@ -224,12 +224,29 @@ export default function App() {
   const [newUsername, setNewUsername] = useState('');
   
   const aiRef = useRef<GoogleGenAI | null>(null);
-  const { scrollY } = useScroll();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [scrollPosition, setScrollPosition] = useState(0);
   
-  // Header opacity and scale based on scroll
-  const headerOpacity = useTransform(scrollY, [0, 100], [1, 0]);
-  const headerScale = useTransform(scrollY, [0, 100], [1, 0.95]);
-  const headerY = useTransform(scrollY, [0, 100], [0, -20]);
+  // Track scroll position from the active tab's scroll container
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    
+    // Reset scroll position when changing tabs
+    setScrollPosition(0);
+    
+    const handleScroll = () => {
+      setScrollPosition(container.scrollTop);
+    };
+    
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [currentTab]);
+  
+  // Header opacity and scale based on scroll position
+  const headerOpacity = Math.max(0, 1 - scrollPosition / 100);
+  const headerScale = Math.max(0.95, 1 - scrollPosition / 2000);
+  const headerY = Math.min(0, -scrollPosition / 5);
 
   useEffect(() => {
     // One-time reset to ensure app starts "zerado" as requested
@@ -950,6 +967,7 @@ export default function App() {
         <AnimatePresence initial={false}>
           {currentTab === 'feed' && (
             <motion.div
+              ref={scrollContainerRef}
               key="feed"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -983,10 +1001,10 @@ export default function App() {
                             initial={{ opacity: 0, y: 10, scale: 0.95 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className="absolute top-full left-0 mt-3 w-80 md:w-96 p-4 bg-black/60 backdrop-blur-2xl rounded-2xl z-50 border border-white/15 shadow-2xl"
+                            className="absolute top-full left-0 mt-3 w-80 md:w-[420px] p-5 bg-black/70 backdrop-blur-3xl rounded-[28px] z-50 border border-white/15 shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
                           >
                             {/* Search Input */}
-                            <div className="relative mb-4">
+                            <div className="relative mb-5">
                               <input
                                 type="text"
                                 placeholder="Pesquisar..."
@@ -999,27 +1017,27 @@ export default function App() {
                                   }
                                 }}
                                 autoFocus
-                                className="w-full h-12 pl-10 pr-4 bg-white/10 backdrop-blur-md border border-white/10 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-white/30 transition-all"
+                                className="w-full h-12 pl-11 pr-4 bg-white/8 backdrop-blur-md border border-white/10 rounded-2xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-white/25 focus:bg-white/12 transition-all"
                               />
-                              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30" />
+                              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
                             </div>
 
                             {/* Search History */}
                             {searchHistory.length > 0 && (
-                              <div className="mb-4">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-[9px] uppercase tracking-widest text-white/30">Recentes</span>
+                              <div className="mb-5">
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="text-[10px] uppercase tracking-widest text-white/40 font-medium">Recentes</span>
                                   <button 
                                     onClick={() => {
                                       setSearchHistory([]);
                                       localStorage.removeItem('velvit_search_history');
                                     }}
-                                    className="text-[9px] uppercase tracking-widest text-white/30 hover:text-white transition-colors"
+                                    className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white transition-colors"
                                   >
                                     Limpar
                                   </button>
                                 </div>
-                                <div className="flex flex-wrap gap-1.5">
+                                <div className="flex flex-wrap gap-2">
                                   {searchHistory.slice(0, 4).map((q, i) => (
                                     <button
                                       key={i}
@@ -1028,7 +1046,7 @@ export default function App() {
                                         handleSearch(q);
                                         setShowHistory(false);
                                       }}
-                                      className="px-2.5 py-1 bg-white/10 hover:bg-white/15 rounded-full text-[10px] text-white/60 hover:text-white transition-all"
+                                      className="px-3 py-1.5 bg-white/8 hover:bg-white/15 rounded-full text-[11px] text-white/60 hover:text-white transition-all border border-white/5"
                                     >
                                       {q}
                                     </button>
@@ -1038,10 +1056,10 @@ export default function App() {
                             )}
 
                             {/* Image Recommendations */}
-                            <div className="mb-2">
-                              <span className="text-[9px] uppercase tracking-widest text-white/30 block mb-2">Recomendados</span>
+                            <div className="mb-3">
+                              <span className="text-[10px] uppercase tracking-widest text-white/40 font-medium">Recomendados</span>
                             </div>
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-3 gap-3">
                               {globalPosts.slice(0, 6).map(item => (
                                 <button
                                   key={`search-rec-${item.id}`}
@@ -1049,16 +1067,18 @@ export default function App() {
                                     setShowHistory(false);
                                     setSelectedPost(item);
                                   }}
-                                  className="aspect-square rounded-lg overflow-hidden relative group"
+                                  className="flex flex-col rounded-2xl overflow-hidden relative group bg-white/5 hover:bg-white/10 transition-all"
                                 >
-                                  <img 
-                                    src={item.url} 
-                                    className="w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300" 
-                                    alt={item.title}
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex items-end p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <span className="text-[8px] text-white font-medium truncate">{item.title}</span>
+                                  <div className="aspect-square overflow-hidden">
+                                    <img 
+                                      src={item.url} 
+                                      className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300" 
+                                      alt={item.title}
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  </div>
+                                  <div className="px-2 py-2">
+                                    <span className="text-[10px] text-white/70 font-medium truncate block leading-tight">{item.title}</span>
                                   </div>
                                 </button>
                               ))}
@@ -1199,6 +1219,7 @@ export default function App() {
 
           {currentTab === 'profile' && (
             <motion.div
+              ref={scrollContainerRef}
               key="profile"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
