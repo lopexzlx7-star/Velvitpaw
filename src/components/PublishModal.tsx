@@ -4,9 +4,8 @@ import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
   Maximize2, Square, Smartphone, Plus, Film, Zap
 } from 'lucide-react';
-import { db, auth, storage } from '../firebase';
+import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 interface PublishModalProps {
   isOpen: boolean;
@@ -165,19 +164,44 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     }
   };
 
-  const uploadToStorage = (file: File, path: string): Promise<string> => {
+  const uploadToCloudinary = (file: File): Promise<string> => {
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !uploadPreset) {
+      return Promise.reject(new Error('Cloudinary não configurado. Adicione VITE_CLOUDINARY_CLOUD_NAME e VITE_CLOUDINARY_UPLOAD_PRESET nas variáveis de ambiente.'));
+    }
+
     return new Promise((resolve, reject) => {
-      const storageRef = ref(storage, path);
-      const task = uploadBytesResumable(storageRef, file);
-      task.on(
-        'state_changed',
-        (snap) => setUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
-        reject,
-        async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          resolve(url);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', uploadPreset);
+
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          setUploadProgress(Math.round((e.loaded / e.total) * 100));
         }
-      );
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const data = JSON.parse(xhr.responseText);
+          resolve(data.secure_url);
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            reject(new Error(err?.error?.message || 'Upload falhou.'));
+          } catch {
+            reject(new Error('Upload falhou. Verifique o upload preset no Cloudinary.'));
+          }
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Erro de rede ao fazer upload.'));
+      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`);
+      xhr.send(formData);
     });
   };
 
@@ -192,9 +216,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
       if (draft.mediaType === 'video' || draft.mediaType === 'gif') {
         if (!draft.file) throw new Error('Arquivo não encontrado.');
-        const ext = draft.file.name.split('.').pop() || (draft.mediaType === 'video' ? 'mp4' : 'gif');
-        const path = `posts/${auth.currentUser.uid}/${Date.now()}.${ext}`;
-        finalUrl = await uploadToStorage(draft.file, path);
+        finalUrl = await uploadToCloudinary(draft.file);
       } else {
         finalUrl = draft.base64Url!;
       }
@@ -224,11 +246,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       resetDraft();
     } catch (err: any) {
       console.error('Publish error:', err);
-      if (err?.code === 'storage/unauthorized') {
-        setError('Sem permissão no Firebase Storage. Verifique as regras.');
-      } else {
-        setError('Erro ao publicar. Tente novamente.');
-      }
+      setError(err?.message || 'Erro ao publicar. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
