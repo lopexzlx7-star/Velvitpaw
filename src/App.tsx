@@ -30,6 +30,7 @@ import { ContentItem, Notification } from './types';
 import GlassCard from './components/GlassCard';
 import FloatingNav from './components/FloatingNav';
 import PublishModal from './components/PublishModal';
+import PostDetailModal from './components/PostDetailModal';
 
 enum OperationType {
   CREATE = 'create',
@@ -144,7 +145,6 @@ export default function App() {
   const [globalPosts, setGlobalPosts] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showPlaceholderModal, setShowPlaceholderModal] = useState<string | null>(null);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [bgImage, setBgImage] = useState<string | null>(() => localStorage.getItem('velvit_bg'));
   const [profilePic, setProfilePic] = useState<string | null>(() => localStorage.getItem('velvit_profile_pic'));
@@ -181,6 +181,10 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [trendingPosts, setTrendingPosts] = useState<ContentItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [currentTab, setCurrentTab] = useState<'feed' | 'search' | 'profile'>('feed');
+  const [selectedPost, setSelectedPost] = useState<ContentItem | null>(null);
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
   
   const aiRef = useRef<GoogleGenAI | null>(null);
   const { scrollY } = useScroll();
@@ -577,9 +581,57 @@ export default function App() {
   };
 
   const handleHomeClick = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (currentTab !== 'feed') {
+      setCurrentTab('feed');
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     setSearchQuery('');
-    handleSearch('trending aesthetic');
+    setItems(globalPosts);
+  };
+
+  const handleUpdateUsername = async () => {
+    if (!newUsername.trim() || !auth.currentUser) return;
+    const cleanName = newUsername.trim().toLowerCase().replace(/\s/g, '');
+    
+    try {
+      const userRef = doc(db, 'users', cleanName);
+      const userDoc = await getDoc(userRef);
+      
+      if (userDoc.exists() && userDoc.data().uid !== auth.currentUser.uid) {
+        alert("Este nome de usuário já está em uso.");
+        return;
+      }
+
+      await updateDoc(doc(db, 'users', username), { username: cleanName });
+      setUsername(cleanName);
+      localStorage.setItem('velvit_username', cleanName);
+      setIsEditingUsername(false);
+    } catch (err) {
+      console.error("Error updating username:", err);
+      alert("Erro ao atualizar nome de usuário.");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm("TEM CERTEZA? Esta ação é irreversível e apagará todos os seus dados.")) return;
+    
+    try {
+      // Delete user posts
+      const q = query(collection(db, 'posts'), where('authorUid', '==', auth.currentUser?.uid));
+      const snapshot = await getDocs(q);
+      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+
+      // Delete user doc
+      await deleteDoc(doc(db, 'users', username));
+      
+      handleLogout();
+      window.location.reload();
+    } catch (err) {
+      console.error("Error deleting account:", err);
+      alert("Erro ao excluir conta.");
+    }
   };
 
   const updateBackground = (url: string) => {
@@ -953,144 +1005,170 @@ export default function App() {
       </motion.header>
 
       {/* Main Content */}
-      <main className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
-        {/* Tabs */}
-        <div className="flex items-center justify-between mb-8 border-b border-white/5">
-          <div className="flex items-center gap-6 md:gap-8 overflow-x-auto no-scrollbar">
-            <button 
-              onClick={() => {
-                setActiveTab('home');
-              }}
-              className={`pb-4 text-sm font-bold uppercase tracking-widest transition-all relative ${activeTab === 'home' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
-            >
-              Explorar
-              {activeTab === 'home' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
-            </button>
-            <button 
-              onClick={() => {
-                setActiveTab('foryou');
-              }}
-              className={`pb-4 text-sm font-bold uppercase tracking-widest transition-all relative ${activeTab === 'foryou' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
-            >
-              Para Você
-              {activeTab === 'foryou' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Recommendations Section */}
-        {activeTab === 'foryou' && likedItems.length > 0 && !searchQuery && (
-          <div className="mb-12">
-            <div className="flex items-center gap-2 mb-6">
-              <div className="w-1 h-4 bg-white rounded-full" />
-              <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-white/50">Porque você curtiu {likedItems[likedItems.length - 1].title}</h2>
-            </div>
-            <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4">
-              {items.slice(0, 5).map(item => (
-                <div key={`rec-${item.id}`} className="min-w-[200px] w-[200px]">
-                  <GlassCard 
-                    item={item} 
-                    isLiked={likedIds.includes(item.id)}
-                    isSaved={savedIds.includes(item.id)}
-                    isFollowing={followingUids.includes((item as any).authorUid)}
-                    onLike={handleLike}
-                    onSave={handleSave}
-                    onFollow={handleFollow}
-                    isUserPost={(item as any).authorUid === auth.currentUser?.uid}
-                  />
+      <main className="min-h-screen pt-24">
+        <motion.div
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          onDragEnd={(_, info) => {
+            if (info.offset.x > 100) {
+              // Swipe Right -> Previous Tab
+              const tabs: ('feed' | 'search' | 'profile')[] = ['feed', 'search', 'profile'];
+              const idx = tabs.indexOf(currentTab);
+              if (idx > 0) setCurrentTab(tabs[idx - 1]);
+            } else if (info.offset.x < -100) {
+              // Swipe Left -> Next Tab
+              const tabs: ('feed' | 'search' | 'profile')[] = ['feed', 'search', 'profile'];
+              const idx = tabs.indexOf(currentTab);
+              if (idx < tabs.length - 1) setCurrentTab(tabs[idx + 1]);
+            }
+          }}
+          className="w-full h-full"
+        >
+          <AnimatePresence mode="wait">
+            {currentTab === 'feed' && (
+              <motion.div
+                key="feed"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="px-4 md:px-6 pb-24 max-w-7xl mx-auto"
+              >
+                {/* Tabs */}
+                <div className="flex items-center justify-between mb-8 border-b border-white/5">
+                  <div className="flex items-center gap-6 md:gap-8 overflow-x-auto no-scrollbar">
+                    <button 
+                      onClick={() => setActiveTab('home')}
+                      className={`pb-4 text-sm font-bold uppercase tracking-widest transition-all relative ${activeTab === 'home' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
+                    >
+                      Explorar
+                      {activeTab === 'home' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('foryou')}
+                      className={`pb-4 text-sm font-bold uppercase tracking-widest transition-all relative ${activeTab === 'foryou' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
+                    >
+                      Para Você
+                      {activeTab === 'foryou' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+                    </button>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {auth.currentUser?.email === 'lopexz.lx7@gmail.com' && (
-          <div className="mb-8 p-4 glass-panel rounded-xl text-[10px] text-white/40 uppercase tracking-[0.2em] flex gap-8">
-            <span>Posts no Banco: {globalPosts.length}</span>
-            <span>Posts no Feed: {items.length}</span>
-            <span>Status: {isGeneratingFeed ? 'Carregando...' : 'Pronto'}</span>
-          </div>
-        )}
+                {/* Recommendations Section */}
+                {activeTab === 'foryou' && likedItems.length > 0 && !searchQuery && (
+                  <div className="mb-12">
+                    <div className="flex items-center gap-2 mb-6">
+                      <div className="w-1 h-4 bg-white rounded-full" />
+                      <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-white/50">Porque você curtiu {likedItems[likedItems.length - 1].title}</h2>
+                    </div>
+                    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4">
+                      {items.slice(0, 5).map(item => (
+                        <div key={`rec-${item.id}`} className="min-w-[200px] w-[200px]">
+                          <GlassCard 
+                            item={item} 
+                            isLiked={likedIds.includes(item.id)}
+                            isSaved={savedIds.includes(item.id)}
+                            isFollowing={followingUids.includes((item as any).authorUid)}
+                            onLike={handleLike}
+                            onSave={handleSave}
+                            onFollow={handleFollow}
+                            onClick={() => setSelectedPost(item)}
+                            isUserPost={(item as any).authorUid === auth.currentUser?.uid}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-        {error && (
-          <div className="mb-8 p-4 glass-panel rounded-xl flex items-center gap-3 text-white/70">
-            <Info size={18} />
-            <p>{error}</p>
-          </div>
-        )}
+                <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
+                  {isGeneratingFeed && items.length === 0 ? (
+                    Array.from({ length: 10 }).map((_, i) => (
+                      <div key={i} className="mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: [250, 300, 400, 600][i % 4] }} />
+                    ))
+                  ) : (
+                    items.map((item) => (
+                      <GlassCard 
+                        key={item.id} 
+                        item={item} 
+                        isLiked={likedIds.includes(item.id)}
+                        isSaved={savedIds.includes(item.id)}
+                        isFollowing={followingUids.includes((item as any).authorUid)}
+                        onLike={handleLike}
+                        onSave={handleSave}
+                        onFollow={handleFollow}
+                        onDelete={handleDeletePost}
+                        onClick={() => setSelectedPost(item)}
+                        isUserPost={(item as any).authorUid === auth.currentUser?.uid}
+                      />
+                    ))
+                  )}
+                </div>
 
-        <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
-          {isGeneratingFeed && items.length === 0 ? (
-            Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: [250, 300, 400, 600][i % 4] }} />
-            ))
-          ) : (
-            items.map((item) => (
-              <GlassCard 
-                key={item.id} 
-                item={item} 
-                isLiked={likedIds.includes(item.id)}
-                isSaved={savedIds.includes(item.id)}
-                isFollowing={followingUids.includes((item as any).authorUid)}
-                onLike={handleLike}
-                onSave={handleSave}
-                onFollow={handleFollow}
-                onDelete={handleDeletePost}
-                isUserPost={(item as any).authorUid === auth.currentUser?.uid}
-              />
-            ))
-          )}
-        </div>
+                {items.length === 0 && !loading && !isGeneratingFeed && (
+                  <div className="flex flex-col items-center justify-center py-40 text-center">
+                    <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
+                      <ImageIcon size={32} className="text-white/10" />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2 uppercase tracking-tighter">O feed está vazio</h3>
+                    <p className="text-white/40 text-xs max-w-xs leading-relaxed uppercase tracking-widest mx-auto">
+                      Nenhuma publicação encontrada no banco de dados. Seja o primeiro a compartilhar algo incrível.
+                    </p>
+                  </div>
+                )}
+              </motion.div>
+            )}
 
-        {items.length === 0 && !loading && !isGeneratingFeed && (
-          <div className="flex flex-col items-center justify-center py-40 text-center">
-            <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
-              <ImageIcon size={32} className="text-white/10" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2 uppercase tracking-tighter">O feed está vazio</h3>
-            <p className="text-white/40 text-xs max-w-xs leading-relaxed uppercase tracking-widest mx-auto">
-              Nenhuma publicação encontrada no banco de dados. Seja o primeiro a compartilhar algo incrível.
-            </p>
-          </div>
-        )}
-      </main>
+            {currentTab === 'search' && (
+              <motion.div
+                key="search"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="px-4 md:px-6 pb-24 max-w-7xl mx-auto"
+              >
+                <div className="glass-panel p-8 rounded-3xl mb-8">
+                  <h2 className="text-3xl font-black tracking-tighter uppercase mb-6">Explorar</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {['Aesthetic', 'Nature', 'Art', 'Tech', 'Fashion', 'Architecture', 'Travel', 'Food'].map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => {
+                          setSearchQuery(tag);
+                          handleSearch(tag);
+                          setCurrentTab('feed');
+                        }}
+                        className="aspect-video rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-sm font-bold uppercase tracking-widest transition-all"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-      {/* Floating Navigation */}
-      <FloatingNav 
-        onHomeClick={handleHomeClick}
-        onAddClick={() => setShowPublishModal(true)}
-        onProfileClick={() => setShowPlaceholderModal('profile')}
-      />
+                <div className="columns-2 md:columns-3 lg:columns-4 gap-4">
+                  {globalPosts.slice(0, 20).map(item => (
+                    <GlassCard 
+                      key={`explore-${item.id}`}
+                      item={item}
+                      isLiked={likedIds.includes(item.id)}
+                      onLike={handleLike}
+                      onClick={() => setSelectedPost(item)}
+                    />
+                  ))}
+                </div>
+              </motion.div>
+            )}
 
-      {/* Modals */}
-      <PublishModal 
-        isOpen={showPublishModal} 
-        onClose={() => setShowPublishModal(false)}
-        onSuccess={() => {
-          setShowPublishModal(false);
-        }}
-      />
-
-      <AnimatePresence>
-        {showPlaceholderModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:p-6 bg-black/80 backdrop-blur-md"
-            onClick={() => setShowPlaceholderModal(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="glass-panel p-6 md:p-8 rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {showPlaceholderModal === 'profile' && (
-                <div className="flex flex-col gap-8">
-                  {/* Profile Header */}
-                  <div className="flex flex-col md:flex-row items-center gap-8 border-b border-white/10 pb-8">
+            {currentTab === 'profile' && (
+              <motion.div
+                key="profile"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="px-4 md:px-6 pb-24 max-w-4xl mx-auto"
+              >
+                <div className="glass-panel p-8 rounded-3xl">
+                  <div className="flex flex-col md:flex-row items-center gap-8 border-b border-white/10 pb-8 mb-8">
                     <div className="relative group">
                       <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white/10 group-hover:border-white/30 transition-all bg-white/5 flex items-center justify-center">
                         {profilePic ? (
@@ -1111,142 +1189,115 @@ export default function App() {
                     </div>
                     
                     <div className="flex-1 text-center md:text-left">
-                      <div className="flex flex-col md:flex-row items-center gap-4 mb-2">
-                        <h2 className="text-3xl font-black tracking-tighter uppercase text-white">@{username}</h2>
-                        <button 
-                          onClick={handleLogout}
-                          className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/50 hover:text-white transition-all"
-                        >
-                          Sair
-                        </button>
-
-                        {auth.currentUser?.email === 'lopexz.lx7@gmail.com' && (
-                          <button 
-                            onClick={handleResetDatabase}
-                            className="px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-full text-[10px] uppercase tracking-widest text-red-500 transition-all"
-                          >
-                            Resetar DB
-                          </button>
+                      <div className="flex flex-col md:flex-row items-center gap-4 mb-4">
+                        {isEditingUsername ? (
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="text" 
+                              value={newUsername}
+                              onChange={(e) => setNewUsername(e.target.value)}
+                              className="bg-white/5 border border-white/10 rounded-lg px-3 py-1 text-white text-sm focus:ring-1 focus:ring-white/20 outline-none"
+                              placeholder="Novo username"
+                            />
+                            <button onClick={handleUpdateUsername} className="p-1 text-emerald-400 hover:text-emerald-300"><CheckCircle2 size={20} /></button>
+                            <button onClick={() => setIsEditingUsername(false)} className="p-1 text-red-400 hover:text-red-300"><X size={20} /></button>
+                          </div>
+                        ) : (
+                          <h2 className="text-3xl font-black tracking-tighter uppercase text-white">@{username}</h2>
                         )}
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-4 justify-center md:justify-start mt-4">
-                        <label className="flex flex-col gap-1 cursor-pointer">
-                          <span className="text-[10px] uppercase tracking-widest text-white/30">Mudar Fundo</span>
-                          <div className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-xs hover:bg-white/10 transition-colors flex items-center gap-2">
-                            <ImageIcon size={14} /> Escolher Foto
-                          </div>
-                          <input 
-                            type="file" 
-                            accept="image/*"
-                            className="hidden" 
-                            onChange={(e) => handleFileSelect(e, 'bg')}
-                          />
-                        </label>
                         
-                        <label className="flex flex-col gap-1 cursor-pointer">
-                          <span className="text-[10px] uppercase tracking-widest text-white/30">Mudar Perfil</span>
-                          <div className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-xs hover:bg-white/10 transition-colors flex items-center gap-2">
-                            <User size={14} /> Escolher Foto
-                          </div>
-                          <input 
-                            type="file" 
-                            accept="image/*"
-                            className="hidden" 
-                            onChange={(e) => handleFileSelect(e, 'profile')}
-                          />
-                        </label>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setIsEditingUsername(true);
+                              setNewUsername(username);
+                            }}
+                            className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/50 hover:text-white transition-all"
+                          >
+                            Editar
+                          </button>
+                          <button 
+                            onClick={handleLogout}
+                            className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/50 hover:text-white transition-all"
+                          >
+                            Sair
+                          </button>
+                        </div>
+                      </div>
 
+                      <div className="flex gap-4 justify-center md:justify-start">
                         <button 
-                          onClick={resetBackground}
-                          className="mt-auto p-2 bg-white/5 border border-white/10 rounded-lg text-white/50 hover:text-white transition-colors"
-                          title="Resetar Fundo"
+                          onClick={handleDeleteAccount}
+                          className="text-[10px] uppercase tracking-widest text-red-500/50 hover:text-red-500 transition-colors"
                         >
-                          <RotateCcw size={16} />
+                          Excluir Conta
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  {/* Tabs Toggle */}
-                  <div className="flex gap-4 mb-8 border-b border-white/5">
+                  <div className="flex gap-6 mb-8 border-b border-white/5">
                     <button 
                       onClick={() => setProfileTab('posts')}
-                      className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
-                        profileTab === 'posts' ? 'text-white' : 'text-white/30 hover:text-white/50'
-                      }`}
+                      className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${profileTab === 'posts' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
                     >
                       Meus Posts ({userPosts.length})
-                      {profileTab === 'posts' && (
-                        <motion.div layoutId="profileTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
-                      )}
+                      {profileTab === 'posts' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
                     </button>
                     <button 
                       onClick={() => setProfileTab('liked')}
-                      className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
-                        profileTab === 'liked' ? 'text-white' : 'text-white/30 hover:text-white/50'
-                      }`}
+                      className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${profileTab === 'liked' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
                     >
                       Curtidos ({likedItems.length})
-                      {profileTab === 'liked' && (
-                        <motion.div layoutId="profileTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
-                      )}
+                      {profileTab === 'liked' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
                     </button>
                   </div>
 
-                  {/* Content Section */}
-                  <div>
-                    {profileTab === 'posts' ? (
-                      userPosts.length > 0 ? (
-                        <div className="columns-2 sm:columns-3 gap-4">
-                          {userPosts.map((post) => (
-                            <GlassCard 
-                              key={post.id} 
-                              item={post} 
-                              isLiked={likedIds.includes(post.id)}
-                              onLike={handleLike}
-                              onDelete={handleDeletePost}
-                              isUserPost={true}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="py-12 text-center border-2 border-dashed border-white/5 rounded-2xl">
-                          <p className="text-white/20 text-sm">Você ainda não postou nada.</p>
-                        </div>
-                      )
-                    ) : (
-                      likedItems.length > 0 ? (
-                        <div className="columns-2 sm:columns-3 gap-4">
-                          {likedItems.map((item) => (
-                            <GlassCard 
-                              key={item.id} 
-                              item={item} 
-                              isLiked={likedIds.includes(item.id)}
-                              onLike={handleLike}
-                              onDelete={handleDeletePost}
-                              isUserPost={(item as any).authorUid === auth.currentUser?.uid}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="py-12 text-center border-2 border-dashed border-white/5 rounded-2xl">
-                          <p className="text-white/20 text-sm">Você ainda não curtiu nada.</p>
-                        </div>
-                      )
-                    )}
+                  <div className="columns-2 sm:columns-3 gap-4">
+                    {(profileTab === 'posts' ? userPosts : likedItems).map(post => (
+                      <GlassCard 
+                        key={`profile-${post.id}`}
+                        item={post}
+                        isLiked={likedIds.includes(post.id)}
+                        onLike={handleLike}
+                        onDelete={handleDeletePost}
+                        onClick={() => setSelectedPost(post)}
+                        isUserPost={(post as any).authorUid === auth.currentUser?.uid}
+                      />
+                    ))}
                   </div>
-
-                  <button 
-                    onClick={() => setShowPlaceholderModal(null)}
-                    className="w-full py-4 bg-white text-black font-bold rounded-2xl mt-4"
-                  >
-                    Fechar
-                  </button>
                 </div>
-              )}
-            </motion.div>
-          </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </main>
+
+      {/* Floating Navigation */}
+      <FloatingNav 
+        onHomeClick={handleHomeClick}
+        onAddClick={() => setShowPublishModal(true)}
+        onProfileClick={() => setCurrentTab('profile')}
+      />
+
+      {/* Modals */}
+      <PublishModal 
+        isOpen={showPublishModal} 
+        onClose={() => setShowPublishModal(false)}
+        onSuccess={() => {
+          setShowPublishModal(false);
+        }}
+      />
+
+      <AnimatePresence>
+        {selectedPost && (
+          <PostDetailModal 
+            item={selectedPost}
+            onClose={() => setSelectedPost(null)}
+            onLike={handleLike}
+            isLiked={likedIds.includes(selectedPost.id)}
+            currentUserUid={auth.currentUser?.uid}
+          />
         )}
       </AnimatePresence>
       </div>

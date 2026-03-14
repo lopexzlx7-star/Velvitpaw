@@ -3,7 +3,8 @@ export interface ContentItem {
   url: string;
   title: string;
   description?: string;
-  type: 'image' | 'gif';
+  type: 'image' | 'gif' | 'video';
+  duration?: number;
   height: number;
   width?: number;
   aspectRatio?: 'portrait' | 'landscape' | 'square' | 'wide' | 'original';
