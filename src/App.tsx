@@ -731,12 +731,25 @@ export default function App() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64String = reader.result as string;
       if (type === 'bg') {
         updateBackground(base64String);
       } else if (type === 'profile') {
-        updateProfilePic(base64String);
+        const img = new Image();
+        img.src = base64String;
+        await new Promise(r => { img.onload = r; });
+        const canvas = document.createElement('canvas');
+        const size = 200;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d')!;
+        const min = Math.min(img.width, img.height);
+        const sx = (img.width - min) / 2;
+        const sy = (img.height - min) / 2;
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+        const compressed = canvas.toDataURL('image/jpeg', 0.8);
+        updateProfilePic(compressed);
       }
     };
     reader.readAsDataURL(file);
