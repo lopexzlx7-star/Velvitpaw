@@ -46,3 +46,4 @@ publicDir = "dist"
 
 [userenv.shared]
 VITE_CLOUDINARY_CLOUD_NAME = "dekidzsq6"
+VITE_CLOUDINARY_UPLOAD_PRESET = "Velvit_uploads"
