@@ -52,7 +52,6 @@ interface FirestoreErrorInfo {
 function handleFirestoreError(error: unknown, operationType: OperationType | 'auth', path: string | null) {
   const errorMessage = error instanceof Error ? error.message : String(error);
   
-  // Specific check for Auth providers not enabled
   if (errorMessage.includes('auth/admin-restricted-operation') || errorMessage.includes('auth/operation-not-allowed')) {
     const authError = "O método de login (E-mail/Senha) não está ativado no Console do Firebase. Por favor, ative 'Email/Password' em Authentication > Sign-in method.";
     console.error(authError);
@@ -97,7 +96,6 @@ function handleFirestoreError(error: unknown, operationType: OperationType | 'au
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Simple ErrorBoundary Component
 function ErrorBoundary({ children }: { children: ReactNode }) {
   const [hasError, setHasError] = useState(false);
   const [errorInfo, setErrorInfo] = useState<string | null>(null);
@@ -111,7 +109,6 @@ function ErrorBoundary({ children }: { children: ReactNode }) {
           setErrorInfo(parsed.error);
         }
       } catch {
-        // Not a Firestore JSON error
       }
     };
     window.addEventListener('error', handleError);
@@ -173,40 +170,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'foryou'>('home');
   const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>(['Aesthetic', 'Nature', 'Art', 'Tech', 'Fashion', 'Architecture', 'Travel', 'Food']);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
-
-  // AI Recommendation Engine
-  useEffect(() => {
-    const generateAIRecommendations = async () => {
-      if (likedItems.length === 0 || isGeneratingAI) return;
-      
-      setIsGeneratingAI(true);
-      try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const likedTitles = likedItems.map(i => i.title).join(', ');
-        const prompt = `Based on these liked posts: \"${likedTitles}\", suggest 8 short, one-word, uppercase trending search categories or tags for a visual social media app. Return ONLY a JSON array of strings.`;
-        
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-latest",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        });
-
-        const suggestions = JSON.parse(response.text);
-        if (Array.isArray(suggestions) && suggestions.length > 0) {
-          setAiSuggestedTags(suggestions);
-        }
-      } catch (error) {
-        console.error("AI Recommendation Error:", error);
-      } finally {
-        setIsGeneratingAI(false);
-      }
-    };
-
-    // Generate every 5 likes or on first like
-    if (likedItems.length > 0 && likedItems.length % 3 === 0) {
-      generateAIRecommendations();
-    }
-  }, [likedItems.length]);
   const [searchHistory, setSearchHistory] = useState<string[]>(() => {
     const saved = localStorage.getItem('velvit_search_history');
     return saved ? JSON.parse(saved) : [];
@@ -232,7 +195,6 @@ export default function App() {
   const headerPointerEvents = useTransform(scrollY, [0, 50], ['auto', 'none']);
 
   useEffect(() => {
-    // One-time reset to ensure app starts "zerado" as requested
     const resetVersion = 'v2_total_reset';
     const hasReset = localStorage.getItem('velvit_reset_flag');
     if (hasReset !== resetVersion) {
@@ -242,7 +204,6 @@ export default function App() {
       return;
     }
 
-    // Test connection
     const testConnection = async () => {
       try {
         await getDocFromServer(doc(db, 'test', 'connection'));
@@ -254,7 +215,6 @@ export default function App() {
     };
     testConnection();
 
-    // Auth listener
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         setupAuthListeners(user.uid);
@@ -266,7 +226,6 @@ export default function App() {
       }
     });
 
-    // Global Posts listener
     const q = query(collection(db, 'posts'), limit(100));
     const unsubscribePosts = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(doc => ({
@@ -274,24 +233,20 @@ export default function App() {
         id: doc.id
       })) as ContentItem[];
       
-      // Sort client-side to avoid index issues
       fetchedPosts.sort((a, b) => {
         const dateA = new Date(a.createdAt || 0).getTime();
         const dateB = new Date(b.createdAt || 0).getTime();
         return dateB - dateA;
       });
 
-      // Filter out archived posts for global feed
       const visiblePosts = fetchedPosts.filter(p => !(p as any).archived);
       setGlobalPosts(visiblePosts);
       
-      // Trending logic: most likes/saves in last 24h (simulated by count fields)
       const trending = [...visiblePosts]
         .sort((a: any, b: any) => ((b.likesCount || 0) + (b.savesCount || 0)) - ((a.likesCount || 0) + (a.savesCount || 0)))
         .slice(0, 10);
       setTrendingPosts(trending);
 
-      // Also update userPosts for the profile tab (include archived)
       if (auth.currentUser) {
         setUserPosts(fetchedPosts.filter(p => (p as any).authorUid === auth.currentUser?.uid));
       }
@@ -303,7 +258,6 @@ export default function App() {
       setIsGeneratingFeed(false);
     });
 
-    // Following listener
     let unsubscribeFollowing = () => {};
     let unsubscribeNotifications = () => {};
 
@@ -339,6 +293,22 @@ export default function App() {
     }
   }, [globalPosts, searchQuery]);
 
+  useEffect(() => {
+    const existingPostIds = new Set(globalPosts.map(p => p.id));
+    
+    const updatedLikedItems = likedItems.filter(item => existingPostIds.has(item.id));
+    if (updatedLikedItems.length !== likedItems.length) {
+      setLikedItems(updatedLikedItems);
+      localStorage.setItem('velvit_liked_items', JSON.stringify(updatedLikedItems));
+    }
+
+    const updatedLikedIds = likedIds.filter(id => existingPostIds.has(id));
+    if (updatedLikedIds.length !== likedIds.length) {
+      setLikedIds(updatedLikedIds);
+      localStorage.setItem('velvit_likes', JSON.stringify(updatedLikedIds));
+    }
+  }, [globalPosts]);
+
   const handleLogin = async () => {
     if (!loginUsername || loginUsername.length < 3) {
       setLoginError('O nome deve ter pelo menos 3 caracteres.');
@@ -368,11 +338,9 @@ export default function App() {
         setLoginLoading(false);
         return;
       } else {
-        // Create user in Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCredential.user.uid;
         
-        // Create user doc in Firestore
         await setDoc(doc(db, 'users', cleanName), {
           username: cleanName,
           uid: uid,
@@ -386,7 +354,6 @@ export default function App() {
     } catch (err: any) {
       let displayError = "Erro ao criar conta. Tente novamente.";
       
-      // Handle Firebase Auth errors specifically
       if (err.code === 'auth/email-already-in-use') {
         displayError = "Este nome de usuário já está em uso.";
       } else if (err.code === 'auth/invalid-email') {
@@ -435,10 +402,8 @@ export default function App() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
       
-      // Verify if firestore doc exists (it should)
       const userDoc = await getDoc(doc(db, 'users', cleanName));
       if (!userDoc.exists()) {
-        // If auth exists but doc doesn't, create it
         await setDoc(doc(db, 'users', cleanName), {
           username: cleanName,
           uid: uid,
@@ -517,7 +482,6 @@ export default function App() {
 
     const isLiked = likedIds.includes(id);
     
-    // Optimistic UI update for counts
     const updateItems = (prev: ContentItem[]) => prev.map(item => {
       if (item.id === id) {
         return {
@@ -532,11 +496,14 @@ export default function App() {
     setGlobalPosts(updateItems);
     setUserPosts(updateItems);
     
-    // Local state update for liked IDs
-    setLikedIds(prev => isLiked ? prev.filter(i => i !== id) : [...prev, id]);
-    setLikedItems(prev => isLiked ? prev.filter(i => i.id !== id) : [...prev, { ...itemToLike, likesCount: Math.max(0, (itemToLike.likesCount || 0) + (isLiked ? -1 : 1)) }]);
+    const newLikedIds = isLiked ? likedIds.filter(i => i !== id) : [...likedIds, id];
+    setLikedIds(newLikedIds);
+    localStorage.setItem('velvit_likes', JSON.stringify(newLikedIds));
 
-    // Firestore update
+    const newLikedItems = isLiked ? likedItems.filter(i => i.id !== id) : [...likedItems, { ...itemToLike, likesCount: Math.max(0, (itemToLike.likesCount || 0) + 1) }];
+    setLikedItems(newLikedItems);
+    localStorage.setItem('velvit_liked_items', JSON.stringify(newLikedItems));
+
     if (auth.currentUser) {
       const interactionId = `${auth.currentUser.uid}_${id}_like`;
       try {
@@ -544,7 +511,6 @@ export default function App() {
 
         if (isLiked) {
           await deleteDoc(doc(db, 'interactions', interactionId));
-          // Only decrement if current count is > 0
           if ((itemToLike.likesCount || 0) > 0) {
             await updateDoc(postRef, {
               likesCount: increment(-1)
@@ -602,7 +568,6 @@ export default function App() {
   const handleView = async (id: string) => {
     if (!auth.currentUser) return;
     
-    // Simple view tracking (throttle in real app)
     try {
       const interactionId = `${auth.currentUser.uid}_${id}_view`;
       const postRef = doc(db, 'posts', id);
@@ -618,7 +583,6 @@ export default function App() {
         viewsCount: increment(1)
       });
     } catch (err) {
-      // Silent fail for views or log if needed
     }
   };
 
@@ -646,9 +610,19 @@ export default function App() {
   const handleDeletePost = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'posts', id));
+      
       setItems(prev => prev.filter(item => item.id !== id));
       setGlobalPosts(prev => prev.filter(item => item.id !== id));
       setUserPosts(prev => prev.filter(item => item.id !== id));
+
+      const newLikedItems = likedItems.filter(item => item.id !== id);
+      setLikedItems(newLikedItems);
+      localStorage.setItem('velvit_liked_items', JSON.stringify(newLikedItems));
+
+      const newLikedIds = likedIds.filter(likedId => likedId !== id);
+      setLikedIds(newLikedIds);
+      localStorage.setItem('velvit_likes', JSON.stringify(newLikedIds));
+
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `posts/${id}`);
     }
@@ -691,13 +665,11 @@ export default function App() {
     if (!window.confirm("TEM CERTEZA? Esta ação é irreversível e apagará todos os seus dados.")) return;
     
     try {
-      // Delete user posts
       const q = query(collection(db, 'posts'), where('authorUid', '==', auth.currentUser?.uid));
       const snapshot = await getDocs(q);
       const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
       await Promise.all(deletePromises);
 
-      // Delete user doc
       await deleteDoc(doc(db, 'users', username));
       
       handleLogout();
@@ -745,7 +717,6 @@ export default function App() {
     setError(null);
     setShowHistory(false);
     
-    // Save to history
     setSearchHistory(prev => {
       const newHistory = [query, ...prev.filter(q => q !== query)].slice(0, 4);
       localStorage.setItem('velvit_search_history', JSON.stringify(newHistory));
@@ -753,7 +724,6 @@ export default function App() {
     });
     
     try {
-      // Search only real posts from Firestore
       const matchingGlobalPosts = globalPosts.filter(post => 
         post.title.toLowerCase().includes(query.toLowerCase()) ||
         query.toLowerCase().includes(post.title.toLowerCase())
@@ -849,9 +819,6 @@ export default function App() {
                           key={s}
                           onClick={() => {
                             setLoginUsername(s);
-                            // We need to wait for state update or pass it directly
-                            // For simplicity, let's just set the state and the user can click the button
-                            // Or we can refactor handleLogin to accept an optional name
                           }}
                           className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] text-white/60 transition-all"
                         >
@@ -898,10 +865,8 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen relative pb-32">
-      {/* Background Layer */}
       <div className="fixed inset-0 z-[-2] bg-space-gray-900" />
       
-      {/* Custom Background Image */}
       <AnimatePresence>
         {bgImage && (
           <motion.div 
@@ -921,14 +886,12 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Liquid Background Blobs (only visible when no custom bg or as overlay) */}
       <div className="liquid-bg opacity-50">
         <div className="liquid-blob w-[500px] h-[500px] bg-white/10 top-[-10%] left-[-10%]" />
         <div className="liquid-blob w-[400px] h-[400px] bg-space-gray-600/20 bottom-[-5%] right-[-5%]" style={{ animationDelay: '-5s' }} />
         <div className="liquid-blob w-[300px] h-[300px] bg-white/5 top-[40%] right-[20%]" style={{ animationDelay: '-10s' }} />
       </div>
 
-      {/* Header / Search - Animated to hide on scroll */}
       <motion.header 
         style={{ 
           opacity: headerOpacity,
@@ -950,7 +913,6 @@ export default function App() {
         </div>
       </motion.header>
 
-      {/* Main Content */}
       <main className="relative min-h-screen">
         <AnimatePresence initial={false}>
           {currentTab === 'feed' && (
@@ -963,10 +925,8 @@ export default function App() {
               className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
             >
               <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
-                {/* Search and Notifications Row */}
                 <div className="flex items-center justify-between mb-8 gap-4">
                    <div className="relative flex-grow">
-                    {/* Search Bar */}
                     <div className="relative">
                         <input
                           type="text"
@@ -988,7 +948,6 @@ export default function App() {
                         )}
                     </div>
                     
-                    {/* Search Popup */}
                     <AnimatePresence>
                         {showHistory && (
                           <>
@@ -997,7 +956,7 @@ export default function App() {
                               animate={{ opacity: 1 }}
                               exit={{ opacity: 0 }}
                               onClick={() => setShowHistory(false)}
-                              className="fixed inset-0 z-40" // Fullscreen overlay to close popup
+                              className="fixed inset-0 z-40"
                             />
                             <motion.div
                               initial={{ opacity: 0, y: 10 }}
@@ -1005,7 +964,6 @@ export default function App() {
                               exit={{ opacity: 0, y: 10 }}
                               className="absolute top-full left-0 right-0 mt-2 p-4 glass-panel rounded-2xl z-50 border border-white/10 max-h-[70vh] overflow-y-auto no-scrollbar"
                             >
-                              {/* Content from old search popup */}
                               <div className="flex items-center justify-between mb-3">
                                 <span className="text-[10px] uppercase tracking-widest text-white/30">Buscas Recentes</span>
                                 <button 
@@ -1072,7 +1030,6 @@ export default function App() {
                       )}
                     </button>
 
-                    {/* Notifications Panel */}
                     <AnimatePresence>
                       {showNotifications && (
                         <motion.div
@@ -1103,7 +1060,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Tabs */}
                 <div className="flex items-center justify-between mb-8 border-b border-white/5">
                   <div className="flex items-center gap-6 md:gap-8 overflow-x-auto no-scrollbar">
                     <button 
@@ -1122,33 +1078,6 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-
-                {/* Recommendations Section */}
-                {activeTab === 'foryou' && likedItems.length > 0 && !searchQuery && (
-                  <div className="mb-12">
-                    <div className="flex items-center gap-2 mb-6">
-                      <div className="w-1 h-4 bg-white rounded-full" />
-                      <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-white/50">Porque você curtiu {likedItems[likedItems.length - 1].title}</h2>
-                    </div>
-                    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4">
-                      {items.slice(0, 5).map(item => (
-                        <div key={`rec-${item.id}`} className="min-w-[200px] w-[200px]">
-                          <GlassCard 
-                            item={item} 
-                            isLiked={likedIds.includes(item.id)}
-                            isSaved={savedIds.includes(item.id)}
-                            isFollowing={followingUids.includes((item as any).authorUid)}
-                            onLike={handleLike}
-                            onSave={handleSave}
-                            onFollow={handleFollow}
-                            onClick={() => setSelectedPost(item)}
-                            isUserPost={(item as any).authorUid === auth.currentUser?.uid}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
                   {isGeneratingFeed && items.length === 0 ? (
@@ -1181,7 +1110,7 @@ export default function App() {
                     </div>
                     <h3 className="text-xl font-bold text-white mb-2 uppercase tracking-tighter">O feed está vazio</h3>
                     <p className="text-white/40 text-xs max-w-xs leading-relaxed uppercase tracking-widest mx-auto">
-                      Nenhuma publicação encontrada no banco de dados. Seja o primeiro a compartilhar algo incrível.
+                      Nenhuma publicação encontrada. Seja o primeiro a compartilhar algo.
                     </p>
                   </div>
                 )}
@@ -1341,14 +1270,12 @@ export default function App() {
           </AnimatePresence>
       </main>
 
-      {/* Floating Navigation */}
       <FloatingNav 
         onHomeClick={handleHomeClick}
         onAddClick={() => setShowPublishModal(true)}
         onProfileClick={() => setCurrentTab('profile')}
       />
 
-      {/* Modals */}
       <PublishModal 
         isOpen={showPublishModal} 
         onClose={() => setShowPublishModal(false)}
