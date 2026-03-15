@@ -35,7 +35,7 @@ import DeleteConfirmModal from './components/DeleteConfirmModal';
 enum OperationType { CREATE = 'create', UPDATE = 'update', DELETE = 'delete' }
 interface FirestoreErrorInfo { error: string; operationType: string; path: string | null; }
 
-function handleFirestoreError(error: unknown, operationType: OperationType | 'auth', path: string | null) {
+function handleFirestoreError(error: unknown, operationType: OperationType | 'auth' | 'list', path: string | null) {
   const errorMessage = error instanceof Error ? error.message : String(error);
   let displayError = `Erro em ${operationType}`;
   if (errorMessage.includes('auth/invalid-credential')) displayError = "Usuário ou senha incorretos.";
@@ -197,8 +197,32 @@ export default function App() {
   };
 
   const handleLike = async (id: string) => {
-     // Like logic here, same as before
-  }
+    if (!auth.currentUser) return;
+    const postRef = doc(db, 'posts', id);
+    const newLikedIds = likedIds.includes(id)
+      ? likedIds.filter(lId => lId !== id)
+      : [...likedIds, id];
+
+    setLikedIds(newLikedIds);
+
+    if (newLikedIds.includes(id)) {
+      const post = globalPosts.find(p => p.id === id);
+      if(post) setLikedItems(prev => [...prev, post]);
+    } else {
+      setLikedItems(prev => prev.filter(item => item.id !== id));
+    }
+
+    try {
+      await updateDoc(postRef, {
+        likesCount: increment(newLikedIds.includes(id) ? 1 : -1)
+      });
+    } catch (error) {
+      // Revert UI change on error
+      setLikedIds(likedIds);
+      setLikedItems(likedItems);
+      handleFirestoreError(error, OperationType.UPDATE, `posts/${id}`);
+    }
+  };
   
   const handleDeleteAccount = () => setShowDeleteConfirmModal(true);
   const executeDeleteAccount = async () => {
