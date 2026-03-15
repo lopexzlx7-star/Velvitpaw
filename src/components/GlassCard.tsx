@@ -190,12 +190,15 @@ const GlassCard: React.FC<GlassCardProps> = ({
             {item.title}
           </h3>
         </div>
-        <div className="flex items-center gap-2 text-white/20">
-          <div className="flex items-center gap-1">
-            <Heart size={10} fill={isLiked ? "currentColor" : "none"} className={isLiked ? "text-red-500" : ""} />
-            <span className="text-[9px] font-black">{item.likesCount || 0}</span>
-          </div>
-        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onLike(item.id);
+          }}
+          className="flex items-center gap-1 text-white/20 p-1"
+        >
+          <Heart size={10} fill={isLiked ? "currentColor" : "none"} className={isLiked ? "text-red-500" : ""} />
+        </button>
       </div>
     </motion.div>
   );
