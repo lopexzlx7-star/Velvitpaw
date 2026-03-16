@@ -24,7 +24,9 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword,
   signOut,
-  deleteUser
+  deleteUser,
+  updateEmail,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { db, auth } from './firebase';
 import { ContentItem, Notification } from './types';
@@ -185,6 +187,16 @@ export default function App() {
   const [selectedPost, setSelectedPost] = useState<ContentItem | null>(null);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
+  const [showEmailPopup, setShowEmailPopup] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [emailPopupLoading, setEmailPopupLoading] = useState(false);
+  const [emailPopupError, setEmailPopupError] = useState<string | null>(null);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotUsername, setForgotUsername] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollY = useMotionValue(0);
@@ -401,6 +413,7 @@ export default function App() {
         setProfilePic(null);
         setIsLoggedIn(true);
         localStorage.setItem('velvit_username', cleanName);
+        setShowEmailPopup(true);
       }
     } catch (err: any) {
       let displayError = "Erro ao criar conta. Tente novamente.";
@@ -445,11 +458,14 @@ export default function App() {
       setLoginLoading(false);
       return;
     }
-    const email = `${cleanName}@velvit.app`;
+    setHasAttemptedLogin(true);
     setLoginLoading(true);
     setLoginError(null);
 
     try {
+      const userDoc = await getDoc(doc(db, 'users', cleanName));
+      const recoveryEmailStored = userDoc.exists() ? (userDoc.data().recoveryEmail || '') : '';
+      const email = recoveryEmailStored || `${cleanName}@velvit.app`;
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
 
@@ -496,6 +512,10 @@ export default function App() {
         try {
           await updateDoc(usersSnap.docs[0].ref, { lastLogin: serverTimestamp() });
         } catch (_) {}
+
+        if (!usersSnap.docs[0].data().recoveryEmail) {
+          setShowEmailPopup(true);
+        }
       } else {
         // First login ever or doc missing — create with typed name
         await setDoc(doc(db, 'users', cleanName), {
@@ -507,6 +527,7 @@ export default function App() {
         localStorage.setItem('velvit_username', cleanName);
         setProfilePic(null);
         localStorage.removeItem('velvit_profile_pic');
+        setShowEmailPopup(true);
       }
 
       setIsLoggedIn(true);
@@ -582,6 +603,66 @@ export default function App() {
     setPassword('');
     setLoginError(null);
     setAuthMode('login');
+  };
+
+  const handleAddEmail = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!recoveryEmail.trim() || !emailRegex.test(recoveryEmail.trim())) {
+      setEmailPopupError('Digite um endereço de e-mail válido.');
+      return;
+    }
+    if (!auth.currentUser || !username) return;
+    setEmailPopupLoading(true);
+    setEmailPopupError(null);
+    try {
+      await updateEmail(auth.currentUser, recoveryEmail.trim());
+      await updateDoc(doc(db, 'users', username), { recoveryEmail: recoveryEmail.trim() });
+      setShowEmailPopup(false);
+      setRecoveryEmail('');
+    } catch (err: any) {
+      if (err.code === 'auth/email-already-in-use') {
+        setEmailPopupError('Este e-mail já está em uso por outra conta.');
+      } else if (err.code === 'auth/invalid-email') {
+        setEmailPopupError('E-mail inválido.');
+      } else if (err.code === 'auth/requires-recent-login') {
+        setEmailPopupError('Por segurança, saia e entre novamente para vincular o e-mail.');
+      } else {
+        setEmailPopupError('Erro ao salvar e-mail. Tente novamente.');
+      }
+    } finally {
+      setEmailPopupLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const cleanName = forgotUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    if (!cleanName || cleanName.length < 3) {
+      setForgotError('Digite um nome de usuário válido.');
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError(null);
+    try {
+      const userDoc = await getDoc(doc(db, 'users', cleanName));
+      if (!userDoc.exists()) {
+        setForgotError('Usuário não encontrado.');
+        setForgotLoading(false);
+        return;
+      }
+      const data = userDoc.data();
+      const emailToReset = data.recoveryEmail || '';
+      if (!emailToReset) {
+        setForgotError('Este usuário não possui um e-mail de recuperação vinculado.');
+        setForgotLoading(false);
+        return;
+      }
+      await sendPasswordResetEmail(auth, emailToReset);
+      setForgotSuccess(true);
+    } catch (err: any) {
+      setForgotError('Erro ao enviar e-mail. Tente novamente.');
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   const handleLike = async (id: string) => {
@@ -1037,11 +1118,78 @@ export default function App() {
               {authMode === 'register' ? 'Começar Jornada' : 'Entrar no App'}
             </button>
 
+            <AnimatePresence>
+              {authMode === 'login' && hasAttemptedLogin && !showForgotPassword && (
+                <motion.button
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  onClick={() => { setShowForgotPassword(true); setForgotUsername(loginUsername); setForgotError(null); setForgotSuccess(false); }}
+                  className="w-full py-2 text-[10px] uppercase tracking-[0.3em] text-white/30 hover:text-white/60 transition-all mt-1"
+                >
+                  Esqueci minha senha
+                </motion.button>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {showForgotPassword && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden mt-2"
+                >
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase tracking-widest text-white/50 font-bold">Recuperar Senha</span>
+                      <button onClick={() => { setShowForgotPassword(false); setForgotError(null); setForgotSuccess(false); }} className="text-white/30 hover:text-white transition-colors"><X size={14} /></button>
+                    </div>
+                    {forgotSuccess ? (
+                      <div className="flex items-center gap-2 text-green-400 text-xs">
+                        <CheckCircle2 size={14} />
+                        <span>E-mail enviado! Verifique sua caixa de entrada.</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <span className="text-[10px] uppercase tracking-widest text-white/30 mb-2 block">Seu nome de usuário</span>
+                          <input
+                            type="text"
+                            placeholder="Ex: aesthetic_user"
+                            value={forgotUsername}
+                            onChange={(e) => setForgotUsername(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleForgotPassword(); }}
+                            className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all"
+                          />
+                        </div>
+                        {forgotError && (
+                          <p className="text-red-400 text-xs flex items-center gap-1.5"><AlertCircle size={12} />{forgotError}</p>
+                        )}
+                        <button
+                          onClick={handleForgotPassword}
+                          disabled={forgotLoading}
+                          className="w-full py-3 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-xl text-[10px] uppercase tracking-widest font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                        >
+                          {forgotLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                          Enviar e-mail de recuperação
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <button 
               onClick={() => {
                 setAuthMode(authMode === 'register' ? 'login' : 'register');
                 setLoginError(null);
                 setSuggestions([]);
+                setShowForgotPassword(false);
+                setHasAttemptedLogin(false);
+                setForgotError(null);
+                setForgotSuccess(false);
               }}
               disabled={loginLoading}
               className="w-full py-2 text-[10px] uppercase tracking-[0.3em] text-white/30 hover:text-white transition-all mt-2"
@@ -1499,6 +1647,70 @@ export default function App() {
             isLiked={likedIds.includes(selectedPost.id)}
             currentUserUid={auth.currentUser?.uid}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showEmailPopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-6"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(20px)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              className="bg-black/90 border border-white/10 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl space-y-6"
+            >
+              <div className="text-center space-y-2">
+                <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-4">
+                  <Info size={26} className="text-white/60" />
+                </div>
+                <h2 className="text-lg font-black uppercase tracking-tighter text-white">Vincule seu e-mail</h2>
+                <p className="text-xs text-white/40 leading-relaxed">
+                  Adicione um e-mail real para recuperar sua conta caso esqueça a senha ou o usuário.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <span className="text-[10px] uppercase tracking-widest text-white/30 font-bold block">Seu e-mail</span>
+                <input
+                  type="email"
+                  placeholder="exemplo@email.com"
+                  value={recoveryEmail}
+                  onChange={(e) => { setRecoveryEmail(e.target.value); setEmailPopupError(null); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddEmail(); }}
+                  className="w-full h-14 bg-white/5 border border-white/10 rounded-2xl px-5 text-white text-sm focus:outline-none focus:border-white/30 transition-all placeholder:text-white/15"
+                />
+                {emailPopupError && (
+                  <p className="text-red-400 text-xs flex items-center gap-1.5">
+                    <AlertCircle size={12} />{emailPopupError}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleAddEmail}
+                  disabled={emailPopupLoading}
+                  className="w-full py-4 bg-white text-black font-black rounded-2xl uppercase tracking-widest text-xs hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {emailPopupLoading ? <Loader2 size={16} className="animate-spin" /> : null}
+                  Salvar e-mail
+                </button>
+                <button
+                  onClick={() => setShowEmailPopup(false)}
+                  className="w-full py-3 text-[10px] uppercase tracking-widest text-white/25 hover:text-white/50 transition-colors"
+                >
+                  Fazer isso depois
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
       </div>
