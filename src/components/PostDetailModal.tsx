@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Volume2, VolumeX, Heart, User } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
 
@@ -41,19 +41,19 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   useEffect(() => { setLocalIsLiked(isLiked); }, [isLiked]);
 
   useEffect(() => {
-    if (!item.authorName) return;
+    if (!item.authorUid) return;
     const fetchAuthor = async () => {
       try {
-        const snap = await getDoc(doc(db, 'users', item.authorName));
-        if (snap.exists()) {
-          const data = snap.data();
+        const snap = await getDocs(query(collection(db, 'users'), where('uid', '==', item.authorUid)));
+        if (!snap.empty) {
+          const data = snap.docs[0].data();
           setAuthorName(data.username || item.authorName || '');
           setAuthorPhoto(data.profilePhotoUrl || null);
         }
       } catch {}
     };
     fetchAuthor();
-  }, [item.authorName]);
+  }, [item.authorUid, item.authorName]);
 
   const spawnHearts = useCallback(() => {
     const newHearts: FloatingHeart[] = Array.from({ length: 7 }, (_, i) => ({

@@ -678,18 +678,35 @@ export default function App() {
 
   const handleUpdateUsername = async () => {
     if (!newUsername.trim() || !auth.currentUser) return;
-    const cleanName = newUsername.trim().toLowerCase().replace(/\s/g, '');
-    
+    const cleanName = newUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    if (cleanName.length < 3) {
+      alert("O nome deve ter pelo menos 3 caracteres.");
+      return;
+    }
+    if (cleanName === username) {
+      setIsEditingUsername(false);
+      return;
+    }
+
     try {
-      const userRef = doc(db, 'users', cleanName);
-      const userDoc = await getDoc(userRef);
-      
-      if (userDoc.exists() && userDoc.data().uid !== auth.currentUser.uid) {
+      const newUserRef = doc(db, 'users', cleanName);
+      const newUserDoc = await getDoc(newUserRef);
+
+      if (newUserDoc.exists() && newUserDoc.data().uid !== auth.currentUser.uid) {
         alert("Este nome de usuário já está em uso.");
         return;
       }
 
-      await updateDoc(doc(db, 'users', username), { username: cleanName });
+      const oldUserRef = doc(db, 'users', username);
+      const oldUserDoc = await getDoc(oldUserRef);
+      const oldData = oldUserDoc.exists() ? oldUserDoc.data() : {};
+
+      await setDoc(newUserRef, { ...oldData, username: cleanName });
+      await deleteDoc(oldUserRef);
+
+      const postsSnap = await getDocs(query(collection(db, 'posts'), where('authorUid', '==', auth.currentUser.uid)));
+      await Promise.all(postsSnap.docs.map(d => updateDoc(d.ref, { authorName: cleanName })));
+
       setUsername(cleanName);
       localStorage.setItem('velvit_username', cleanName);
       setIsEditingUsername(false);
@@ -746,6 +763,8 @@ export default function App() {
     if (auth.currentUser && username) {
       try {
         await updateDoc(doc(db, 'users', username), { profilePhotoUrl: url });
+        const postsSnap = await getDocs(query(collection(db, 'posts'), where('authorUid', '==', auth.currentUser.uid)));
+        await Promise.all(postsSnap.docs.map(d => updateDoc(d.ref, { authorPhotoUrl: url })));
       } catch (err) {
         console.error('Error saving profile pic to Firestore:', err);
       }
