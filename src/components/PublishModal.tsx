@@ -106,7 +106,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         aspectRatio: draft.aspectRatio,
         authorUid: auth.currentUser.uid,
         authorName: localStorage.getItem('velvit_username') || 'User',
-        authorPhotoURL: localStorage.getItem('velvit_profile_pic'),
+        authorPhotoUrl: localStorage.getItem('velvit_profile_pic') || null,
         createdAt: new Date().toISOString(),
         likesCount: 0,
         savesCount: 0,

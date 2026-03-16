@@ -21,10 +21,11 @@ import {
   increment 
 } from 'firebase/firestore';
 import { 
-  signInAnonymously, 
   onAuthStateChanged, 
   createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword 
+  signInWithEmailAndPassword,
+  signOut,
+  deleteUser
 } from 'firebase/auth';
 import { db, auth } from './firebase';
 import { ContentItem, Notification } from './types';
@@ -352,10 +353,12 @@ export default function App() {
         await setDoc(doc(db, 'users', cleanName), {
           username: cleanName,
           uid: uid,
+          profilePhotoUrl: null,
           createdAt: serverTimestamp()
         });
         
         setUsername(cleanName);
+        setProfilePic(null);
         setIsLoggedIn(true);
         localStorage.setItem('velvit_username', cleanName);
       }
@@ -415,13 +418,23 @@ export default function App() {
         await setDoc(doc(db, 'users', cleanName), {
           username: cleanName,
           uid: uid,
+          profilePhotoUrl: null,
           createdAt: serverTimestamp()
         });
+        setProfilePic(null);
+        localStorage.removeItem('velvit_profile_pic');
       } else {
         await updateDoc(doc(db, 'users', cleanName), {
           uid: uid,
           lastLogin: serverTimestamp()
         });
+        const savedPhoto = userDoc.data().profilePhotoUrl || null;
+        setProfilePic(savedPhoto);
+        if (savedPhoto) {
+          localStorage.setItem('velvit_profile_pic', savedPhoto);
+        } else {
+          localStorage.removeItem('velvit_profile_pic');
+        }
       }
       
       setUsername(cleanName);
@@ -479,9 +492,26 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { await signOut(auth); } catch {}
+    const keysToRemove = [
+      'velvit_username', 'velvit_profile_pic', 'velvit_bg',
+      'velvit_likes', 'velvit_liked_items', 'velvit_saves', 'velvit_search_history'
+    ];
+    keysToRemove.forEach(k => localStorage.removeItem(k));
     setIsLoggedIn(false);
-    localStorage.removeItem('velvit_username');
+    setUsername('Usuário');
+    setProfilePic(null);
+    setBgImage(null);
+    setLikedIds([]);
+    setLikedItems([]);
+    setSavedIds([]);
+    setSearchHistory([]);
+    setCurrentTab('feed');
+    setLoginUsername('');
+    setPassword('');
+    setLoginError(null);
+    setAuthMode('login');
   };
 
   const handleLike = async (id: string) => {
@@ -671,20 +701,32 @@ export default function App() {
 
   const handleDeleteAccount = async () => {
     if (!window.confirm("TEM CERTEZA? Esta ação é irreversível e apagará todos os seus dados.")) return;
-    
+    const user = auth.currentUser;
+    if (!user) return;
+    const uid = user.uid;
+
     try {
-      const q = query(collection(db, 'posts'), where('authorUid', '==', auth.currentUser?.uid));
-      const snapshot = await getDocs(q);
-      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-      await Promise.all(deletePromises);
+      const postsSnap = await getDocs(query(collection(db, 'posts'), where('authorUid', '==', uid)));
+      await Promise.all(postsSnap.docs.map(d => deleteDoc(d.ref)));
+
+      const interSnap = await getDocs(query(collection(db, 'interactions'), where('uid', '==', uid)));
+      await Promise.all(interSnap.docs.map(d => deleteDoc(d.ref)));
+
+      const followSnap = await getDocs(query(collection(db, 'following'), where('followerUid', '==', uid)));
+      await Promise.all(followSnap.docs.map(d => deleteDoc(d.ref)));
 
       await deleteDoc(doc(db, 'users', username));
-      
-      handleLogout();
-      window.location.reload();
-    } catch (err) {
+
+      await deleteUser(user);
+
+      await handleLogout();
+    } catch (err: any) {
       console.error("Error deleting account:", err);
-      alert("Erro ao excluir conta.");
+      if (err.code === 'auth/requires-recent-login') {
+        alert("Por segurança, saia e entre novamente antes de excluir a conta.");
+      } else {
+        alert("Erro ao excluir conta. Tente novamente.");
+      }
     }
   };
 
@@ -698,9 +740,16 @@ export default function App() {
     localStorage.removeItem('velvit_bg');
   };
 
-  const updateProfilePic = (url: string) => {
+  const updateProfilePic = async (url: string) => {
     setProfilePic(url);
     localStorage.setItem('velvit_profile_pic', url);
+    if (auth.currentUser && username) {
+      try {
+        await updateDoc(doc(db, 'users', username), { profilePhotoUrl: url });
+      } catch (err) {
+        console.error('Error saving profile pic to Firestore:', err);
+      }
+    }
   };
 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>, type: 'bg' | 'profile' | 'post') => {
