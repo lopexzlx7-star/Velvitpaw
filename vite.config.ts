@@ -9,7 +9,6 @@ export default defineConfig(({mode}) => {
     plugins: [react(), tailwindcss()],
     base: './',
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.CLOUDINARY_CLOUD_NAME': JSON.stringify(env.CLOUDINARY_CLOUD_NAME),
       'process.env.CLOUDINARY_UPLOAD_PRESET': JSON.stringify(env.CLOUDINARY_UPLOAD_PRESET),
     },
@@ -25,6 +24,12 @@ export default defineConfig(({mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: {
         ignored: ['**/.local/**', '**/node_modules/**', '**/dist/**'],
+      },
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
       },
     },
   };

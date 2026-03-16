@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
 import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
-import { GoogleGenAI } from "@google/genai";
 import { 
   doc, 
   getDoc, 
@@ -187,7 +186,6 @@ export default function App() {
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   
-  const aiRef = useRef<GoogleGenAI | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollY = useMotionValue(0);
   const headerOpacity = useTransform(scrollY, [0, 50], [1, 0]);
