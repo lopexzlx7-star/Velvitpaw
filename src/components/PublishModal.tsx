@@ -25,8 +25,6 @@ interface Draft {
 }
 
 const MAX_VIDEO_DURATION = 60;
-const CLOUDINARY_CLOUD = process.env.CLOUDINARY_CLOUD_NAME || '';
-const CLOUDINARY_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET || '';
 
 const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [draft, setDraft] = useState<Draft>({
@@ -147,33 +145,40 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     reader.readAsDataURL(file);
   };
 
-  const uploadToCloudinary = (file: File): Promise<string> => {
-    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) {
-      return Promise.reject(new Error('Cloudinary não configurado. Verifique as variáveis de ambiente.'));
-    }
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_PRESET);
+  const uploadToR2 = async (file: File): Promise<string> => {
+    const res = await fetch('/api/upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, contentType: file.type }),
+    });
 
-    return new Promise((resolve, reject) => {
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Erro ao obter URL de upload.');
+    }
+
+    const { uploadUrl, publicUrl } = await res.json();
+
+    await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`);
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', file.type);
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 90));
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 95));
       };
       xhr.onload = () => {
-        if (xhr.status === 200) {
-          const data = JSON.parse(xhr.responseText);
+        if (xhr.status === 200 || xhr.status === 204) {
           setUploadProgress(100);
-          resolve(data.secure_url);
+          resolve();
         } else {
-          const msg = xhr.responseText ? JSON.parse(xhr.responseText)?.error?.message : null;
-          reject(new Error(msg || 'Falha no upload para Cloudinary.'));
+          reject(new Error('Falha no upload para R2.'));
         }
       };
       xhr.onerror = () => reject(new Error('Erro de rede ao fazer upload.'));
-      xhr.send(formData);
+      xhr.send(file);
     });
+
+    return publicUrl;
   };
 
   const submitPost = async () => {
@@ -186,7 +191,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       let finalUrl = draft.mediaUrl;
 
       if (draft.mediaType === 'video') {
-        finalUrl = await uploadToCloudinary(draft.file);
+        finalUrl = await uploadToR2(draft.file);
       }
 
       const postData = {
