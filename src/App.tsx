@@ -1106,7 +1106,11 @@ export default function App() {
                                 <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendações</span>
                               </div>
                               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                                {globalPosts.slice(0, 6).map(item => (
+                                {globalPosts.slice(0, 6).map(item => {
+                                  const thumbUrl = item.type === 'video'
+                                    ? item.url.replace('/upload/', '/upload/so_0/').replace(/\.[^./]+$/, '.jpg')
+                                    : item.url;
+                                  return (
                                   <button
                                     key={`search-rec-${item.id}`}
                                     onClick={() => {
@@ -1116,12 +1120,13 @@ export default function App() {
                                     }}
                                     className="min-w-[120px] aspect-[4/5] rounded-xl overflow-hidden relative group"
                                   >
-                                    <img src={item.url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="" />
+                                    <img src={thumbUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="" />
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
                                       <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
                                     </div>
                                   </button>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </motion.div>
                           </>

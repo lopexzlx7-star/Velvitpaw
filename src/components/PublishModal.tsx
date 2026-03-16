@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
-  Maximize2, Square, Smartphone, Plus, Film, CheckCircle2
+  Maximize2, Square, Smartphone, Plus, Film
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
@@ -19,10 +19,9 @@ interface Draft {
   title: string;
   aspectRatio: AspectRatio;
   mediaUrl: string | null;
-  mediaType: 'image' | 'video' | 'gif';
+  mediaType: 'image' | 'video';
   file: File | null;
   duration?: number;
-  cloudinaryUrl?: string;
 }
 
 const MAX_VIDEO_DURATION = 60;
@@ -68,7 +67,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const processFile = (file: File) => {
     setError(null);
     const isVideo = file.type.startsWith('video/');
-    const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
 
     if (isVideo) {
       if (file.size > 100 * 1024 * 1024) {
@@ -107,19 +105,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         }));
       };
       metaEl.src = blobUrl;
-      return;
-    }
-
-    if (isGif) {
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-      const blobUrl = URL.createObjectURL(file);
-      objectUrlRef.current = blobUrl;
-      setDraft(prev => ({
-        ...prev, file, mediaUrl: blobUrl,
-        mediaType: 'gif',
-        aspectRatio: 'portrait',
-        title: prev.title || file.name.split('.')[0]
-      }));
       return;
     }
 
@@ -188,7 +173,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     try {
       let finalUrl = draft.mediaUrl;
 
-      if (draft.mediaType === 'video' || draft.mediaType === 'gif') {
+      if (draft.mediaType === 'video') {
         finalUrl = await uploadToCloudinary(draft.file);
       }
 
@@ -196,7 +181,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         title: draft.title || 'Sem título',
         url: finalUrl,
         type: draft.mediaType,
-        height: draft.mediaType === 'video' || draft.mediaType === 'gif' ? 600 : 450,
+        height: draft.mediaType === 'video' ? 600 : 450,
         aspectRatio: draft.aspectRatio,
         authorUid: auth.currentUser.uid,
         authorName: localStorage.getItem('velvit_username') || 'User',
@@ -232,7 +217,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     }
   };
 
-  const isMediaVideo = draft.mediaType === 'video' || draft.mediaType === 'gif';
+  const isVideo = draft.mediaType === 'video';
 
   if (!isOpen) return null;
 
@@ -281,13 +266,13 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               </div>
               <div className="text-center space-y-2">
                 <p className="text-white font-black uppercase tracking-[0.2em] text-xs">Selecionar Mídia</p>
-                <p className="text-white/30 font-bold uppercase tracking-widest text-[8px]">Fotos, GIFs ou Vídeos (máx 1 min)</p>
+                <p className="text-white/30 font-bold uppercase tracking-widest text-[8px]">Fotos ou Vídeos (máx 1 min)</p>
               </div>
               <input
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
-                accept="image/*,video/*"
+                accept="image/jpeg,image/png,image/webp,image/avif,video/*"
                 className="hidden"
               />
             </div>
@@ -296,9 +281,9 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Pré-visualização</label>
-                  {isMediaVideo && (
+                  {isVideo && (
                     <span className="flex items-center gap-1 text-[9px] uppercase tracking-widest text-green-400 font-black">
-                      <Film size={10} /> {draft.mediaType === 'gif' ? 'GIF' : `Vídeo · ${draft.duration}s`}
+                      <Film size={10} /> Vídeo · {draft.duration}s
                     </span>
                   )}
                 </div>
@@ -306,17 +291,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   layout
                   className={`relative w-full overflow-hidden rounded-[2rem] border border-white/10 bg-black/50 transition-all duration-500 ${getAspectClass()}`}
                 >
-                  {draft.mediaType === 'video' ? (
+                  {isVideo ? (
                     <video
                       src={draft.mediaUrl || undefined}
                       className="w-full h-full object-cover"
+                      autoPlay
                       muted
+                      loop
                       playsInline
-                      preload="metadata"
-                      controls={false}
                     />
-                  ) : draft.mediaType === 'gif' ? (
-                    <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="GIF preview" />
                   ) : (
                     <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="Preview" />
                   )}
@@ -333,7 +316,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 </motion.div>
               </div>
 
-              {!isMediaVideo && (
+              {!isVideo && (
                 <div className="space-y-3">
                   <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Formato</label>
                   <div className="grid grid-cols-5 gap-2">
@@ -360,7 +343,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   </div>
                 </div>
               )}
-
 
               <div className="space-y-3">
                 <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Título</label>
