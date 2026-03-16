@@ -41,9 +41,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [previewFailed, setPreviewFailed] = useState(false);
+  const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const previewVideoRef = useRef<HTMLVideoElement>(null);
   const objectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -67,9 +66,40 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     e.target.value = '';
   };
 
+  const captureVideoThumbnail = (blobUrl: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const videoEl = document.createElement('video');
+      videoEl.preload = 'auto';
+      videoEl.muted = true;
+      videoEl.playsInline = true;
+      videoEl.crossOrigin = 'anonymous';
+
+      const capture = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = videoEl.videoWidth || 360;
+          canvas.height = videoEl.videoHeight || 640;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        } catch {
+          resolve(null);
+        }
+      };
+
+      videoEl.onseeked = capture;
+      videoEl.onloadeddata = () => {
+        videoEl.currentTime = 0.5;
+      };
+      videoEl.onerror = () => resolve(null);
+      videoEl.src = blobUrl;
+    });
+  };
+
   const processFile = (file: File) => {
     setError(null);
-    setPreviewFailed(false);
+    setVideoThumbnail(null);
     const isVideo = file.type.startsWith('video/');
     const isGif = file.type === 'image/gif';
 
@@ -82,13 +112,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       const blobUrl = URL.createObjectURL(file);
       objectUrlRef.current = blobUrl;
 
-      const setVideoWithDuration = (dur: number) => {
+      const setVideoWithDuration = async (dur: number) => {
         if (isFinite(dur) && dur > MAX_VIDEO_DURATION) {
           URL.revokeObjectURL(blobUrl);
           objectUrlRef.current = null;
           setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION} segundos.`);
           return;
         }
+        const thumb = await captureVideoThumbnail(blobUrl);
+        setVideoThumbnail(thumb);
         setDraft(prev => ({
           ...prev,
           file,
@@ -100,11 +132,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         }));
       };
 
-      const videoEl = document.createElement('video');
-      videoEl.preload = 'metadata';
-      videoEl.onloadedmetadata = () => setVideoWithDuration(videoEl.duration);
-      videoEl.onerror = () => setVideoWithDuration(0);
-      videoEl.src = blobUrl;
+      const metaEl = document.createElement('video');
+      metaEl.preload = 'metadata';
+      metaEl.onloadedmetadata = () => setVideoWithDuration(metaEl.duration);
+      metaEl.onerror = () => setVideoWithDuration(0);
+      metaEl.src = blobUrl;
       return;
     }
 
@@ -306,22 +338,22 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   className={`relative w-full overflow-hidden rounded-[2rem] border border-white/10 bg-black/50 transition-all duration-500 ${getAspectClass()}`}
                 >
                   {draft.mediaType === 'video' ? (
-                    previewFailed ? (
+                    videoThumbnail ? (
+                      <>
+                        <img src={videoThumbnail} className="w-full h-full object-cover" alt="Thumbnail do vídeo" />
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center">
+                            <div className="w-0 h-0 border-t-[7px] border-t-transparent border-b-[7px] border-b-transparent border-l-[13px] border-l-white ml-1" />
+                          </div>
+                        </div>
+                      </>
+                    ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-black/60">
                         <Film size={32} className="text-white/30" />
                         <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold text-center px-4">
-                          Preview indisponível<br />
-                          <span className="text-white/20">O vídeo será publicado normalmente</span>
+                          Carregando preview…
                         </p>
                       </div>
-                    ) : (
-                      <video
-                        ref={previewVideoRef}
-                        src={draft.mediaUrl || undefined}
-                        className="w-full h-full object-cover"
-                        autoPlay loop muted playsInline
-                        onError={() => setPreviewFailed(true)}
-                      />
                     )
                   ) : draft.mediaType === 'gif' ? (
                     <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="GIF preview" />
