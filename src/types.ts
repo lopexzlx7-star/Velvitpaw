@@ -13,6 +13,7 @@ export interface ContentItem {
   archived?: boolean;
   aspectRatio?: string;
   duration?: number;
+  description?: string;
 }
 
 export interface Notification {

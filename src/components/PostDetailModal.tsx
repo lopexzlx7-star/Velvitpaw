@@ -307,6 +307,30 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
           </div>
         </div>
 
+        {/* Description */}
+        {item.description && (
+          <div className="px-4 pt-2 pb-1">
+            <p className="text-[9px] font-normal text-white/40 leading-relaxed lowercase break-words">
+              {item.description.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
+                /^https?:\/\//.test(part) ? (
+                  <a
+                    key={i}
+                    href={part}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-white/60 underline underline-offset-2 hover:text-white/80 transition-colors"
+                  >
+                    {part}
+                  </a>
+                ) : (
+                  <span key={i}>{part}</span>
+                )
+              )}
+            </p>
+          </div>
+        )}
+
         {/* Bottom row */}
         <div className="flex items-center justify-between px-4 pt-3 pb-4">
           {item.title && (

@@ -22,9 +22,13 @@ interface Draft {
   mediaType: 'image' | 'video';
   file: File | null;
   duration?: number;
+  description: string;
 }
 
 const MAX_VIDEO_DURATION = 60;
+const CLOUDINARY_CLOUD = process.env.CLOUDINARY_CLOUD_NAME || '';
+const CLOUDINARY_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET || '';
+const MAX_DESCRIPTION_WORDS = 50;
 
 const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [draft, setDraft] = useState<Draft>({
@@ -32,7 +36,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     aspectRatio: 'portrait',
     mediaUrl: null,
     mediaType: 'image',
-    file: null
+    file: null,
+    description: '',
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -145,40 +150,33 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     reader.readAsDataURL(file);
   };
 
-  const uploadToR2 = async (file: File): Promise<string> => {
-    const res = await fetch('/api/upload-url', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: file.name, contentType: file.type }),
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Erro ao obter URL de upload.');
+  const uploadToCloudinary = (file: File): Promise<string> => {
+    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) {
+      return Promise.reject(new Error('Credenciais do Cloudinary não configuradas. Contate o administrador.'));
     }
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_PRESET);
 
-    const { uploadUrl, publicUrl } = await res.json();
-
-    await new Promise<void>((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('PUT', uploadUrl);
-      xhr.setRequestHeader('Content-Type', file.type);
+      xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`);
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 95));
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 90));
       };
       xhr.onload = () => {
-        if (xhr.status === 200 || xhr.status === 204) {
+        if (xhr.status === 200) {
+          const data = JSON.parse(xhr.responseText);
           setUploadProgress(100);
-          resolve();
+          resolve(data.secure_url);
         } else {
-          reject(new Error('Falha no upload para R2.'));
+          const msg = xhr.responseText ? JSON.parse(xhr.responseText)?.error?.message : null;
+          reject(new Error(msg || 'Falha no upload para Cloudinary.'));
         }
       };
       xhr.onerror = () => reject(new Error('Erro de rede ao fazer upload.'));
-      xhr.send(file);
+      xhr.send(formData);
     });
-
-    return publicUrl;
   };
 
   const submitPost = async () => {
@@ -191,7 +189,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       let finalUrl = draft.mediaUrl;
 
       if (draft.mediaType === 'video') {
-        finalUrl = await uploadToR2(draft.file);
+        finalUrl = await uploadToCloudinary(draft.file);
       }
 
       const postData = {
@@ -207,14 +205,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         likesCount: 0,
         savesCount: 0,
         viewsCount: 0,
-        duration: draft.duration || 0
+        duration: draft.duration || 0,
+        description: draft.description.trim() || '',
       };
 
       await addDoc(collection(db, 'posts'), postData);
       if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
       onSuccess();
       onClose();
-      setDraft({ title: '', aspectRatio: 'portrait', mediaUrl: null, mediaType: 'image', file: null });
+      setDraft({ title: '', aspectRatio: 'portrait', mediaUrl: null, mediaType: 'image', file: null, description: '' });
       setUploadProgress(0);
     } catch (err: any) {
       console.error('Error submitting post:', err);
@@ -372,6 +371,31 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   onChange={(e) => setDraft(prev => ({ ...prev, title: e.target.value }))}
                   placeholder="Dê um nome marcante..."
                   className="w-full h-14 px-6 bg-white/5 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-white/30 transition-all text-sm font-bold placeholder:text-white/10"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Descrição</label>
+                  <span className={`text-[9px] font-bold tabular-nums ${
+                    draft.description.trim().split(/\s+/).filter(Boolean).length >= MAX_DESCRIPTION_WORDS
+                      ? 'text-red-400'
+                      : 'text-white/20'
+                  }`}>
+                    {draft.description.trim().split(/\s+/).filter(Boolean).length}/{MAX_DESCRIPTION_WORDS} palavras
+                  </span>
+                </div>
+                <textarea
+                  value={draft.description}
+                  onChange={(e) => {
+                    const words = e.target.value.trim().split(/\s+/).filter(Boolean);
+                    if (words.length <= MAX_DESCRIPTION_WORDS || e.target.value.length < draft.description.length) {
+                      setDraft(prev => ({ ...prev, description: e.target.value }));
+                    }
+                  }}
+                  placeholder="Adicione uma descrição ou link... (opcional)"
+                  rows={3}
+                  className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-white/30 transition-all text-xs font-medium placeholder:text-white/10 resize-none leading-relaxed"
                 />
               </div>
             </div>
