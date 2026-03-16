@@ -458,6 +458,13 @@ export default function App() {
       if (!usersSnap.empty) {
         const data = usersSnap.docs[0].data();
         const firestoreUsername = data.username || cleanName;
+
+        // If user typed an old/wrong username, block login
+        if (firestoreUsername !== cleanName) {
+          await signOut(auth);
+          setLoginError('Usuário não encontrado.');
+          return;
+        }
         const firestorePhoto = data.profilePhotoUrl || null;
 
         setUsername(firestoreUsername);
