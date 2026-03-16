@@ -28,7 +28,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   isLiked,
   currentUserUid
 }) => {
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
   const [showPlayPause, setShowPlayPause] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
