@@ -38,9 +38,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     return () => { document.body.style.overflow = 'unset'; };
   }, []);
 
-  useEffect(() => {
-    setLocalIsLiked(isLiked);
-  }, [isLiked]);
+  useEffect(() => { setLocalIsLiked(isLiked); }, [isLiked]);
 
   useEffect(() => {
     if (!item.authorUid) return;
@@ -59,21 +57,18 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   }, [item.authorUid]);
 
   const spawnHearts = useCallback(() => {
-    const count = 6;
-    const newHearts: FloatingHeart[] = Array.from({ length: count }, (_, i) => ({
+    const newHearts: FloatingHeart[] = Array.from({ length: 7 }, (_, i) => ({
       id: Date.now() + i,
-      x: (Math.random() - 0.5) * 80,
+      x: (Math.random() - 0.5) * 60,
     }));
     setFloatingHearts(prev => [...prev, ...newHearts]);
     setTimeout(() => {
       setFloatingHearts(prev => prev.filter(h => !newHearts.find(nh => nh.id === h.id)));
-    }, 1000);
+    }, 1100);
   }, []);
 
   const handleLikeClick = () => {
-    if (!localIsLiked) {
-      spawnHearts();
-    }
+    if (!localIsLiked) spawnHearts();
     setHeartKey(k => k + 1);
     onLike(item.id);
     setLocalIsLiked(!localIsLiked);
@@ -86,148 +81,154 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/85 backdrop-blur-xl"
+      className="fixed inset-0 z-[100] flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
       onClick={onClose}
     >
+      {/* Floating card — constrained width, never touches edges */}
       <motion.div
-        initial={{ y: 80, opacity: 0, scale: 0.95 }}
+        initial={{ y: 40, opacity: 0, scale: 0.92 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
-        exit={{ y: 80, opacity: 0, scale: 0.95 }}
-        transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-        className="relative w-full sm:w-auto sm:min-w-[340px] sm:max-w-[420px] mx-auto"
-        style={{ maxHeight: '92vh' }}
+        exit={{ y: 40, opacity: 0, scale: 0.92 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
         onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(340px, calc(100vw - 48px))',
+          borderRadius: '2.2rem',
+          background: 'rgba(18,18,18,0.88)',
+          backdropFilter: 'blur(40px)',
+          WebkitBackdropFilter: 'blur(40px)',
+          border: '1px solid rgba(255,255,255,0.13)',
+          boxShadow: '0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05), inset 0 1px 0 rgba(255,255,255,0.08)',
+        }}
       >
-        {/* Outer glass card */}
-        <div
-          className="rounded-[2.2rem] sm:rounded-[2.5rem] overflow-hidden border border-white/15"
-          style={{
-            background: 'rgba(20,20,20,0.82)',
-            backdropFilter: 'blur(32px)',
-            WebkitBackdropFilter: 'blur(32px)',
-            boxShadow: '0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)',
-          }}
-        >
-          {/* Author row */}
-          <div className="flex items-center justify-between px-4 pt-4 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full overflow-hidden border border-white/15 bg-white/5 flex items-center justify-center shrink-0">
-                {authorPhoto ? (
-                  <img src={authorPhoto} alt={authorName} className="w-full h-full object-cover" />
-                ) : (
-                  <User size={14} className="text-white/40" />
-                )}
-              </div>
-              <span className="text-[13px] font-bold text-white/90 tracking-tight leading-none">
-                @{authorName}
-              </span>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center bg-white/8 hover:bg-white/15 rounded-full text-white/50 hover:text-white transition-all"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* Image card — separate bubble inside */}
-          <div className="px-3 pb-0">
+        {/* Author row */}
+        <div className="flex items-center justify-between px-4 pt-4 pb-2.5">
+          <div className="flex items-center gap-2.5">
             <div
-              className="relative overflow-hidden"
-              style={{
-                borderRadius: '1.5rem',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
-              }}
+              className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center shrink-0"
+              style={{ border: '1.5px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)' }}
             >
-              {item.type === 'video' ? (
-                <video
-                  src={item.url}
-                  className="w-full object-cover"
-                  style={{ maxHeight: '60vh', display: 'block' }}
-                  autoPlay
-                  loop
-                  muted={isMuted}
-                  playsInline
-                />
+              {authorPhoto ? (
+                <img src={authorPhoto} alt={authorName} className="w-full h-full object-cover" />
               ) : (
-                <img
-                  src={item.url}
-                  alt={item.title}
-                  className="w-full object-cover"
-                  style={{ maxHeight: '60vh', display: 'block' }}
-                  referrerPolicy="no-referrer"
-                />
-              )}
-              {item.type === 'video' && (
-                <button
-                  onClick={() => setIsMuted(!isMuted)}
-                  className="absolute bottom-3 right-3 p-2.5 bg-black/50 backdrop-blur-md rounded-full text-white/80 hover:text-white transition-all"
-                >
-                  {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                </button>
+                <User size={14} className="text-white/40" />
               )}
             </div>
+            <span className="text-[13px] font-semibold text-white/85 tracking-tight">
+              @{authorName}
+            </span>
           </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full text-white/40 hover:text-white transition-colors"
+            style={{ background: 'rgba(255,255,255,0.07)' }}
+          >
+            <X size={15} />
+          </button>
+        </div>
 
-          {/* Action row — only heart */}
-          <div className="flex items-center px-4 pt-3 pb-4 relative">
+        {/* Image — own inner card with rounded corners */}
+        <div className="px-3">
+          <div
+            className="relative overflow-hidden"
+            style={{
+              borderRadius: '1.6rem',
+              border: '1px solid rgba(255,255,255,0.09)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+            }}
+          >
+            {item.type === 'video' ? (
+              <video
+                src={item.url}
+                className="w-full block object-cover"
+                style={{ maxHeight: '48vh' }}
+                autoPlay
+                loop
+                muted={isMuted}
+                playsInline
+              />
+            ) : (
+              <img
+                src={item.url}
+                alt={item.title}
+                className="w-full block object-cover"
+                style={{ maxHeight: '48vh' }}
+                referrerPolicy="no-referrer"
+              />
+            )}
+            {item.type === 'video' && (
+              <button
+                onClick={() => setIsMuted(!isMuted)}
+                className="absolute bottom-3 right-3 p-2 rounded-full text-white/70 hover:text-white transition-all"
+                style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
+              >
+                {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom row: heart + title */}
+        <div className="flex items-center justify-between px-4 pt-3 pb-4">
+          {/* Heart */}
+          <div className="relative">
             {!isUserPost ? (
-              <div className="relative">
+              <>
                 <motion.button
                   key={heartKey}
                   onClick={handleLikeClick}
-                  className="flex items-center justify-center"
-                  whileTap={{ scale: 0.85 }}
+                  whileTap={{ scale: 0.8 }}
                   transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+                  className="flex items-center justify-center"
                 >
                   <motion.div
                     animate={
                       localIsLiked
-                        ? { scale: [1, 1.4, 1], rotate: [0, -10, 10, 0] }
+                        ? { scale: [1, 1.5, 0.9, 1.1, 1], rotate: [0, -8, 8, -4, 0] }
                         : { scale: 1 }
                     }
-                    transition={{ duration: 0.35, ease: 'easeOut' }}
+                    transition={{ duration: 0.4, ease: 'easeOut' }}
                   >
                     <Heart
-                      size={28}
+                      size={26}
                       fill={localIsLiked ? '#ef4444' : 'none'}
-                      className={`transition-colors duration-200 ${
-                        localIsLiked ? 'text-red-500' : 'text-white/60'
-                      }`}
-                      strokeWidth={localIsLiked ? 0 : 2}
+                      strokeWidth={localIsLiked ? 0 : 1.8}
+                      className={`transition-colors duration-150 ${localIsLiked ? 'text-red-500' : 'text-white/55'}`}
                     />
                   </motion.div>
                 </motion.button>
 
-                {/* Floating hearts animation */}
+                {/* Floating hearts */}
                 <AnimatePresence>
                   {floatingHearts.map((h) => (
                     <motion.div
                       key={h.id}
-                      initial={{ opacity: 1, y: 0, x: h.x, scale: 0.5 }}
-                      animate={{ opacity: 0, y: -70, x: h.x + (Math.random() - 0.5) * 30, scale: 1.2 }}
+                      initial={{ opacity: 1, y: 0, x: h.x * 0.3, scale: 0.4 }}
+                      animate={{ opacity: 0, y: -65, x: h.x, scale: 1.1 }}
                       exit={{ opacity: 0 }}
-                      transition={{ duration: 0.9, ease: 'easeOut' }}
-                      className="absolute bottom-0 left-3 pointer-events-none"
+                      transition={{ duration: 0.95, ease: [0.2, 0.8, 0.4, 1] }}
+                      className="absolute bottom-0 left-1.5 pointer-events-none"
                     >
-                      <Heart size={16} fill="#ef4444" className="text-red-500" />
+                      <Heart size={14} fill="#ef4444" className="text-red-500" />
                     </motion.div>
                   ))}
                 </AnimatePresence>
-              </div>
+              </>
             ) : (
               <div className="w-7 h-7" />
             )}
-
-            {/* Title bottom right */}
-            {item.title && (
-              <span className="ml-auto text-[11px] font-bold uppercase tracking-widest text-white/30 truncate max-w-[60%]">
-                {item.title}
-              </span>
-            )}
           </div>
+
+          {/* Title — always uppercase */}
+          {item.title && (
+            <span
+              className="text-[10px] font-bold tracking-widest text-white/35 truncate"
+              style={{ maxWidth: '60%', textTransform: 'uppercase' }}
+            >
+              {item.title}
+            </span>
+          )}
         </div>
       </motion.div>
     </motion.div>
