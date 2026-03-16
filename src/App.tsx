@@ -222,10 +222,53 @@ export default function App() {
     };
     testConnection();
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+    let resolvedUid: string | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        resolvedUid = user.uid;
         setupAuthListeners(user.uid);
+
+        // Always sync username and profile pic from Firestore on session restore
+        try {
+          const usersSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', user.uid)));
+          if (!usersSnap.empty) {
+            const data = usersSnap.docs[0].data();
+            const firestoreUsername = data.username || '';
+            let firestorePhoto = data.profilePhotoUrl || null;
+
+            if (firestoreUsername) {
+              setUsername(firestoreUsername);
+              localStorage.setItem('velvit_username', firestoreUsername);
+            }
+
+            // Fallback: if no photo in users doc, look for it in the user's posts
+            if (!firestorePhoto) {
+              try {
+                const postsSnap = await getDocs(query(
+                  collection(db, 'posts'),
+                  where('authorUid', '==', user.uid)
+                ));
+                const postWithPhoto = postsSnap.docs.find(d => d.data().authorPhotoUrl);
+                if (postWithPhoto) firestorePhoto = postWithPhoto.data().authorPhotoUrl;
+              } catch (_) {}
+            }
+
+            if (firestorePhoto) {
+              setProfilePic(firestorePhoto);
+              localStorage.setItem('velvit_profile_pic', firestorePhoto);
+            }
+          }
+        } catch (_) {}
+
+        // Re-filter user posts now that uid is known
+        setUserPosts(prev => {
+          const all = (window as any).__allFetchedPosts__ as ContentItem[] | undefined;
+          if (all) return all.filter((p: any) => p.authorUid === user.uid);
+          return prev;
+        });
       } else {
+        resolvedUid = null;
         setFollowingUids([]);
         setNotifications([]);
         unsubscribeFollowing();
@@ -246,6 +289,9 @@ export default function App() {
         return dateB - dateA;
       });
 
+      // Store all posts globally so auth callback can re-filter after uid resolves
+      (window as any).__allFetchedPosts__ = fetchedPosts;
+
       const visiblePosts = fetchedPosts.filter(p => !(p as any).archived);
       setGlobalPosts(visiblePosts);
       
@@ -254,8 +300,9 @@ export default function App() {
         .slice(0, 10);
       setTrendingPosts(trending);
 
-      if (auth.currentUser) {
-        setUserPosts(fetchedPosts.filter(p => (p as any).authorUid === auth.currentUser?.uid));
+      const uid = resolvedUid || auth.currentUser?.uid;
+      if (uid) {
+        setUserPosts(fetchedPosts.filter((p: any) => p.authorUid === uid));
       }
       
       setIsGeneratingFeed(false);
