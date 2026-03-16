@@ -143,19 +143,27 @@ const GlassCard: React.FC<GlassCardProps> = ({
             </div>
           )}
 
-          {item.type === 'video' ? (
-            <div className="relative w-full overflow-hidden" style={{ minHeight: '200px' }}>
-              <video
-                ref={videoRef}
-                src={item.url}
-                loop
-                muted={isMuted}
-                playsInline
-                autoPlay
-                onLoadedData={() => setIsLoaded(true)}
-                className={`w-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-                style={{ maxHeight: item.height ? `${item.height}px` : 'none' }}
-              />
+          {item.type === 'video' || item.type === 'gif' ? (
+            <div className="relative w-full overflow-hidden" style={{ aspectRatio: '9/16', minHeight: '200px' }}>
+              {item.type === 'video' ? (
+                <video
+                  ref={videoRef}
+                  src={item.url}
+                  loop
+                  muted={isMuted}
+                  playsInline
+                  autoPlay
+                  onLoadedData={() => setIsLoaded(true)}
+                  className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                />
+              ) : (
+                <img
+                  src={item.url}
+                  alt={item.title}
+                  onLoad={() => setIsLoaded(true)}
+                  className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                />
+              )}
               <div className="absolute top-4 left-4 p-2 bg-black/40 backdrop-blur-md rounded-xl text-white/70">
                 <Film size={14} />
               </div>
@@ -169,7 +177,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   <Trash2 size={16} />
                 </button>
               )}
-              {isHovered && (
+              {isHovered && item.type === 'video' && (
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
@@ -196,7 +204,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
             />
           )}
 
-          {isUserPost && onDelete && item.type !== 'video' && (
+          {isUserPost && onDelete && item.type === 'image' && (
             <button 
               onClick={handleDeleteClick}
               className={`absolute top-4 right-4 p-2.5 backdrop-blur-xl rounded-2xl text-white transition-all z-20 ${
