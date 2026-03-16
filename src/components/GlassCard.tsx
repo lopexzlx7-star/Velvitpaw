@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  Heart, Bookmark, UserPlus, UserMinus, Trash2, 
-  Film, Volume2, VolumeX, Share2, Download, ExternalLink,
+  Heart, Bookmark, UserPlus, Trash2, 
+  Volume2, VolumeX, Share2,
   UserCheck
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
@@ -80,6 +80,56 @@ function highlightText(text: string, query: string): React.ReactNode {
   return text;
 }
 
+// ---------------------------------------------------------------------------
+// Module-level video registry — coordinates playback across all GlassCard instances
+// ---------------------------------------------------------------------------
+interface VideoEntry {
+  id: string;
+  el: HTMLVideoElement;
+}
+
+let registry: VideoEntry[] = [];
+let activeId: string | null = null;
+
+function registerVideo(id: string, el: HTMLVideoElement) {
+  if (!registry.find(v => v.id === id)) {
+    registry.push({ id, el });
+  }
+  // If nothing is playing yet, start this one
+  if (activeId === null) {
+    triggerPlay(id);
+  }
+}
+
+function unregisterVideo(id: string) {
+  registry = registry.filter(v => v.id !== id);
+  if (activeId === id) {
+    activeId = null;
+  }
+}
+
+function triggerPlay(id: string) {
+  registry.forEach(v => {
+    if (v.id !== id) {
+      v.el.pause();
+      v.el.currentTime = 0;
+    }
+  });
+  const target = registry.find(v => v.id === id);
+  if (target) {
+    activeId = id;
+    target.el.play().catch(() => {});
+  }
+}
+
+function advanceToNext(finishedId: string) {
+  const idx = registry.findIndex(v => v.id === finishedId);
+  if (idx === -1) return;
+  const nextEntry = registry[idx + 1] ?? registry[0];
+  if (nextEntry) triggerPlay(nextEntry.id);
+}
+// ---------------------------------------------------------------------------
+
 const GlassCard: React.FC<GlassCardProps> = ({ 
   item, 
   isLiked, 
@@ -94,7 +144,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
   searchQuery = ''
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
-  const [showHeartAnim, setShowHeartAnim] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -115,8 +164,13 @@ const GlassCard: React.FC<GlassCardProps> = ({
   };
 
   useEffect(() => {
-    // Video is now autoPlay for preview
-  }, [isHovered]);
+    if (item.type !== 'video') return;
+    const el = videoRef.current;
+    if (!el) return;
+
+    registerVideo(item.id, el);
+    return () => { unregisterVideo(item.id); };
+  }, [item.id, item.type]);
 
   return (
     <motion.div
@@ -149,11 +203,10 @@ const GlassCard: React.FC<GlassCardProps> = ({
                 <video
                   ref={videoRef}
                   src={item.url}
-                  loop
                   muted={isMuted}
                   playsInline
-                  autoPlay
                   onLoadedData={() => setIsLoaded(true)}
+                  onEnded={() => advanceToNext(item.id)}
                   className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 />
               ) : (
@@ -164,9 +217,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 />
               )}
-              <div className="absolute top-4 left-4 p-2 bg-black/40 backdrop-blur-md rounded-xl text-white/70">
-                <Film size={14} />
-              </div>
               {isUserPost && onDelete && (
                 <button 
                   onClick={handleDeleteClick}
