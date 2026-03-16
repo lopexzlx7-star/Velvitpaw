@@ -41,6 +41,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -68,6 +69,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const processFile = (file: File) => {
     setError(null);
+    setPreviewFailed(false);
     const isVideo = file.type.startsWith('video/');
     const isGif = file.type === 'image/gif';
 
@@ -80,14 +82,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       const blobUrl = URL.createObjectURL(file);
       objectUrlRef.current = blobUrl;
 
-      const videoEl = document.createElement('video');
-      videoEl.preload = 'metadata';
-      videoEl.onloadedmetadata = () => {
-        const dur = videoEl.duration;
-        if (!isFinite(dur) || dur > MAX_VIDEO_DURATION) {
+      const setVideoWithDuration = (dur: number) => {
+        if (isFinite(dur) && dur > MAX_VIDEO_DURATION) {
           URL.revokeObjectURL(blobUrl);
           objectUrlRef.current = null;
-          setError(isFinite(dur) ? `Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION} segundos.` : 'Não foi possível ler a duração do vídeo.');
+          setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION} segundos.`);
           return;
         }
         setDraft(prev => ({
@@ -96,15 +95,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           mediaUrl: blobUrl,
           mediaType: 'video',
           aspectRatio: 'portrait',
-          duration: Math.round(dur),
+          duration: isFinite(dur) ? Math.round(dur) : 0,
           title: prev.title || file.name.split('.')[0]
         }));
       };
-      videoEl.onerror = () => {
-        URL.revokeObjectURL(blobUrl);
-        objectUrlRef.current = null;
-        setError('Não foi possível carregar o vídeo. Verifique o formato.');
-      };
+
+      const videoEl = document.createElement('video');
+      videoEl.preload = 'metadata';
+      videoEl.onloadedmetadata = () => setVideoWithDuration(videoEl.duration);
+      videoEl.onerror = () => setVideoWithDuration(0);
       videoEl.src = blobUrl;
       return;
     }
@@ -307,16 +306,27 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   className={`relative w-full overflow-hidden rounded-[2rem] border border-white/10 bg-black/50 transition-all duration-500 ${getAspectClass()}`}
                 >
                   {draft.mediaType === 'video' ? (
-                    <video
-                      ref={previewVideoRef}
-                      src={draft.mediaUrl}
-                      className="w-full h-full object-cover"
-                      autoPlay loop muted playsInline
-                    />
+                    previewFailed ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-black/60">
+                        <Film size={32} className="text-white/30" />
+                        <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold text-center px-4">
+                          Preview indisponível<br />
+                          <span className="text-white/20">O vídeo será publicado normalmente</span>
+                        </p>
+                      </div>
+                    ) : (
+                      <video
+                        ref={previewVideoRef}
+                        src={draft.mediaUrl || undefined}
+                        className="w-full h-full object-cover"
+                        autoPlay loop muted playsInline
+                        onError={() => setPreviewFailed(true)}
+                      />
+                    )
                   ) : draft.mediaType === 'gif' ? (
-                    <img src={draft.mediaUrl} className="w-full h-full object-cover" alt="GIF preview" />
+                    <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="GIF preview" />
                   ) : (
-                    <img src={draft.mediaUrl} className="w-full h-full object-cover" alt="Preview" />
+                    <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="Preview" />
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
                   <button
