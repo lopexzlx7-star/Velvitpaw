@@ -167,9 +167,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         if (xhr.status === 200) {
           const data = JSON.parse(xhr.responseText);
           setUploadProgress(100);
-          resolve(data.secure_url);
+          const croppedUrl = data.secure_url.replace('/upload/', '/upload/c_fill,ar_9:16,g_auto/');
+          resolve(croppedUrl);
         } else {
-          reject(new Error('Falha no upload para Cloudinary.'));
+          const msg = xhr.responseText ? JSON.parse(xhr.responseText)?.error?.message : null;
+          reject(new Error(msg || 'Falha no upload para Cloudinary.'));
         }
       };
       xhr.onerror = () => reject(new Error('Erro de rede ao fazer upload.'));
@@ -357,14 +359,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 </div>
               )}
 
-              {isMediaVideo && (
-                <div className="p-3 bg-white/5 rounded-2xl border border-white/10 flex items-center gap-3">
-                  <Film size={14} className="text-white/40 shrink-0" />
-                  <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">
-                    Formato <span className="text-white/70">Shorts (9:16)</span> aplicado automaticamente
-                  </p>
-                </div>
-              )}
 
               <div className="space-y-3">
                 <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Título</label>
