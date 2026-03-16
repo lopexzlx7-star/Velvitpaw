@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
 import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
-import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { GoogleGenAI } from "@google/genai";
 import { 
   doc, 
@@ -188,11 +188,19 @@ export default function App() {
   
   const aiRef = useRef<GoogleGenAI | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { scrollY } = useScroll({ container: scrollRef });
+  const scrollY = useMotionValue(0);
   const headerOpacity = useTransform(scrollY, [0, 50], [1, 0]);
   const headerScale = useTransform(scrollY, [0, 50], [1, 0.9]);
   const headerY = useTransform(scrollY, [0, 50], [0, -20]);
   const headerPointerEvents = useTransform(scrollY, [0, 50], ['auto', 'none']);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => scrollY.set(el.scrollTop);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  });
 
   useEffect(() => {
     const resetVersion = 'v2_total_reset';
