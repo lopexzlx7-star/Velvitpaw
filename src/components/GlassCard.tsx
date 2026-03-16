@@ -169,7 +169,26 @@ const GlassCard: React.FC<GlassCardProps> = ({
     if (!el) return;
 
     registerVideo(item.id, el);
-    return () => { unregisterVideo(item.id); };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            triggerPlay(item.id);
+          } else {
+            el.pause();
+            if (activeId === item.id) activeId = null;
+          }
+        });
+      },
+      { threshold: 0.5 }
+    );
+    observer.observe(el);
+
+    return () => {
+      observer.disconnect();
+      unregisterVideo(item.id);
+    };
   }, [item.id, item.type]);
 
   return (
@@ -205,6 +224,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   src={item.url}
                   muted={isMuted}
                   playsInline
+                  loop
+                  preload="auto"
                   onLoadedData={() => setIsLoaded(true)}
                   onEnded={() => advanceToNext(item.id)}
                   className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}

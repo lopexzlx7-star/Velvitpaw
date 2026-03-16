@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
@@ -42,6 +42,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -57,6 +58,17 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (draft.mediaType === 'video' && draft.mediaUrl && videoRef.current) {
+      const vid = videoRef.current;
+      vid.load();
+      const playPromise = vid.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {});
+      }
+    }
+  }, [draft.mediaUrl, draft.mediaType]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -293,12 +305,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 >
                   {isVideo ? (
                     <video
+                      key={draft.mediaUrl}
+                      ref={videoRef}
                       src={draft.mediaUrl || undefined}
                       className="w-full h-full object-cover"
                       autoPlay
                       muted
                       loop
                       playsInline
+                      preload="auto"
                     />
                   ) : (
                     <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="Preview" />
