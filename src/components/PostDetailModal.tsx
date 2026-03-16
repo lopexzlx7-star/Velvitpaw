@@ -169,10 +169,20 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Bottom row: heart + title */}
+        {/* Bottom row: title left + heart right */}
         <div className="flex items-center justify-between px-4 pt-3 pb-4">
-          {/* Heart */}
-          <div className="relative">
+          {/* Title — always uppercase, left side */}
+          {item.title && (
+            <span
+              className="text-[10px] font-bold tracking-widest text-white/35 truncate"
+              style={{ maxWidth: '60%', textTransform: 'uppercase' }}
+            >
+              {item.title}
+            </span>
+          )}
+
+          {/* Heart — right side */}
+          <div className="relative ml-auto">
             {!isUserPost ? (
               <>
                 <motion.button
@@ -208,7 +218,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       animate={{ opacity: 0, y: -65, x: h.x, scale: 1.1 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.95, ease: [0.2, 0.8, 0.4, 1] }}
-                      className="absolute bottom-0 left-1.5 pointer-events-none"
+                      className="absolute bottom-0 right-1.5 pointer-events-none"
                     >
                       <Heart size={14} fill="#ef4444" className="text-red-500" />
                     </motion.div>
@@ -219,16 +229,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
               <div className="w-7 h-7" />
             )}
           </div>
-
-          {/* Title — always uppercase */}
-          {item.title && (
-            <span
-              className="text-[10px] font-bold tracking-widest text-white/35 truncate"
-              style={{ maxWidth: '60%', textTransform: 'uppercase' }}
-            >
-              {item.title}
-            </span>
-          )}
         </div>
       </motion.div>
     </motion.div>
