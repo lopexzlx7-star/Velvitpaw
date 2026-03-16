@@ -1210,6 +1210,7 @@ export default function App() {
                         onDelete={handleDeletePost}
                         onClick={() => setSelectedPost(item)}
                         isUserPost={(item as any).authorUid === auth.currentUser?.uid}
+                        searchQuery={searchQuery}
                       />
                     ))
                   )}

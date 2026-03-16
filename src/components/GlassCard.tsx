@@ -19,6 +19,65 @@ interface GlassCardProps {
   onDelete?: (id: string) => void;
   onClick?: (item: ContentItem) => void;
   isUserPost?: boolean;
+  searchQuery?: string;
+}
+
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query.trim()) return text;
+
+  const q = query.trim();
+  const tLower = text.toLowerCase();
+  const qLower = q.toLowerCase();
+
+  if (tLower.includes(qLower)) {
+    const idx = tLower.indexOf(qLower);
+    return (
+      <>
+        {text.slice(0, idx)}
+        <span className="text-green-400 font-black">{text.slice(idx, idx + q.length)}</span>
+        {text.slice(idx + q.length)}
+      </>
+    );
+  }
+
+  const tokens = qLower.split(/\s+/).filter(Boolean);
+  if (tokens.length > 1) {
+    const parts: React.ReactNode[] = [];
+    let remaining = text;
+    let remainingLower = tLower;
+    let offset = 0;
+
+    for (const token of tokens) {
+      const idx = remainingLower.indexOf(token);
+      if (idx === -1) continue;
+      if (idx > 0) parts.push(remaining.slice(0, idx));
+      parts.push(
+        <span key={offset + idx} className="text-green-400 font-black">
+          {remaining.slice(idx, idx + token.length)}
+        </span>
+      );
+      remaining = remaining.slice(idx + token.length);
+      remainingLower = remainingLower.slice(idx + token.length);
+      offset += idx + token.length;
+    }
+    if (remaining) parts.push(remaining);
+    if (parts.length > 0) return <>{parts}</>;
+  }
+
+  const chars = qLower.replace(/\s/g, '');
+  const result: React.ReactNode[] = [];
+  let ci = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (ci < chars.length && text[i].toLowerCase() === chars[ci]) {
+      result.push(<span key={i} className="text-green-400 font-black">{text[i]}</span>);
+      ci++;
+    } else {
+      result.push(text[i]);
+    }
+  }
+  if (ci === chars.length) return <>{result}</>;
+
+  return text;
 }
 
 const GlassCard: React.FC<GlassCardProps> = ({ 
@@ -31,7 +90,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
   onFollow, 
   onDelete, 
   onClick,
-  isUserPost 
+  isUserPost,
+  searchQuery = ''
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [showHeartAnim, setShowHeartAnim] = useState(false);
@@ -187,7 +247,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
       <div className="mt-3 px-2 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <h3 className="text-[11px] font-black text-white uppercase tracking-wider truncate group-hover:text-white/80 transition-colors">
-            {item.title}
+            {highlightText(item.title, searchQuery)}
           </h3>
         </div>
         <button
