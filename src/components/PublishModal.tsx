@@ -43,12 +43,22 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'unset';
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -66,45 +76,55 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         setError('Vídeo muito grande. Máximo 100MB.');
         return;
       }
-      const tempUrl = URL.createObjectURL(file);
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      const blobUrl = URL.createObjectURL(file);
+      objectUrlRef.current = blobUrl;
+
       const videoEl = document.createElement('video');
       videoEl.preload = 'metadata';
       videoEl.onloadedmetadata = () => {
         const dur = videoEl.duration;
-        URL.revokeObjectURL(tempUrl);
-        if (dur > MAX_VIDEO_DURATION) {
-          setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION} segundos.`);
+        if (!isFinite(dur) || dur > MAX_VIDEO_DURATION) {
+          URL.revokeObjectURL(blobUrl);
+          objectUrlRef.current = null;
+          setError(isFinite(dur) ? `Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION} segundos.` : 'Não foi possível ler a duração do vídeo.');
           return;
         }
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setDraft(prev => ({
-            ...prev, file,
-            mediaUrl: ev.target?.result as string,
-            mediaType: 'video',
-            aspectRatio: 'portrait',
-            duration: Math.round(dur),
-            title: prev.title || file.name.split('.')[0]
-          }));
-        };
-        reader.readAsDataURL(file);
+        setDraft(prev => ({
+          ...prev,
+          file,
+          mediaUrl: blobUrl,
+          mediaType: 'video',
+          aspectRatio: 'portrait',
+          duration: Math.round(dur),
+          title: prev.title || file.name.split('.')[0]
+        }));
       };
-      videoEl.src = tempUrl;
+      videoEl.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        objectUrlRef.current = null;
+        setError('Não foi possível carregar o vídeo. Verifique o formato.');
+      };
+      videoEl.src = blobUrl;
+      return;
+    }
+
+    if (isGif) {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      const blobUrl = URL.createObjectURL(file);
+      objectUrlRef.current = blobUrl;
+      setDraft(prev => ({
+        ...prev, file, mediaUrl: blobUrl,
+        mediaType: 'gif',
+        aspectRatio: 'portrait',
+        title: prev.title || file.name.split('.')[0]
+      }));
       return;
     }
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const mediaUrl = event.target?.result as string;
-      if (isGif) {
-        setDraft(prev => ({
-          ...prev, file, mediaUrl,
-          mediaType: 'gif',
-          aspectRatio: 'portrait',
-          title: prev.title || file.name.split('.')[0]
-        }));
-        return;
-      }
       const img = new Image();
       img.src = mediaUrl;
       img.onload = () => {
@@ -187,6 +207,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       };
 
       await addDoc(collection(db, 'posts'), postData);
+      if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
       onSuccess();
       onClose();
       setDraft({ title: '', aspectRatio: 'portrait', mediaUrl: null, mediaType: 'image', file: null });
@@ -297,7 +318,10 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
                   <button
-                    onClick={() => setDraft(prev => ({ ...prev, mediaUrl: null, file: null, cloudinaryUrl: undefined }))}
+                    onClick={() => {
+                      if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
+                      setDraft(prev => ({ ...prev, mediaUrl: null, file: null }));
+                    }}
                     className="absolute top-4 right-4 p-3 bg-black/50 backdrop-blur-xl rounded-2xl text-white hover:bg-red-500 transition-all border border-white/10"
                   >
                     <X size={16} />
