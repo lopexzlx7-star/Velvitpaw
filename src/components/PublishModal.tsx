@@ -4,8 +4,9 @@ import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
   Maximize2, Square, Smartphone, Plus, Film, CheckCircle2
 } from 'lucide-react';
-import { db, auth } from '../firebase';
+import { db, auth, storage } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 interface PublishModalProps {
   isOpen: boolean;
@@ -26,8 +27,6 @@ interface Draft {
 }
 
 const MAX_VIDEO_DURATION = 60;
-const CLOUDINARY_CLOUD = process.env.CLOUDINARY_CLOUD_NAME || '';
-const CLOUDINARY_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET || '';
 
 const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [draft, setDraft] = useState<Draft>({
@@ -101,7 +100,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setError(null);
     setVideoThumbnail(null);
     const isVideo = file.type.startsWith('video/');
-    const isGif = file.type === 'image/gif';
+    const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
 
     if (isVideo) {
       if (file.size > 100 * 1024 * 1024) {
@@ -180,33 +179,26 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     reader.readAsDataURL(file);
   };
 
-  const uploadToCloudinary = async (file: File): Promise<string> => {
-    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) {
-      throw new Error('Cloudinary não configurado. Adicione CLOUDINARY_CLOUD_NAME e CLOUDINARY_UPLOAD_PRESET.');
-    }
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_PRESET);
+  const uploadToStorage = (file: File): Promise<string> => {
+    const ext = file.name.split('.').pop() || 'bin';
+    const path = `posts/${auth.currentUser!.uid}/${Date.now()}.${ext}`;
+    const storageRef = ref(storage, path);
+    const task = uploadBytesResumable(storageRef, file);
 
     return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`);
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 90));
-      };
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const data = JSON.parse(xhr.responseText);
+      task.on(
+        'state_changed',
+        (snap) => {
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 90);
+          setUploadProgress(pct);
+        },
+        (err) => reject(new Error(err.message || 'Erro ao fazer upload.')),
+        async () => {
           setUploadProgress(100);
-          const croppedUrl = data.secure_url.replace('/upload/', '/upload/c_fill,ar_9:16,g_auto/');
-          resolve(croppedUrl);
-        } else {
-          const msg = xhr.responseText ? JSON.parse(xhr.responseText)?.error?.message : null;
-          reject(new Error(msg || 'Falha no upload para Cloudinary.'));
+          const url = await getDownloadURL(task.snapshot.ref);
+          resolve(url);
         }
-      };
-      xhr.onerror = () => reject(new Error('Erro de rede ao fazer upload.'));
-      xhr.send(formData);
+      );
     });
   };
 
@@ -220,7 +212,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       let finalUrl = draft.mediaUrl;
 
       if (draft.mediaType === 'video' || draft.mediaType === 'gif') {
-        finalUrl = await uploadToCloudinary(draft.file);
+        finalUrl = await uploadToStorage(draft.file);
       }
 
       const postData = {
