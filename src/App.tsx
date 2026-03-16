@@ -296,11 +296,6 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setItems(globalPosts);
-    }
-  }, [globalPosts, searchQuery]);
 
   useEffect(() => {
     const existingPostIds = new Set(globalPosts.map(p => p.id));
@@ -787,33 +782,71 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  const handleSearch = async (query: string) => {
-    if (!query.trim()) return;
-    setLoading(true);
-    setError(null);
-    setShowHistory(false);
-    
-    setSearchHistory(prev => {
-      const newHistory = [query, ...prev.filter(q => q !== query)].slice(0, 4);
-      localStorage.setItem('velvit_search_history', JSON.stringify(newHistory));
-      return newHistory;
-    });
-    
-    try {
-      const matchingGlobalPosts = globalPosts.filter(post => 
-        post.title.toLowerCase().includes(query.toLowerCase()) ||
-        query.toLowerCase().includes(post.title.toLowerCase())
-      );
+  const fuzzyScore = (text: string, query: string): number => {
+    const t = text.toLowerCase().trim();
+    const q = query.toLowerCase().trim();
+    if (!q || !t) return 0;
 
-      setItems(matchingGlobalPosts);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to fetch content. Please try again.");
-      setItems([]);
-    } finally {
-      setLoading(false);
+    if (t === q) return 100;
+    if (t.startsWith(q)) return 90;
+    if (t.includes(q)) return 80;
+
+    const tokens = q.split(/\s+/).filter(Boolean);
+    if (tokens.length > 1) {
+      const matched = tokens.filter(tok => t.includes(tok));
+      if (matched.length === tokens.length) return 70;
+      if (matched.length > 0) return 40 + Math.round((matched.length / tokens.length) * 25);
     }
+
+    const chars = q.replace(/\s/g, '');
+    let ci = 0;
+    for (let i = 0; i < t.length && ci < chars.length; i++) {
+      if (t[i] === chars[ci]) ci++;
+    }
+    if (ci === chars.length) return 15;
+
+    return 0;
   };
+
+  const runSearch = (query: string, saveHistory = false) => {
+    const q = query.trim();
+    if (!q) {
+      setItems(globalPosts);
+      return;
+    }
+
+    if (saveHistory) {
+      setSearchHistory(prev => {
+        const newHistory = [q, ...prev.filter(h => h !== q)].slice(0, 4);
+        localStorage.setItem('velvit_search_history', JSON.stringify(newHistory));
+        return newHistory;
+      });
+    }
+
+    const scored = globalPosts
+      .map(post => {
+        const titleScore = fuzzyScore(post.title, q);
+        const authorScore = fuzzyScore(post.authorName || '', q);
+        return { post, score: Math.max(titleScore, authorScore) };
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ post }) => post);
+
+    setItems(scored);
+  };
+
+  const handleSearch = (query: string) => {
+    setShowHistory(false);
+    runSearch(query, true);
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      runSearch(searchQuery);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [searchQuery, globalPosts]);
 
   if (!isLoggedIn) {
     return (
@@ -1008,7 +1041,10 @@ export default function App() {
                           type="text"
                           placeholder="Pesquisar..."
                           value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            if (e.target.value.trim()) setShowHistory(false);
+                          }}
                           onFocus={() => setShowHistory(true)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
