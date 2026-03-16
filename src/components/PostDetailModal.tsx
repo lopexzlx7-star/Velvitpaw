@@ -77,7 +77,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         if (!snap.empty) {
           const data = snap.docs[0].data();
           setAuthorName(data.username || item.authorName || '');
-          setAuthorPhoto(data.profilePhotoUrl || null);
+          setAuthorPhoto(data.profilePhotoUrl || item.authorPhotoUrl || null);
         }
       } catch {}
     };

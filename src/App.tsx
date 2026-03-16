@@ -694,11 +694,21 @@ export default function App() {
       const oldUserDoc = await getDoc(oldUserRef);
       const oldData = oldUserDoc.exists() ? oldUserDoc.data() : {};
 
-      await setDoc(newUserRef, { ...oldData, username: cleanName });
-      await deleteDoc(oldUserRef);
+      await setDoc(newUserRef, {
+        username: cleanName,
+        uid: auth.currentUser.uid,
+        createdAt: oldData.createdAt || new Date().toISOString(),
+        ...(oldData.profilePhotoUrl ? { profilePhotoUrl: oldData.profilePhotoUrl } : {}),
+      });
 
+      try { await deleteDoc(oldUserRef); } catch (_) {}
+
+      const currentPhoto = profilePic || null;
       const postsSnap = await getDocs(query(collection(db, 'posts'), where('authorUid', '==', auth.currentUser.uid)));
-      await Promise.all(postsSnap.docs.map(d => updateDoc(d.ref, { authorName: cleanName })));
+      await Promise.all(postsSnap.docs.map(d => updateDoc(d.ref, {
+        authorName: cleanName,
+        ...(currentPhoto ? { authorPhotoUrl: currentPhoto } : {}),
+      })));
 
       setUsername(cleanName);
       localStorage.setItem('velvit_username', cleanName);
@@ -755,9 +765,11 @@ export default function App() {
     localStorage.setItem('velvit_profile_pic', url);
     if (auth.currentUser && username) {
       try {
-        await updateDoc(doc(db, 'users', username), { profilePhotoUrl: url });
         const postsSnap = await getDocs(query(collection(db, 'posts'), where('authorUid', '==', auth.currentUser.uid)));
         await Promise.all(postsSnap.docs.map(d => updateDoc(d.ref, { authorPhotoUrl: url })));
+        try {
+          await updateDoc(doc(db, 'users', username), { profilePhotoUrl: url });
+        } catch (_) {}
       } catch (err) {
         console.error('Error saving profile pic to Firestore:', err);
       }

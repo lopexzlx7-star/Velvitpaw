@@ -1,14 +1,13 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper Functions
     function isAuthenticated() {
       return request.auth != null;
     }
     
     function isValidUser(data) {
       return data.keys().hasAll(['username', 'createdAt', 'uid']) &&
-             data.keys().hasOnly(['username', 'createdAt', 'uid', 'lastLogin']) &&
+             data.keys().hasOnly(['username', 'createdAt', 'uid', 'lastLogin', 'profilePhotoUrl']) &&
              data.username is string && 
              data.username.size() >= 3 && 
              data.username.size() <= 20 &&
@@ -53,9 +52,10 @@ service cloud.firestore {
 
     match /users/{username} {
       allow get: if true;
-      allow create: if isValidUser(request.resource.data) && username == request.resource.data.username;
+      allow list: if true;
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && username == request.resource.data.username;
       allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && isValidUser(request.resource.data);
-      allow delete: if false;
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
     }
     
     match /posts/{postId} {
@@ -83,7 +83,7 @@ service cloud.firestore {
 
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && resource.data.recipientUid == request.auth.uid;
-      allow create: if false; // Only created via backend/system logic (simulated here)
+      allow create: if false;
       allow update: if isAuthenticated() && resource.data.recipientUid == request.auth.uid && 
                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isAuthenticated() && resource.data.recipientUid == request.auth.uid;
