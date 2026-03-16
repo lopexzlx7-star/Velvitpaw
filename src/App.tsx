@@ -452,34 +452,57 @@ export default function App() {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
-      
-      const userDoc = await getDoc(doc(db, 'users', cleanName));
-      if (!userDoc.exists()) {
+
+      // Fetch authoritative user data from Firestore by UID (not by typed username)
+      const usersSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', uid)));
+      if (!usersSnap.empty) {
+        const data = usersSnap.docs[0].data();
+        const firestoreUsername = data.username || cleanName;
+        const firestorePhoto = data.profilePhotoUrl || null;
+
+        setUsername(firestoreUsername);
+        localStorage.setItem('velvit_username', firestoreUsername);
+
+        if (firestorePhoto) {
+          setProfilePic(firestorePhoto);
+          localStorage.setItem('velvit_profile_pic', firestorePhoto);
+        } else {
+          // Fallback: try to get photo from user's posts
+          try {
+            const postsSnap = await getDocs(query(collection(db, 'posts'), where('authorUid', '==', uid)));
+            const postWithPhoto = postsSnap.docs.find(d => d.data().authorPhotoUrl);
+            const photo = postWithPhoto?.data().authorPhotoUrl || null;
+            if (photo) {
+              setProfilePic(photo);
+              localStorage.setItem('velvit_profile_pic', photo);
+            } else {
+              setProfilePic(null);
+              localStorage.removeItem('velvit_profile_pic');
+            }
+          } catch (_) {
+            setProfilePic(null);
+            localStorage.removeItem('velvit_profile_pic');
+          }
+        }
+
+        // Update lastLogin in the correct doc
+        try {
+          await updateDoc(usersSnap.docs[0].ref, { lastLogin: serverTimestamp() });
+        } catch (_) {}
+      } else {
+        // First login ever or doc missing — create with typed name
         await setDoc(doc(db, 'users', cleanName), {
           username: cleanName,
           uid: uid,
-          profilePhotoUrl: null,
           createdAt: serverTimestamp()
         });
+        setUsername(cleanName);
+        localStorage.setItem('velvit_username', cleanName);
         setProfilePic(null);
         localStorage.removeItem('velvit_profile_pic');
-      } else {
-        await updateDoc(doc(db, 'users', cleanName), {
-          uid: uid,
-          lastLogin: serverTimestamp()
-        });
-        const savedPhoto = userDoc.data().profilePhotoUrl || null;
-        setProfilePic(savedPhoto);
-        if (savedPhoto) {
-          localStorage.setItem('velvit_profile_pic', savedPhoto);
-        } else {
-          localStorage.removeItem('velvit_profile_pic');
-        }
       }
-      
-      setUsername(cleanName);
+
       setIsLoggedIn(true);
-      localStorage.setItem('velvit_username', cleanName);
     } catch (err: any) {
       let displayError = "Usuário ou senha incorretos.";
       
