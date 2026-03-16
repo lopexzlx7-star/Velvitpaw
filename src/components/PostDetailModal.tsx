@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Volume2, VolumeX, Heart, User } from 'lucide-react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
 
@@ -41,20 +41,19 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   useEffect(() => { setLocalIsLiked(isLiked); }, [isLiked]);
 
   useEffect(() => {
-    if (!item.authorUid) return;
+    if (!item.authorName) return;
     const fetchAuthor = async () => {
       try {
-        const q = query(collection(db, 'users'), where('uid', '==', item.authorUid));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          const data = snap.docs[0].data();
+        const snap = await getDoc(doc(db, 'users', item.authorName));
+        if (snap.exists()) {
+          const data = snap.data();
           setAuthorName(data.username || item.authorName || '');
           setAuthorPhoto(data.profilePhotoUrl || null);
         }
       } catch {}
     };
     fetchAuthor();
-  }, [item.authorUid]);
+  }, [item.authorName]);
 
   const spawnHearts = useCallback(() => {
     const newHearts: FloatingHeart[] = Array.from({ length: 7 }, (_, i) => ({
@@ -181,53 +180,54 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
             </span>
           )}
 
-          {/* Heart — right side */}
+          {/* Heart — right side, always visible */}
           <div className="relative ml-auto">
-            {!isUserPost ? (
-              <>
-                <motion.button
-                  key={heartKey}
-                  onClick={handleLikeClick}
-                  whileTap={{ scale: 0.8 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 15 }}
-                  className="flex items-center justify-center"
-                >
-                  <motion.div
-                    animate={
-                      localIsLiked
-                        ? { scale: [1, 1.5, 0.9, 1.1, 1], rotate: [0, -8, 8, -4, 0] }
-                        : { scale: 1 }
-                    }
-                    transition={{ duration: 0.4, ease: 'easeOut' }}
-                  >
-                    <Heart
-                      size={26}
-                      fill={localIsLiked ? '#ef4444' : 'none'}
-                      strokeWidth={localIsLiked ? 0 : 1.8}
-                      className={`transition-colors duration-150 ${localIsLiked ? 'text-red-500' : 'text-white/55'}`}
-                    />
-                  </motion.div>
-                </motion.button>
+            <motion.button
+              key={heartKey}
+              onClick={isUserPost ? undefined : handleLikeClick}
+              whileTap={isUserPost ? {} : { scale: 0.8 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+              className="flex items-center justify-center"
+              style={{ cursor: isUserPost ? 'default' : 'pointer' }}
+            >
+              <motion.div
+                animate={
+                  localIsLiked && !isUserPost
+                    ? { scale: [1, 1.5, 0.9, 1.1, 1], rotate: [0, -8, 8, -4, 0] }
+                    : { scale: 1 }
+                }
+                transition={{ duration: 0.4, ease: 'easeOut' }}
+              >
+                <Heart
+                  size={26}
+                  fill={localIsLiked && !isUserPost ? '#ef4444' : 'none'}
+                  strokeWidth={localIsLiked && !isUserPost ? 0 : 1.8}
+                  className={`transition-colors duration-150 ${
+                    isUserPost
+                      ? 'text-white/20'
+                      : localIsLiked
+                        ? 'text-red-500'
+                        : 'text-white/55'
+                  }`}
+                />
+              </motion.div>
+            </motion.button>
 
-                {/* Floating hearts */}
-                <AnimatePresence>
-                  {floatingHearts.map((h) => (
-                    <motion.div
-                      key={h.id}
-                      initial={{ opacity: 1, y: 0, x: h.x * 0.3, scale: 0.4 }}
-                      animate={{ opacity: 0, y: -65, x: h.x, scale: 1.1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.95, ease: [0.2, 0.8, 0.4, 1] }}
-                      className="absolute bottom-0 right-1.5 pointer-events-none"
-                    >
-                      <Heart size={14} fill="#ef4444" className="text-red-500" />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </>
-            ) : (
-              <div className="w-7 h-7" />
-            )}
+            {/* Floating hearts */}
+            <AnimatePresence>
+              {floatingHearts.map((h) => (
+                <motion.div
+                  key={h.id}
+                  initial={{ opacity: 1, y: 0, x: h.x * 0.3, scale: 0.4 }}
+                  animate={{ opacity: 0, y: -65, x: h.x, scale: 1.1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.95, ease: [0.2, 0.8, 0.4, 1] }}
+                  className="absolute bottom-0 right-1.5 pointer-events-none"
+                >
+                  <Heart size={14} fill="#ef4444" className="text-red-500" />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         </div>
       </motion.div>
