@@ -144,6 +144,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
   searchQuery = ''
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -219,6 +220,11 @@ const GlassCard: React.FC<GlassCardProps> = ({
           {item.type === 'video' || item.type === 'gif' ? (
             <div className="relative w-full overflow-hidden" style={{ aspectRatio: '9/16', minHeight: '200px' }}>
               {item.type === 'video' ? (
+                videoError ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black/60">
+                    <span className="text-white/20 text-[9px] uppercase tracking-widest font-bold">Vídeo indisponível</span>
+                  </div>
+                ) : (
                 <video
                   ref={videoRef}
                   src={item.url}
@@ -228,8 +234,10 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   preload="auto"
                   onLoadedData={() => setIsLoaded(true)}
                   onEnded={() => advanceToNext(item.id)}
+                  onError={() => { setVideoError(true); setIsLoaded(true); unregisterVideo(item.id); }}
                   className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 />
+                )
               ) : (
                 <img
                   src={item.url}

@@ -167,7 +167,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const uploadVideo = (file: File, videoHeight: number, duration: number): Promise<string> => {
     const isHeavy = videoHeight > LIGHT_MAX_HEIGHT || duration > LIGHT_MAX_DURATION;
-    const timeoutMs = isHeavy ? 300000 : 120000;
 
     const formData = new FormData();
     formData.append('file', file);
@@ -190,11 +189,26 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           reject(new Error(msg));
         }
       };
-      xhr.onerror = () => reject(new Error('Erro de conexão. Verifique sua internet e tente novamente.'));
-      xhr.ontimeout = () => reject(new Error('Upload expirou. Tente com um vídeo menor ou conexão melhor.'));
-      xhr.timeout = timeoutMs;
+      xhr.onerror = () => reject(new Error('network_error'));
       xhr.send(formData);
     });
+  };
+
+  const uploadVideoWithRetry = async (file: File, videoHeight: number, duration: number, maxAttempts = 3): Promise<string> => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (attempt > 1) {
+          setUploadProgress(0);
+          await new Promise(r => setTimeout(r, 2000 * attempt));
+        }
+        return await uploadVideo(file, videoHeight, duration);
+      } catch (err: any) {
+        if (attempt === maxAttempts) throw err;
+        if (err?.message !== 'network_error') throw err;
+        console.warn(`[Upload] Tentativa ${attempt} falhou, tentando novamente...`);
+      }
+    }
+    throw new Error('Falha no upload após várias tentativas.');
   };
 
   const submitPost = async () => {
@@ -207,7 +221,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       let finalUrl = draft.mediaUrl;
 
       if (draft.mediaType === 'video') {
-        finalUrl = await uploadVideo(draft.file, draft.videoHeight ?? 0, draft.duration ?? 0);
+        finalUrl = await uploadVideoWithRetry(draft.file, draft.videoHeight ?? 0, draft.duration ?? 0);
       }
 
       const postData = {
@@ -333,6 +347,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                       loop
                       playsInline
                       preload="auto"
+                      onError={() => setError('Não foi possível carregar o vídeo. Tente outro arquivo.')}
                       onClick={(e) => {
                         const v = e.currentTarget;
                         v.paused ? v.play().catch(() => {}) : v.pause();

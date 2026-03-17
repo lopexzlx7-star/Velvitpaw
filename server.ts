@@ -7,6 +7,7 @@ const app = express();
 app.use(express.json());
 
 const PORT = 3001;
+const SERVER_TIMEOUT_MS = 10 * 60 * 1000;
 
 const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME ?? '';
 const UPLOAD_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET ?? '';
@@ -35,8 +36,26 @@ const imagekit = new ImageKit({
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 200 * 1024 * 1024 },
+  limits: { fileSize: 500 * 1024 * 1024 },
 });
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delayMs = 2000,
+  label = 'operation'
+): Promise<T> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (attempt === retries) throw err;
+      console.warn(`[${label}] Tentativa ${attempt} falhou: ${err?.message}. Tentando novamente em ${delayMs * attempt}ms...`);
+      await new Promise(r => setTimeout(r, delayMs * attempt));
+    }
+  }
+  throw new Error('Máximo de tentativas atingido');
+}
 
 app.post('/api/suggest-tags', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -66,6 +85,8 @@ app.post('/api/suggest-tags', async (req, res) => {
 });
 
 app.post('/api/upload', upload.single('file'), async (req, res) => {
+  res.setTimeout(SERVER_TIMEOUT_MS);
+
   if (!req.file) {
     return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
   }
@@ -73,58 +94,65 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   const provider = req.body?.provider ?? 'cloudinary';
   const isHeavy = provider === 'imagekit';
 
-  console.log(`[Upload] Arquivo: ${req.file.originalname}, Tamanho: ${(req.file.size / 1024 / 1024).toFixed(1)}MB, Rota: ${isHeavy ? 'ImageKit (pesado)' : 'Cloudinary (leve)'}`);
+  console.log(`[Upload] Arquivo: ${req.file.originalname}, Tamanho: ${(req.file.size / 1024 / 1024).toFixed(1)}MB, Rota: ${isHeavy ? 'ImageKit' : 'Cloudinary'}`);
 
   try {
     if (isHeavy) {
       if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
-        return res.status(500).json({ error: 'ImageKit não configurado para vídeos pesados.' });
+        return res.status(500).json({ error: 'Serviço de vídeos pesados não configurado.' });
       }
 
       const fileName = `${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      const response = await imagekit.upload({
-        file: req.file.buffer,
-        fileName,
-        folder: '/videos',
-        useUniqueFileName: true,
-      });
+      const fileBuffer = req.file.buffer;
+
+      const response = await withRetry(
+        () => imagekit.upload({ file: fileBuffer, fileName, folder: '/videos', useUniqueFileName: true }),
+        3, 2000, 'ImageKit'
+      );
 
       console.log(`[ImageKit] Upload concluído: ${response.url}`);
       return res.json({ url: response.url, provider: 'imagekit' });
+
     } else {
       if (!CLOUD_NAME || !UPLOAD_PRESET) {
-        return res.status(500).json({ error: 'Cloudinary não configurado para vídeos leves.' });
+        return res.status(500).json({ error: 'Serviço de vídeos leves não configurado.' });
       }
 
-      const form = new FormData();
-      const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
-      form.append('file', blob, req.file.originalname || 'upload');
-      form.append('upload_preset', UPLOAD_PRESET);
+      const fileBuffer = req.file.buffer;
+      const fileMimetype = req.file.mimetype;
+      const fileName = req.file.originalname || 'upload';
 
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
-        { method: 'POST', body: form }
-      );
+      const url = await withRetry(async () => {
+        const form = new FormData();
+        const blob = new Blob([fileBuffer], { type: fileMimetype });
+        form.append('file', blob, fileName);
+        form.append('upload_preset', UPLOAD_PRESET);
 
-      const data: any = await response.json();
+        const response = await fetch(
+          `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
+          { method: 'POST', body: form }
+        );
 
-      if (!response.ok) {
-        console.error('[Cloudinary]', data?.error?.message);
-        return res.status(500).json({ error: 'Falha no upload via Cloudinary.' });
-      }
+        const data: any = await response.json();
+        if (!response.ok) throw new Error(data?.error?.message || 'Cloudinary retornou erro');
+        return data.secure_url as string;
+      }, 3, 2000, 'Cloudinary');
 
-      console.log(`[Cloudinary] Upload concluído: ${data.secure_url}`);
-      return res.json({ url: data.secure_url, provider: 'cloudinary' });
+      console.log(`[Cloudinary] Upload concluído: ${url}`);
+      return res.json({ url, provider: 'cloudinary' });
     }
   } catch (err: any) {
-    console.error('[Upload]', err?.message);
-    res.status(500).json({ error: 'Erro ao enviar vídeo. Tente novamente.' });
+    console.error('[Upload] Falha após todas as tentativas:', err?.message);
+    res.status(500).json({ error: 'Falha no upload após várias tentativas. Tente novamente.' });
   }
 });
 
 const server = app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
 });
+
+server.timeout = SERVER_TIMEOUT_MS;
+server.keepAliveTimeout = SERVER_TIMEOUT_MS;
 
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
