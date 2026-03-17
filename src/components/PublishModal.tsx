@@ -84,10 +84,42 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       metaEl.preload = 'auto';
       metaEl.muted = true;
       metaEl.playsInline = true;
+      metaEl.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+      document.body.appendChild(metaEl);
 
-      let validated = false;
       let capturedDur = 0;
       let capturedH = 0;
+      let validationPassed = false;
+
+      const cleanup = () => {
+        if (metaEl.parentNode) metaEl.parentNode.removeChild(metaEl);
+      };
+
+      const extractFrame = () => {
+        const MAX_THUMB_W = 640;
+        const scale = Math.min(1, MAX_THUMB_W / metaEl.videoWidth);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(metaEl.videoWidth * scale);
+        canvas.height = Math.round(metaEl.videoHeight * scale);
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.drawImage(metaEl, 0, 0, canvas.width, canvas.height);
+        const thumbnail = canvas.toDataURL('image/jpeg', 0.85);
+
+        cleanup();
+        objectUrlRef.current = blobUrl;
+        setIsLoadingPreview(false);
+        setDraft(prev => ({
+          ...prev,
+          file,
+          mediaUrl: blobUrl,
+          mediaType: 'video',
+          videoThumbnail: thumbnail,
+          aspectRatio: 'portrait',
+          duration: isFinite(capturedDur) ? Math.round(capturedDur) : 0,
+          videoHeight: capturedH || 0,
+          title: prev.title || file.name.split('.')[0],
+        }));
+      };
 
       metaEl.onloadedmetadata = () => {
         capturedDur = metaEl.duration;
@@ -107,38 +139,16 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           return;
         }
 
-        validated = true;
-        metaEl.currentTime = Math.max(0.001, Math.min(0.5, capturedDur * 0.05));
+        validationPassed = true;
       };
 
-      metaEl.onseeked = () => {
-        if (!validated) return;
-
-        const MAX_THUMB_W = 640;
-        const scale = Math.min(1, MAX_THUMB_W / metaEl.videoWidth);
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(metaEl.videoWidth * scale);
-        canvas.height = Math.round(metaEl.videoHeight * scale);
-        const ctx = canvas.getContext('2d');
-        if (ctx) ctx.drawImage(metaEl, 0, 0, canvas.width, canvas.height);
-        const thumbnail = canvas.toDataURL('image/jpeg', 0.85);
-
-        objectUrlRef.current = blobUrl;
-        setIsLoadingPreview(false);
-        setDraft(prev => ({
-          ...prev,
-          file,
-          mediaUrl: blobUrl,
-          mediaType: 'video',
-          videoThumbnail: thumbnail,
-          aspectRatio: 'portrait',
-          duration: isFinite(capturedDur) ? Math.round(capturedDur) : 0,
-          videoHeight: capturedH || 0,
-          title: prev.title || file.name.split('.')[0],
-        }));
+      metaEl.onloadeddata = () => {
+        if (!validationPassed) return;
+        extractFrame();
       };
 
       metaEl.onerror = () => {
+        cleanup();
         setIsLoadingPreview(false);
         URL.revokeObjectURL(blobUrl);
         setError('Não foi possível ler o vídeo. Tente outro arquivo.');
@@ -361,9 +371,9 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                         className="w-full h-full object-cover"
                         alt="Preview do vídeo"
                       />
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center border border-white/20">
-                          <svg viewBox="0 0 24 24" fill="white" className="w-6 h-6 ml-1"><path d="M8 5v14l11-7z"/></svg>
+                      <div className="absolute top-3 left-3 pointer-events-none">
+                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-black/30 backdrop-blur-sm">
+                          <svg viewBox="0 0 24 24" fill="white" className="w-3 h-3 ml-0.5 opacity-60"><path d="M8 5v14l11-7z"/></svg>
                         </div>
                       </div>
                     </>
