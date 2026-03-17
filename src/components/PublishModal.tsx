@@ -27,6 +27,8 @@ interface Draft {
 
 const MAX_VIDEO_DURATION = 60;
 const MAX_DESCRIPTION_WORDS = 50;
+const LIGHT_VIDEO_LIMIT_MB = 50;
+const MAX_VIDEO_SIZE_MB = 150;
 
 const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [draft, setDraft] = useState<Draft>({
@@ -40,6 +42,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadProvider, setUploadProvider] = useState<'cloudinary' | 'imagekit' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -87,8 +90,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     const isVideo = file.type.startsWith('video/');
 
     if (isVideo) {
-      if (file.size > 100 * 1024 * 1024) {
-        setError('Vídeo muito grande. Máximo 100MB.');
+      if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+        setError(`Vídeo muito grande. Máximo ${MAX_VIDEO_SIZE_MB}MB.`);
         return;
       }
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
@@ -149,9 +152,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     reader.readAsDataURL(file);
   };
 
-  const uploadToCloudinary = (file: File): Promise<string> => {
+  const uploadVideo = (file: File): Promise<string> => {
+    const isHeavy = file.size > LIGHT_VIDEO_LIMIT_MB * 1024 * 1024;
+    setUploadProvider(isHeavy ? 'imagekit' : 'cloudinary');
+
     const formData = new FormData();
     formData.append('file', file);
+
+    const timeoutMs = isHeavy ? 300000 : 120000;
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -172,7 +180,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       };
       xhr.onerror = () => reject(new Error('Erro de conexão. Verifique sua internet e tente novamente.'));
       xhr.ontimeout = () => reject(new Error('Upload expirou. Tente com um vídeo menor ou conexão melhor.'));
-      xhr.timeout = 120000;
+      xhr.timeout = timeoutMs;
       xhr.send(formData);
     });
   };
@@ -187,7 +195,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       let finalUrl = draft.mediaUrl;
 
       if (draft.mediaType === 'video') {
-        finalUrl = await uploadToCloudinary(draft.file);
+        finalUrl = await uploadVideo(draft.file);
       }
 
       const postData = {
@@ -295,9 +303,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Pré-visualização</label>
-                  {isVideo && (
-                    <span className="flex items-center gap-1 text-[9px] uppercase tracking-widest text-green-400 font-black">
-                      <Film size={10} /> Vídeo · {draft.duration}s
+                  {isVideo && draft.file && (
+                    <span className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-black" style={{ color: draft.file.size > LIGHT_VIDEO_LIMIT_MB * 1024 * 1024 ? '#a78bfa' : '#4ade80' }}>
+                      <Film size={10} />
+                      {draft.file.size > LIGHT_VIDEO_LIMIT_MB * 1024 * 1024 ? 'Pesado · ImageKit' : 'Leve · Cloudinary'}
+                      {' · '}{draft.duration}s
                     </span>
                   )}
                 </div>
@@ -405,14 +415,21 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           {isSubmitting && uploadProgress > 0 && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">
-                  {uploadProgress < 100 ? 'Enviando mídia...' : 'Publicando...'}
+                <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold flex items-center gap-1.5">
+                  {uploadProgress < 100
+                    ? uploadProvider === 'imagekit'
+                      ? <><span style={{ color: '#a78bfa' }}>●</span> Enviando via ImageKit...</>
+                      : uploadProvider === 'cloudinary'
+                        ? <><span style={{ color: '#4ade80' }}>●</span> Enviando via Cloudinary...</>
+                        : 'Enviando mídia...'
+                    : 'Publicando...'}
                 </span>
                 <span className="text-[9px] text-white/40 font-bold">{uploadProgress}%</span>
               </div>
               <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
                 <motion.div
-                  className="h-full bg-white rounded-full"
+                  className="h-full rounded-full"
+                  style={{ background: uploadProvider === 'imagekit' ? '#a78bfa' : '#ffffff' }}
                   initial={{ width: 0 }}
                   animate={{ width: `${uploadProgress}%` }}
                   transition={{ ease: 'linear' }}
