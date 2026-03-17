@@ -78,6 +78,15 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
+});
+
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[ERRO] Porta ${PORT} ocupada. Tente reiniciar o servidor.`);
+    process.exit(1);
+  } else {
+    throw err;
+  }
 });
