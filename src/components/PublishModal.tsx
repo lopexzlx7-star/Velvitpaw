@@ -558,22 +558,18 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   {isVideo ? (
                     <>
                       {draft.videoThumbnail ? (
-                        /* Server-extracted frame (HEVC / black-frame fallback) */
                         <img
                           src={draft.videoThumbnail}
                           className="w-full h-full object-cover"
                           alt="Preview do vídeo"
                         />
                       ) : (
-                        /* Live video preview — works for any format the browser can decode */
-                        <video
-                          src={draft.mediaUrl || undefined}
-                          className="w-full h-full object-cover"
-                          autoPlay
-                          muted
-                          loop
-                          playsInline
-                        />
+                        <div className="w-full h-full bg-white/5 flex flex-col items-center justify-center gap-2">
+                          <Film size={36} className="text-white/20" />
+                          <p className="text-[9px] uppercase tracking-widest font-black text-white/20 text-center px-4">
+                            Preview indisponível<br/>O vídeo será enviado normalmente
+                          </p>
+                        </div>
                       )}
                       <div className="absolute top-3 left-3 pointer-events-none">
                         <div className="flex items-center justify-center w-6 h-6 rounded-full bg-black/30 backdrop-blur-sm">
