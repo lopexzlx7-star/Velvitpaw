@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, Mail } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { 
   doc, 
@@ -197,6 +197,7 @@ export default function App() {
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotSuccess, setForgotSuccess] = useState(false);
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
+  const [hasRecoveryEmail, setHasRecoveryEmail] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollY = useMotionValue(0);
@@ -253,6 +254,7 @@ export default function App() {
               setUsername(firestoreUsername);
               localStorage.setItem('velvit_username', firestoreUsername);
             }
+            setHasRecoveryEmail(!!data.recoveryEmail);
 
             // Fallback: if no photo in users doc, look for it in the user's posts
             if (!firestorePhoto) {
@@ -619,6 +621,7 @@ export default function App() {
       await updateDoc(doc(db, 'users', username), { recoveryEmail: recoveryEmail.trim() });
       setShowEmailPopup(false);
       setRecoveryEmail('');
+      setHasRecoveryEmail(true);
     } catch (err: any) {
       if (err.code === 'auth/email-already-in-use') {
         setEmailPopupError('Este e-mail já está em uso por outra conta.');
@@ -1481,7 +1484,17 @@ export default function App() {
               className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
             >
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
-                <div className="glass-panel p-8 rounded-3xl">
+                <div className="glass-panel p-8 rounded-3xl relative">
+                  {!hasRecoveryEmail && (
+                    <button
+                      onClick={() => { setShowEmailPopup(true); setEmailPopupError(null); setRecoveryEmail(''); }}
+                      title="Vincular e-mail de recuperação"
+                      className="absolute top-6 right-6 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[9px] uppercase tracking-widest text-white/40 hover:text-white transition-all"
+                    >
+                      <Mail size={11} />
+                      Sincronizar e-mail
+                    </button>
+                  )}
                   <div className="flex flex-col md:flex-row items-center gap-8 border-b border-white/10 pb-8 mb-8">
                     <div className="relative group">
                       <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white/10 group-hover:border-white/30 transition-all bg-white/5 flex items-center justify-center">

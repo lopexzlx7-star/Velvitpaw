@@ -307,32 +307,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Description */}
-        {item.description && (
-          <div className="px-4 pt-2 pb-1">
-            <p className="text-[9px] font-normal text-white/40 leading-relaxed lowercase break-words">
-              {item.description.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
-                /^https?:\/\//.test(part) ? (
-                  <a
-                    key={i}
-                    href={part}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-white/60 underline underline-offset-2 hover:text-white/80 transition-colors"
-                  >
-                    {part}
-                  </a>
-                ) : (
-                  <span key={i}>{part}</span>
-                )
-              )}
-            </p>
-          </div>
-        )}
-
-        {/* Bottom row */}
-        <div className="flex items-center justify-between px-4 pt-3 pb-4">
+        {/* Bottom row: title + like */}
+        <div className="flex items-center justify-between px-4 pt-3 pb-2">
           {item.title && (
             <span
               className="text-[10px] font-bold tracking-widest text-white/35 truncate"
@@ -381,6 +357,30 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Description — below title */}
+        {item.description && (
+          <div className="px-4 pb-4">
+            <p className="text-[9px] font-normal text-white/35 leading-relaxed lowercase break-words">
+              {item.description.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
+                /^https?:\/\//.test(part) ? (
+                  <a
+                    key={i}
+                    href={part}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-green-400 underline underline-offset-2 hover:text-green-300 transition-colors"
+                  >
+                    {part}
+                  </a>
+                ) : (
+                  <span key={i}>{part}</span>
+                )
+              )}
+            </p>
+          </div>
+        )}
       </motion.div>
     </motion.div>
   );

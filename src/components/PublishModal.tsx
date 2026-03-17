@@ -65,11 +65,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   useEffect(() => {
     if (draft.mediaType === 'video' && draft.mediaUrl && videoRef.current) {
       const vid = videoRef.current;
-      vid.load();
-      const playPromise = vid.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {});
-      }
+      vid.play().catch(() => {});
     }
   }, [draft.mediaUrl, draft.mediaType]);
 
@@ -318,6 +314,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                       loop
                       playsInline
                       preload="auto"
+                      onCanPlay={(e) => { (e.target as HTMLVideoElement).play().catch(() => {}); }}
                     />
                   ) : (
                     <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="Preview" />
