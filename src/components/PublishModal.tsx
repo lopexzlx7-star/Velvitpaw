@@ -119,7 +119,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       metaEl.preload = 'metadata';
       metaEl.muted = true;
       metaEl.playsInline = true;
-      metaEl.crossOrigin = 'anonymous';
       metaEl.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
       document.body.appendChild(metaEl);
 
@@ -245,11 +244,26 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         }, 300);
       };
 
+      // onerror fires when the browser can't decode the video (e.g. HEVC/H.265 from CapCut
+      // on Chrome/Firefox). The file is still valid — the server can handle it.
+      // Instead of blocking the user, proceed without a thumbnail or metadata.
       metaEl.onerror = () => {
+        if (thumbnailExtracted) return;
+        thumbnailExtracted = true;
         cleanup();
-        URL.revokeObjectURL(blobUrl);
+        objectUrlRef.current = blobUrl;
         setIsLoadingPreview(false);
-        setError('Não foi possível ler o vídeo. Tente outro arquivo ou formato (MP4, MOV, WebM).');
+        setDraft(prev => ({
+          ...prev,
+          file,
+          mediaUrl: blobUrl,
+          mediaType: 'video',
+          videoThumbnail: null,
+          aspectRatio: 'portrait',
+          duration: 0,
+          videoHeight: 0,
+          title: prev.title || file.name.split('.')[0],
+        }));
       };
 
       metaEl.src = blobUrl;
@@ -499,7 +513,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   <label className="text-[10px] uppercase tracking-[0.2em] text-white/30 font-black">Pré-visualização</label>
                   {isVideo && (
                     <span className="flex items-center gap-1 text-[9px] uppercase tracking-widest text-green-400 font-black">
-                      <Film size={10} /> Vídeo · {draft.duration}s
+                      <Film size={10} /> Vídeo{draft.duration ? ` · ${draft.duration}s` : ''}
                     </span>
                   )}
                 </div>
@@ -516,8 +530,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                           alt="Preview do vídeo"
                         />
                       ) : (
-                        <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                          <Film size={40} className="text-white/20" />
+                        <div className="w-full h-full bg-white/5 flex flex-col items-center justify-center gap-2">
+                          <Film size={36} className="text-white/20" />
+                          <p className="text-[9px] uppercase tracking-widest font-black text-white/20 text-center px-4">
+                            Preview indisponível<br/>O vídeo será enviado normalmente
+                          </p>
                         </div>
                       )}
                       <div className="absolute top-3 left-3 pointer-events-none">
