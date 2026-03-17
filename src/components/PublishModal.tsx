@@ -283,6 +283,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         finalUrl = await uploadVideoWithRetry(draft.file);
       }
 
+      const extractedHashtags = Array.from(
+        new Set(
+          (draft.description.match(/\B#(\w+)/g) || []).map(t => t.slice(1).toLowerCase())
+        )
+      );
+
       const postData: Record<string, unknown> = {
         title: draft.title || 'Sem título',
         url: finalUrl,
@@ -298,6 +304,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         viewsCount: 0,
         duration: draft.duration || 0,
         description: draft.description.trim() || '',
+        hashtags: extractedHashtags,
       };
 
       if (draft.mediaType === 'video' && draft.videoThumbnail) {
@@ -504,7 +511,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                       setDraft(prev => ({ ...prev, description: e.target.value }));
                     }
                   }}
-                  placeholder="Adicione uma descrição ou link... (opcional)"
+                  placeholder="Adicione uma descrição, link ou #hashtags... (opcional)"
                   rows={3}
                   className="w-full px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-white/30 transition-all text-xs font-medium placeholder:text-white/10 resize-none leading-relaxed"
                 />

@@ -140,6 +140,8 @@ function ErrorBoundary({ children }: { children: ReactNode }) {
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeHashtag, setActiveHashtag] = useState<string | null>(null);
+  const [hashtagResults, setHashtagResults] = useState<string[]>([]);
   const [items, setItems] = useState<ContentItem[]>([]);
   const [userPosts, setUserPosts] = useState<ContentItem[]>([]);
   const [globalPosts, setGlobalPosts] = useState<ContentItem[]>([]);
@@ -827,6 +829,8 @@ export default function App() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setSearchQuery('');
+    setActiveHashtag(null);
+    setHashtagResults([]);
     setItems(globalPosts);
   };
 
@@ -981,8 +985,10 @@ export default function App() {
 
   const runSearch = (query: string, saveHistory = false) => {
     const q = query.trim();
+    setActiveHashtag(null);
     if (!q) {
       setItems(globalPosts);
+      setHashtagResults([]);
       return;
     }
 
@@ -994,11 +1000,25 @@ export default function App() {
       });
     }
 
+    const qLower = q.toLowerCase();
+
+    // Collect all unique hashtags that partially contain the query
+    const allHashtags = new Set<string>();
+    globalPosts.forEach(post => {
+      (post.hashtags || []).forEach(tag => allHashtags.add(tag));
+    });
+    const matchingHashtags = Array.from(allHashtags).filter(tag =>
+      tag.includes(qLower)
+    );
+    setHashtagResults(matchingHashtags.slice(0, 8));
+
     const scored = globalPosts
       .map(post => {
         const titleScore = fuzzyScore(post.title, q);
         const authorScore = fuzzyScore(post.authorName || '', q);
-        return { post, score: Math.max(titleScore, authorScore) };
+        const descScore = post.description ? fuzzyScore(post.description, q) * 0.6 : 0;
+        const hashtagScore = (post.hashtags || []).some(tag => tag.includes(qLower)) ? 85 : 0;
+        return { post, score: Math.max(titleScore, authorScore, descScore, hashtagScore) };
       })
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
@@ -1012,12 +1032,26 @@ export default function App() {
     runSearch(query, true);
   };
 
+  const handleHashtagClick = (tag: string) => {
+    setSearchQuery('');
+    setHashtagResults([]);
+    setShowHistory(false);
+    setActiveHashtag(tag);
+    const filtered = globalPosts.filter(p => (p.hashtags || []).includes(tag));
+    setItems(filtered);
+  };
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      runSearch(searchQuery);
+      if (activeHashtag && !searchQuery.trim()) {
+        const filtered = globalPosts.filter(p => (p.hashtags || []).includes(activeHashtag));
+        setItems(filtered);
+      } else {
+        runSearch(searchQuery);
+      }
     }, 180);
     return () => clearTimeout(timer);
-  }, [searchQuery, globalPosts]);
+  }, [searchQuery, globalPosts, activeHashtag]);
 
   if (!isLoggedIn) {
     return (
@@ -1277,13 +1311,21 @@ export default function App() {
                     <div className="relative">
                         <input
                           type="text"
-                          placeholder="Pesquisar..."
+                          placeholder="Pesquisar posts ou #hashtags..."
                           value={searchQuery}
                           onChange={(e) => {
                             setSearchQuery(e.target.value);
                             if (e.target.value.trim()) setShowHistory(false);
                           }}
-                          onFocus={() => setShowHistory(true)}
+                          onFocus={() => {
+                            if (searchQuery.trim()) {
+                              setSearchQuery('');
+                              setHashtagResults([]);
+                              setActiveHashtag(null);
+                              setItems(globalPosts);
+                            }
+                            setShowHistory(true);
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                                 handleSearch(searchQuery);
@@ -1374,6 +1416,27 @@ export default function App() {
                           </>
                         )}
                     </AnimatePresence>
+
+                    <AnimatePresence>
+                      {hashtagResults.length > 0 && !showHistory && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          className="flex flex-wrap gap-2 mt-3"
+                        >
+                          {hashtagResults.map(tag => (
+                            <button
+                              key={tag}
+                              onClick={() => handleHashtagClick(tag)}
+                              className="px-3 py-1.5 bg-white/5 hover:bg-white/15 border border-white/10 rounded-full text-[11px] text-white/60 hover:text-white font-bold transition-all"
+                            >
+                              #{tag}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   <div className="relative">
@@ -1417,6 +1480,29 @@ export default function App() {
                   </div>
                 </div>
 
+                <AnimatePresence>
+                  {activeHashtag && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="flex items-center gap-3 mb-6"
+                    >
+                      <span className="text-[10px] uppercase tracking-widest text-white/30">Filtrando por</span>
+                      <div className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-full">
+                        <span className="text-sm font-black text-white">#{activeHashtag}</span>
+                        <button
+                          onClick={handleHomeClick}
+                          className="text-white/40 hover:text-white transition-colors ml-1"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-white/20">{items.length} post{items.length !== 1 ? 's' : ''}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 <div className="flex items-center justify-between mb-8 border-b border-white/5">
                   <div className="flex items-center gap-6 md:gap-8 overflow-x-auto no-scrollbar">
                     <button 
@@ -1454,6 +1540,7 @@ export default function App() {
                         onFollow={handleFollow}
                         onDelete={handleDeletePost}
                         onClick={() => setSelectedPost(item)}
+                        onHashtagClick={handleHashtagClick}
                         isUserPost={(item as any).authorUid === auth.currentUser?.uid}
                         searchQuery={searchQuery}
                       />
@@ -1627,6 +1714,7 @@ export default function App() {
                         onLike={handleLike}
                         onDelete={handleDeletePost}
                         onClick={() => setSelectedPost(post)}
+                        onHashtagClick={handleHashtagClick}
                         isUserPost={(post as any).authorUid === auth.currentUser?.uid}
                       />
                     ))}

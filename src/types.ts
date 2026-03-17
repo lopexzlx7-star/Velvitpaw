@@ -15,6 +15,7 @@ export interface ContentItem {
   aspectRatio?: string;
   duration?: number;
   description?: string;
+  hashtags?: string[];
 }
 
 export interface Notification {

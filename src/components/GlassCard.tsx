@@ -18,6 +18,7 @@ interface GlassCardProps {
   onFollow?: (uid: string) => void;
   onDelete?: (id: string) => void;
   onClick?: (item: ContentItem) => void;
+  onHashtagClick?: (tag: string) => void;
   isUserPost?: boolean;
   searchQuery?: string;
 }
@@ -140,6 +141,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
   onFollow, 
   onDelete, 
   onClick,
+  onHashtagClick,
   isUserPost,
   searchQuery = ''
 }) => {
@@ -331,12 +333,28 @@ const GlassCard: React.FC<GlassCardProps> = ({
         </div>
       </div>
 
-      {/* Title Below Post */}
+      {/* Title & Hashtags Below Post */}
       <div className="mt-3 px-2 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <h3 className="text-[11px] font-black text-white uppercase tracking-wider truncate group-hover:text-white/80 transition-colors">
             {highlightText(item.title, searchQuery)}
           </h3>
+          {item.hashtags && item.hashtags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {item.hashtags.slice(0, 4).map(tag => (
+                <button
+                  key={tag}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onHashtagClick?.(tag);
+                  }}
+                  className="text-[9px] text-white/40 hover:text-white transition-colors font-bold tracking-wide"
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {!isUserPost && (
           <button
