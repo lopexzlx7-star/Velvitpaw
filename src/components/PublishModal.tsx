@@ -61,14 +61,18 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   }, []);
 
   useEffect(() => {
-    if (draft.mediaType !== 'video' || !draft.mediaUrl || !videoRef.current) return;
     const vid = videoRef.current;
-    const tryPlay = () => vid.play().catch(() => {});
-    if (vid.readyState >= 3) {
-      tryPlay();
-    } else {
+    if (!vid) return;
+
+    if (draft.mediaType === 'video' && draft.mediaUrl) {
+      const tryPlay = () => vid.play().catch(() => {});
+      vid.src = draft.mediaUrl;
+      vid.load();
       vid.addEventListener('canplay', tryPlay, { once: true });
       return () => vid.removeEventListener('canplay', tryPlay);
+    } else {
+      vid.removeAttribute('src');
+      vid.load();
     }
   }, [draft.mediaUrl, draft.mediaType]);
 
@@ -303,16 +307,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 >
                   {isVideo ? (
                     <video
-                      key={draft.mediaUrl}
                       ref={videoRef}
-                      src={draft.mediaUrl || undefined}
                       className="w-full h-full object-cover cursor-pointer"
-                      autoPlay
                       muted
                       loop
                       playsInline
                       preload="auto"
-                      onCanPlay={(e) => { (e.target as HTMLVideoElement).play().catch(() => {}); }}
                       onClick={(e) => {
                         const v = e.currentTarget;
                         v.paused ? v.play().catch(() => {}) : v.pause();
