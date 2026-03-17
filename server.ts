@@ -1,4 +1,8 @@
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import express, { Request, Response, NextFunction } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
@@ -157,6 +161,59 @@ app.get('/api/health', (_req: Request, res: Response) => {
       light: `< ${HEAVY_VIDEO_MIN_MB}MB → ImageKit (fallback: Cloudinary)`,
       heavy: `≥ ${HEAVY_VIDEO_MIN_MB}MB → Cloudinary (fallback: ImageKit)`,
     },
+  });
+});
+
+// ─── /api/thumbnail ───────────────────────────────────────────────────────────
+// Extracts the first frame from any video (including HEVC/H.265 from CapCut)
+// using ffmpeg on the server. The client sends up to the first 30 MB of the
+// file (enough to reach the first key frame), and receives a JPEG base64 string.
+const thumbnailUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
+
+app.post('/api/thumbnail', (req: Request, res: Response) => {
+  thumbnailUpload.single('file')(req, res, async (err) => {
+    if (err || !req.file) {
+      return res.status(400).json({ error: 'Arquivo não recebido.' });
+    }
+
+    const tmpIn = path.join(os.tmpdir(), `thumb_in_${Date.now()}.mp4`);
+    const tmpOut = path.join(os.tmpdir(), `thumb_out_${Date.now()}.jpg`);
+
+    try {
+      fs.writeFileSync(tmpIn, req.file.buffer);
+
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          'ffmpeg',
+          [
+            '-y',
+            '-i', tmpIn,
+            '-vframes', '1',
+            '-q:v', '3',
+            '-vf', 'scale=640:-1',
+            tmpOut,
+          ],
+          { timeout: 30_000 },
+          (error) => {
+            if (error) reject(error);
+            else resolve();
+          }
+        );
+      });
+
+      const jpegBuffer = fs.readFileSync(tmpOut);
+      const base64 = `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
+      res.json({ thumbnail: base64 });
+    } catch (e: any) {
+      console.error('[thumbnail] ffmpeg falhou:', e?.message);
+      res.status(500).json({ error: 'Não foi possível extrair o frame.' });
+    } finally {
+      try { fs.unlinkSync(tmpIn); } catch {}
+      try { fs.unlinkSync(tmpOut); } catch {}
+    }
   });
 });
 

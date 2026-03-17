@@ -245,14 +245,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       };
 
       // onerror fires when the browser can't decode the video (e.g. HEVC/H.265 from CapCut
-      // on Chrome/Firefox). The file is still valid — the server can handle it.
-      // Instead of blocking the user, proceed without a thumbnail or metadata.
-      metaEl.onerror = () => {
+      // on Chrome/Firefox). Fall back to server-side thumbnail extraction via ffmpeg,
+      // which supports every codec regardless of browser support.
+      metaEl.onerror = async () => {
         if (thumbnailExtracted) return;
         thumbnailExtracted = true;
         cleanup();
+
+        // Commit the draft immediately so the user sees the modal progress
         objectUrlRef.current = blobUrl;
-        setIsLoadingPreview(false);
         setDraft(prev => ({
           ...prev,
           file,
@@ -264,6 +265,27 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           videoHeight: 0,
           title: prev.title || file.name.split('.')[0],
         }));
+
+        // Send the first 30 MB to the server — enough to reach the first key frame
+        // in virtually any format, without uploading the whole file twice.
+        try {
+          const SLICE_BYTES = 30 * 1024 * 1024;
+          const slice = file.slice(0, SLICE_BYTES);
+          const form = new FormData();
+          form.append('file', new File([slice], file.name, { type: file.type }));
+
+          const resp = await fetch('/api/thumbnail', { method: 'POST', body: form });
+          if (resp.ok) {
+            const { thumbnail } = await resp.json();
+            if (thumbnail) {
+              setDraft(prev => ({ ...prev, videoThumbnail: thumbnail }));
+            }
+          }
+        } catch {
+          // Thumbnail stays null — upload can still proceed
+        } finally {
+          setIsLoadingPreview(false);
+        }
       };
 
       metaEl.src = blobUrl;
