@@ -209,8 +209,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
       >
         {/* Media Container */}
         <div className="relative overflow-hidden">
-          {/* Skeleton Placeholder */}
-          {!isLoaded && (
+          {/* Skeleton Placeholder — only shown when there is no thumbnail to display */}
+          {!isLoaded && !item.thumbnailUrl && (
             <div 
               className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center"
               style={{ height: item.height || 300 }}
@@ -227,19 +227,30 @@ const GlassCard: React.FC<GlassCardProps> = ({
                     <span className="text-white/20 text-[9px] uppercase tracking-widest font-bold">Vídeo indisponível</span>
                   </div>
                 ) : (
-                <video
-                  ref={videoRef}
-                  src={item.url}
-                  poster={item.thumbnailUrl || undefined}
-                  muted={isMuted}
-                  playsInline
-                  loop
-                  preload="auto"
-                  onLoadedData={() => setIsLoaded(true)}
-                  onEnded={() => advanceToNext(item.id)}
-                  onError={() => { setVideoError(true); setIsLoaded(true); unregisterVideo(item.id); }}
-                  className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-                />
+                <>
+                  {/* Thumbnail shown immediately as a static layer — visible before the
+                      video element loads. The poster attribute on <video> is invisible
+                      while the video has opacity-0, so we use a separate <img> layer. */}
+                  {item.thumbnailUrl && !isLoaded && (
+                    <img
+                      src={item.thumbnailUrl}
+                      alt=""
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  )}
+                  <video
+                    ref={videoRef}
+                    src={item.url}
+                    muted={isMuted}
+                    playsInline
+                    loop
+                    preload="auto"
+                    onLoadedData={() => setIsLoaded(true)}
+                    onEnded={() => advanceToNext(item.id)}
+                    onError={() => { setVideoError(true); setIsLoaded(true); unregisterVideo(item.id); }}
+                    className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                  />
+                </>
                 )
               ) : (
                 <img

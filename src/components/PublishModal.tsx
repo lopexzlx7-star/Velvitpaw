@@ -116,7 +116,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       setIsLoadingPreview(true);
 
       const metaEl = document.createElement('video');
-      metaEl.preload = 'metadata';
+      metaEl.preload = 'auto';
       metaEl.muted = true;
       metaEl.playsInline = true;
       metaEl.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
@@ -153,9 +153,61 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         if (metaEl.parentNode) metaEl.parentNode.removeChild(metaEl);
       };
 
+      // Returns true if the canvas is essentially all-black (frame not yet decoded)
+      const isBlackFrame = (canvas: HTMLCanvasElement): boolean => {
+        try {
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return false;
+          // Sample 20 pixels spread across the canvas
+          const { width, height } = canvas;
+          const data = ctx.getImageData(0, 0, width, height).data;
+          let brightPixels = 0;
+          const step = Math.max(1, Math.floor(data.length / (20 * 4)));
+          for (let i = 0; i < data.length; i += step * 4) {
+            if (data[i] > 10 || data[i + 1] > 10 || data[i + 2] > 10) brightPixels++;
+          }
+          return brightPixels === 0;
+        } catch { return false; }
+      };
+
+      const fetchServerThumbnail = async (): Promise<void> => {
+        try {
+          const SLICE_BYTES = 30 * 1024 * 1024;
+          const slice = file.slice(0, SLICE_BYTES);
+          const form = new FormData();
+          form.append('file', new File([slice], file.name, { type: file.type }));
+          const resp = await fetch('/api/thumbnail', { method: 'POST', body: form });
+          if (resp.ok) {
+            const { thumbnail } = await resp.json();
+            if (thumbnail) {
+              setDraft(prev => ({ ...prev, videoThumbnail: thumbnail }));
+            }
+          }
+        } catch { /* upload proceeds without thumbnail */ }
+        finally { setIsLoadingPreview(false); }
+      };
+
       const extractFrame = () => {
         if (thumbnailExtracted) return;
         thumbnailExtracted = true;
+
+        cleanup();
+        objectUrlRef.current = blobUrl;
+
+        // Commit the draft immediately so the UI unlocks
+        const commitDraft = (thumb: string | null) => {
+          setDraft(prev => ({
+            ...prev,
+            file,
+            mediaUrl: blobUrl,
+            mediaType: 'video',
+            videoThumbnail: thumb,
+            aspectRatio: 'portrait',
+            duration: isFinite(capturedDur) ? Math.round(capturedDur) : 0,
+            videoHeight: capturedH || 0,
+            title: prev.title || file.name.split('.')[0],
+          }));
+        };
 
         try {
           const MAX_THUMB_W = 640;
@@ -165,38 +217,21 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           canvas.height = Math.max(1, Math.round((capturedH || 568) * scale));
           const ctx = canvas.getContext('2d');
           if (ctx) ctx.drawImage(metaEl, 0, 0, canvas.width, canvas.height);
-          const thumbnail = canvas.toDataURL('image/jpeg', 0.85);
 
-          cleanup();
-          objectUrlRef.current = blobUrl;
+          if (isBlackFrame(canvas)) {
+            // Browser produced a black frame — fall back to server
+            commitDraft(null);
+            fetchServerThumbnail();
+            return;
+          }
+
+          const thumbnail = canvas.toDataURL('image/jpeg', 0.85);
+          commitDraft(thumbnail);
           setIsLoadingPreview(false);
-          setDraft(prev => ({
-            ...prev,
-            file,
-            mediaUrl: blobUrl,
-            mediaType: 'video',
-            videoThumbnail: thumbnail,
-            aspectRatio: 'portrait',
-            duration: isFinite(capturedDur) ? Math.round(capturedDur) : 0,
-            videoHeight: capturedH || 0,
-            title: prev.title || file.name.split('.')[0],
-          }));
         } catch {
-          // Canvas tainted or draw failed — proceed without thumbnail
-          cleanup();
-          objectUrlRef.current = blobUrl;
-          setIsLoadingPreview(false);
-          setDraft(prev => ({
-            ...prev,
-            file,
-            mediaUrl: blobUrl,
-            mediaType: 'video',
-            videoThumbnail: null,
-            aspectRatio: 'portrait',
-            duration: isFinite(capturedDur) ? Math.round(capturedDur) : 0,
-            videoHeight: capturedH || 0,
-            title: prev.title || file.name.split('.')[0],
-          }));
+          // Canvas draw failed — fall back to server
+          commitDraft(null);
+          fetchServerThumbnail();
         }
       };
 
@@ -244,15 +279,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         }, 300);
       };
 
-      // onerror fires when the browser can't decode the video (e.g. HEVC/H.265 from CapCut
-      // on Chrome/Firefox). Fall back to server-side thumbnail extraction via ffmpeg,
-      // which supports every codec regardless of browser support.
-      metaEl.onerror = async () => {
+      // onerror fires when the browser can't decode the video (e.g. HEVC/H.265 from CapCut).
+      // Fall back to server-side thumbnail extraction via ffmpeg.
+      metaEl.onerror = () => {
         if (thumbnailExtracted) return;
         thumbnailExtracted = true;
         cleanup();
-
-        // Commit the draft immediately so the user sees the modal progress
         objectUrlRef.current = blobUrl;
         setDraft(prev => ({
           ...prev,
@@ -265,27 +297,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           videoHeight: 0,
           title: prev.title || file.name.split('.')[0],
         }));
-
-        // Send the first 30 MB to the server — enough to reach the first key frame
-        // in virtually any format, without uploading the whole file twice.
-        try {
-          const SLICE_BYTES = 30 * 1024 * 1024;
-          const slice = file.slice(0, SLICE_BYTES);
-          const form = new FormData();
-          form.append('file', new File([slice], file.name, { type: file.type }));
-
-          const resp = await fetch('/api/thumbnail', { method: 'POST', body: form });
-          if (resp.ok) {
-            const { thumbnail } = await resp.json();
-            if (thumbnail) {
-              setDraft(prev => ({ ...prev, videoThumbnail: thumbnail }));
-            }
-          }
-        } catch {
-          // Thumbnail stays null — upload can still proceed
-        } finally {
-          setIsLoadingPreview(false);
-        }
+        fetchServerThumbnail();
       };
 
       metaEl.src = blobUrl;
