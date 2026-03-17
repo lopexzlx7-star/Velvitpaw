@@ -4,9 +4,8 @@ import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
   Maximize2, Square, Smartphone, Plus, Film
 } from 'lucide-react';
-import { db, auth, storage } from '../firebase';
+import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 interface PublishModalProps {
   isOpen: boolean;
@@ -28,26 +27,30 @@ interface Draft {
   description: string;
 }
 
+const LIGHT_MAX_DURATION = 60;
 const MAX_VIDEO_DURATION = 120;
 const MAX_DESCRIPTION_WORDS = 50;
+const LIGHT_MAX_HEIGHT = 720;
 const MAX_VIDEO_HEIGHT = 1080;
 
-const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [draft, setDraft] = useState<Draft>({
-    title: '',
-    aspectRatio: 'portrait',
-    mediaUrl: null,
-    mediaType: 'image',
-    file: null,
-    description: '',
-  });
+const INITIAL_DRAFT: Draft = {
+  title: '',
+  aspectRatio: 'portrait',
+  mediaUrl: null,
+  mediaType: 'image',
+  file: null,
+  description: '',
+};
 
+const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const [draft, setDraft] = useState<Draft>(INITIAL_DRAFT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const activeXhrRef = useRef<XMLHttpRequest | null>(null);
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -64,14 +67,25 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     };
   }, []);
 
-  const resetDraft = () => {
+  const resetState = () => {
+    if (activeXhrRef.current) {
+      activeXhrRef.current.abort();
+      activeXhrRef.current = null;
+    }
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
     }
-    setDraft({ title: '', aspectRatio: 'portrait', mediaUrl: null, mediaType: 'image', file: null, description: '' });
+    setDraft(INITIAL_DRAFT);
     setUploadProgress(0);
     setError(null);
+    setIsSubmitting(false);
+    setIsLoadingPreview(false);
+  };
+
+  const handleClose = () => {
+    resetState();
+    onClose();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,7 +99,10 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     const isVideo = file.type.startsWith('video/');
 
     if (isVideo) {
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
       const blobUrl = URL.createObjectURL(file);
       setIsLoadingPreview(true);
 
@@ -135,16 +152,16 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         capturedH = metaEl.videoHeight;
 
         if (isFinite(capturedDur) && capturedDur > MAX_VIDEO_DURATION) {
-          URL.revokeObjectURL(blobUrl);
           cleanup();
+          URL.revokeObjectURL(blobUrl);
           setIsLoadingPreview(false);
           setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION / 60} minutos.`);
           return;
         }
 
         if (capturedH > MAX_VIDEO_HEIGHT) {
-          URL.revokeObjectURL(blobUrl);
           cleanup();
+          URL.revokeObjectURL(blobUrl);
           setIsLoadingPreview(false);
           setError(`Resolução muito alta. Use vídeos até ${MAX_VIDEO_HEIGHT}p.`);
           return;
@@ -160,8 +177,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
       metaEl.onerror = () => {
         cleanup();
-        setIsLoadingPreview(false);
         URL.revokeObjectURL(blobUrl);
+        setIsLoadingPreview(false);
         setError('Não foi possível ler o vídeo. Tente outro arquivo.');
       };
 
@@ -196,35 +213,68 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     reader.readAsDataURL(file);
   };
 
-  const uploadToFirebaseStorage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const uid = auth.currentUser!.uid;
-      const timestamp = Date.now();
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const storagePath = `posts/${uid}/${timestamp}_${safeName}`;
-      const storageRef = ref(storage, storagePath);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+  const uploadVideo = (file: File, videoHeight: number, duration: number): Promise<string> => {
+    const isHeavy = videoHeight > LIGHT_MAX_HEIGHT || duration > LIGHT_MAX_DURATION;
 
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 90);
-          setUploadProgress(pct);
-        },
-        (err) => {
-          reject(new Error(err.message || 'Erro no upload para o Firebase Storage.'));
-        },
-        async () => {
-          try {
-            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-            setUploadProgress(100);
-            resolve(downloadUrl);
-          } catch (e: any) {
-            reject(new Error(e.message || 'Erro ao obter URL do arquivo.'));
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('provider', isHeavy ? 'imagekit' : 'cloudinary');
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      activeXhrRef.current = xhr;
+
+      xhr.open('POST', '/api/upload');
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 90));
+      };
+
+      xhr.onload = () => {
+        activeXhrRef.current = null;
+        if (xhr.status === 200) {
+          let data: any;
+          try { data = JSON.parse(xhr.responseText); } catch {
+            return reject(new Error('Resposta inválida do servidor.'));
           }
+          setUploadProgress(100);
+          resolve(data.url);
+        } else {
+          let msg = 'Falha no upload.';
+          try { msg = JSON.parse(xhr.responseText)?.error || msg; } catch {}
+          reject(new Error(msg));
         }
-      );
+      };
+
+      xhr.onerror = () => { activeXhrRef.current = null; reject(new Error('network_error')); };
+      xhr.onabort = () => { activeXhrRef.current = null; reject(new Error('upload_aborted')); };
+
+      xhr.send(formData);
     });
+  };
+
+  const uploadVideoWithRetry = async (
+    file: File,
+    videoHeight: number,
+    duration: number,
+    maxAttempts = 3
+  ): Promise<string> => {
+    let lastError: Error = new Error('Falha no upload.');
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (attempt > 1) {
+          setUploadProgress(0);
+          await new Promise(r => setTimeout(r, 2000 * attempt));
+        }
+        return await uploadVideo(file, videoHeight, duration);
+      } catch (err: any) {
+        lastError = err;
+        const isRetryable = err?.message === 'network_error';
+        if (!isRetryable || attempt === maxAttempts) throw err;
+        console.warn(`[Upload] Tentativa ${attempt} falhou (${err.message}), tentando novamente...`);
+      }
+    }
+    throw lastError;
   };
 
   const submitPost = async () => {
@@ -237,10 +287,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       let finalUrl = draft.mediaUrl;
 
       if (draft.mediaType === 'video') {
-        finalUrl = await uploadToFirebaseStorage(draft.file);
+        finalUrl = await uploadVideoWithRetry(
+          draft.file,
+          draft.videoHeight ?? 0,
+          draft.duration ?? 0
+        );
       }
 
-      const postData = {
+      const postData: Record<string, unknown> = {
         title: draft.title || 'Sem título',
         url: finalUrl,
         type: draft.mediaType,
@@ -257,14 +311,25 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         description: draft.description.trim() || '',
       };
 
+      if (draft.mediaType === 'video' && draft.videoThumbnail) {
+        postData.thumbnailUrl = draft.videoThumbnail;
+      }
+
       await addDoc(collection(db, 'posts'), postData);
-      resetDraft();
+
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+
+      setDraft(INITIAL_DRAFT);
+      setUploadProgress(0);
       onSuccess();
       onClose();
     } catch (err: any) {
+      if (err?.message === 'upload_aborted') return;
       console.error('Error submitting post:', err);
       setError(err.message || 'Erro ao publicar. Tente novamente.');
-      setIsSubmitting(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -299,7 +364,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
             </div>
             <h2 className="text-lg font-black tracking-tighter uppercase text-white">Criar Post</h2>
           </div>
-          <button onClick={onClose} className="p-3 hover:bg-white/10 rounded-2xl transition-colors text-white/30 hover:text-white">
+          <button onClick={handleClose} className="p-3 hover:bg-white/10 rounded-2xl transition-colors text-white/30 hover:text-white">
             <X size={20} />
           </button>
         </div>
@@ -378,8 +443,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
                   <button
                     onClick={() => {
-                      if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
+                      if (objectUrlRef.current) {
+                        URL.revokeObjectURL(objectUrlRef.current);
+                        objectUrlRef.current = null;
+                      }
                       setDraft(prev => ({ ...prev, mediaUrl: null, file: null, videoThumbnail: null }));
+                      setError(null);
                     }}
                     className="absolute top-4 right-4 p-3 bg-black/50 backdrop-blur-xl rounded-2xl text-white hover:bg-red-500 transition-all border border-white/10"
                   >

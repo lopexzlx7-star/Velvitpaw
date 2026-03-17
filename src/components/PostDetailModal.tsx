@@ -220,6 +220,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                 <video
                   ref={videoRef}
                   src={item.url}
+                  poster={item.thumbnailUrl || undefined}
                   className="w-full h-full object-cover"
                   autoPlay
                   loop

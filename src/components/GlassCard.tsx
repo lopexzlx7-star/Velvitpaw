@@ -228,6 +228,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                 <video
                   ref={videoRef}
                   src={item.url}
+                  poster={item.thumbnailUrl || undefined}
                   muted={isMuted}
                   playsInline
                   loop
