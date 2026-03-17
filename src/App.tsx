@@ -1489,7 +1489,7 @@ export default function App() {
                     <button
                       onClick={() => { setShowEmailPopup(true); setEmailPopupError(null); setRecoveryEmail(''); }}
                       title="Vincular e-mail de recuperação"
-                      className="absolute bottom-4 right-4 flex items-center gap-1 px-2 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[8px] uppercase tracking-widest text-white/30 hover:text-white/60 transition-all"
+                      className="absolute top-4 right-4 flex items-center gap-1 px-2 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[8px] uppercase tracking-widest text-white/30 hover:text-white/60 transition-all"
                     >
                       <RotateCcw size={9} />
                       sync
