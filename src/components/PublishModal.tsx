@@ -405,6 +405,21 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     throw lastError;
   };
 
+  const uploadThumbnailToImageKit = async (base64: string): Promise<string | null> => {
+    try {
+      const resp = await fetch('/api/upload-thumbnail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thumbnail: base64 }),
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return data.url ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   const submitPost = async () => {
     if (!auth.currentUser || !draft.mediaUrl || !draft.file) return;
     setIsSubmitting(true);
@@ -416,6 +431,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
       if (draft.mediaType === 'video') {
         finalUrl = await uploadVideoWithRetry(draft.file);
+      }
+
+      // Upload thumbnail to ImageKit so only a URL (not base64) is stored in Firestore
+      let thumbnailUrl: string | null = null;
+      if (draft.mediaType === 'video' && draft.videoThumbnail) {
+        thumbnailUrl = await uploadThumbnailToImageKit(draft.videoThumbnail);
       }
 
       const extractedHashtags = Array.from(
@@ -442,8 +463,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         hashtags: extractedHashtags,
       };
 
-      if (draft.mediaType === 'video' && draft.videoThumbnail) {
-        postData.thumbnailUrl = draft.videoThumbnail;
+      if (thumbnailUrl) {
+        postData.thumbnailUrl = thumbnailUrl;
       }
 
       await addDoc(collection(db, 'posts'), postData);

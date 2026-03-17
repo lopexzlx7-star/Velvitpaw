@@ -329,6 +329,37 @@ app.post('/api/upload-video', (req: Request, res: Response) => {
   });
 });
 
+// ─── /api/upload-thumbnail ────────────────────────────────────────────────────
+// Receives a base64 data URL (JPEG) for a video thumbnail and uploads it to
+// ImageKit, returning a permanent hosted URL to be stored in Firestore instead
+// of the raw base64 string (which would exceed Firestore's 1MB document limit).
+app.post('/api/upload-thumbnail', async (req: Request, res: Response) => {
+  const { thumbnail } = req.body as { thumbnail?: string };
+  if (!thumbnail || !thumbnail.startsWith('data:image/')) {
+    return res.status(400).json({ error: 'Campo "thumbnail" ausente ou inválido.' });
+  }
+
+  if (!imagekitReady || !imagekit) {
+    return res.status(503).json({ error: 'ImageKit não configurado. Defina as credenciais nos Secrets.' });
+  }
+
+  try {
+    const base64Data = thumbnail.split(',')[1];
+    const buffer = Buffer.from(base64Data, 'base64');
+    const fileName = `thumb_${Date.now()}.jpg`;
+
+    const result = await withRetry(
+      () => imagekit!.upload({ file: buffer, fileName, folder: '/thumbnails', useUniqueFileName: true }),
+      3, 2000, 'ImageKit-thumbnail'
+    );
+
+    return res.json({ url: result.url });
+  } catch (err: any) {
+    console.error('[upload-thumbnail] Falha:', err?.message);
+    return res.status(500).json({ error: 'Falha ao enviar thumbnail para o ImageKit.' });
+  }
+});
+
 // ─── /api/upload (mantido para compatibilidade — imagens) ─────────────────────
 app.post('/api/upload', (req: Request, res: Response) => {
   upload.single('file')(req, res, async (multerErr) => {
