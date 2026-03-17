@@ -1,8 +1,6 @@
 import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
-import { v2 as cloudinary } from 'cloudinary';
-import { Readable } from 'stream';
 
 const app = express();
 app.use(express.json());
@@ -15,7 +13,6 @@ const UPLOAD_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET ?? '';
 if (!CLOUD_NAME || !UPLOAD_PRESET) {
   console.error('[AVISO] CLOUDINARY_CLOUD_NAME ou CLOUDINARY_UPLOAD_PRESET não definidos. Uploads de vídeo não funcionarão.');
 } else {
-  cloudinary.config({ cloud_name: CLOUD_NAME });
   console.log(`[OK] Cloudinary configurado para cloud: ${CLOUD_NAME}`);
 }
 
@@ -57,24 +54,27 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 
   try {
-    const stream = cloudinary.uploader.upload_stream(
-      { upload_preset: UPLOAD_PRESET, resource_type: 'auto' },
-      (error, result) => {
-        if (error || !result) {
-          console.error('[Cloudinary]', error?.message);
-          return res.status(500).json({ error: 'Falha no upload. Tente novamente.' });
-        }
-        res.json({ url: result.secure_url });
-      }
+    const form = new FormData();
+    const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
+    form.append('file', blob, req.file.originalname || 'upload');
+    form.append('upload_preset', UPLOAD_PRESET);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
+      { method: 'POST', body: form }
     );
 
-    const readable = new Readable();
-    readable.push(req.file.buffer);
-    readable.push(null);
-    readable.pipe(stream);
+    const data: any = await response.json();
+
+    if (!response.ok) {
+      console.error('[Cloudinary]', data?.error?.message);
+      return res.status(500).json({ error: 'Falha no upload. Tente novamente.' });
+    }
+
+    res.json({ url: data.secure_url });
   } catch (err: any) {
     console.error('[Upload]', err?.message);
-    res.status(500).json({ error: 'Erro interno no upload.' });
+    res.status(500).json({ error: 'Erro ao enviar vídeo. Tente novamente.' });
   }
 });
 
