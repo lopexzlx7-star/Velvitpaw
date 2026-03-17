@@ -32,12 +32,6 @@ const MAX_DESCRIPTION_WORDS = 50;
 const LIGHT_MAX_HEIGHT = 720;
 const MAX_VIDEO_HEIGHT = 1080;
 
-function getTargetHeight(h: number): number | null {
-  if (h >= 1080) return 720;
-  if (h >= 480) return 360;
-  return null;
-}
-
 const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [draft, setDraft] = useState<Draft>({
     title: '',
@@ -50,8 +44,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [isTranscoding, setIsTranscoding] = useState(false);
-  const [transcodeProgress, setTranscodeProgress] = useState(0);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -94,107 +87,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     e.target.value = '';
   };
 
-  const transcodeVideo = (
-    blobUrl: string,
-    targetHeight: number,
-    duration: number,
-    originalFile: File,
-  ): Promise<File> => {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      video.playsInline = true;
-      video.muted = false;
-
-      video.onloadedmetadata = () => {
-        const origW = video.videoWidth;
-        const origH = video.videoHeight;
-        const scale = targetHeight / origH;
-        const targetWidth = Math.max(2, Math.floor((origW * scale) / 2) * 2);
-
-        const canvas = document.createElement('canvas');
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-        const ctx = canvas.getContext('2d')!;
-
-        const videoBitsPerSecond = targetHeight <= 360 ? 800_000 : 2_000_000;
-        const mimeOptions = [
-          'video/webm;codecs=vp9,opus',
-          'video/webm;codecs=vp8,opus',
-          'video/webm',
-        ];
-        const mimeType = mimeOptions.find(t => MediaRecorder.isTypeSupported(t)) ?? 'video/webm';
-
-        let combinedStream: MediaStream;
-        const videoStream = canvas.captureStream(30);
-
-        try {
-          const audioCtx = new AudioContext();
-          const source = audioCtx.createMediaElementSource(video);
-          const dest = audioCtx.createMediaStreamDestination();
-          source.connect(dest);
-          combinedStream = new MediaStream([
-            ...videoStream.getVideoTracks(),
-            ...dest.stream.getAudioTracks(),
-          ]);
-        } catch {
-          combinedStream = videoStream;
-          video.muted = true;
-        }
-
-        let recorder: MediaRecorder;
-        try {
-          recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond });
-        } catch {
-          reject(new Error('Transcodificação não suportada neste browser.'));
-          return;
-        }
-
-        const chunks: Blob[] = [];
-        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
-          const baseName = originalFile.name.replace(/\.[^.]+$/, '');
-          const newFile = new File([blob], `${baseName}.webm`, { type: blob.type });
-          resolve(newFile);
-        };
-
-        recorder.onerror = () => reject(new Error('Erro durante a otimização do vídeo.'));
-
-        let animFrameId = 0;
-
-        const drawFrame = () => {
-          if (video.paused || video.ended) return;
-          ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-          setTranscodeProgress(Math.min(99, Math.round((video.currentTime / duration) * 100)));
-          animFrameId = requestAnimationFrame(drawFrame);
-        };
-
-        video.onplay = () => { animFrameId = requestAnimationFrame(drawFrame); };
-
-        video.onended = () => {
-          cancelAnimationFrame(animFrameId);
-          ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-          if (recorder.state !== 'inactive') recorder.stop();
-        };
-
-        video.onerror = () => {
-          cancelAnimationFrame(animFrameId);
-          if (recorder.state !== 'inactive') recorder.stop();
-          reject(new Error('Erro ao processar vídeo.'));
-        };
-
-        recorder.start(200);
-        video.currentTime = 0;
-        video.play().catch(err => reject(new Error('Não foi possível iniciar: ' + err.message)));
-      };
-
-      video.onerror = () => reject(new Error('Não foi possível ler o vídeo.'));
-      video.src = blobUrl;
-      video.load();
-    });
-  };
-
   const processFile = (file: File) => {
     setError(null);
     const isVideo = file.type.startsWith('video/');
@@ -202,13 +94,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     if (isVideo) {
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const blobUrl = URL.createObjectURL(file);
+      setIsLoadingPreview(true);
 
       const metaEl = document.createElement('video');
       metaEl.preload = 'metadata';
 
-      metaEl.onloadedmetadata = async () => {
+      metaEl.onloadedmetadata = () => {
         const dur = metaEl.duration;
         const h = metaEl.videoHeight;
+        setIsLoadingPreview(false);
 
         if (isFinite(dur) && dur > MAX_VIDEO_DURATION) {
           URL.revokeObjectURL(blobUrl);
@@ -216,53 +110,27 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           return;
         }
 
-        const targetHeight = h > MAX_VIDEO_HEIGHT ? 720 : getTargetHeight(h);
-
-        if (targetHeight) {
-          setIsTranscoding(true);
-          setTranscodeProgress(0);
-
-          try {
-            const transcodedFile = await transcodeVideo(blobUrl, targetHeight, dur, file);
-            URL.revokeObjectURL(blobUrl);
-
-            const newBlobUrl = URL.createObjectURL(transcodedFile);
-            objectUrlRef.current = newBlobUrl;
-
-            setDraft(prev => ({
-              ...prev,
-              file: transcodedFile,
-              mediaUrl: newBlobUrl,
-              mediaType: 'video',
-              aspectRatio: 'portrait',
-              duration: isFinite(dur) ? Math.round(dur) : 0,
-              videoHeight: targetHeight,
-              title: prev.title || file.name.split('.')[0],
-            }));
-            setTranscodeProgress(100);
-          } catch (err: any) {
-            URL.revokeObjectURL(blobUrl);
-            objectUrlRef.current = null;
-            setError(err.message || 'Erro ao otimizar vídeo. Tente novamente.');
-          } finally {
-            setIsTranscoding(false);
-          }
-        } else {
-          objectUrlRef.current = blobUrl;
-          setDraft(prev => ({
-            ...prev,
-            file,
-            mediaUrl: blobUrl,
-            mediaType: 'video',
-            aspectRatio: 'portrait',
-            duration: isFinite(dur) ? Math.round(dur) : 0,
-            videoHeight: h || 0,
-            title: prev.title || file.name.split('.')[0],
-          }));
+        if (h > MAX_VIDEO_HEIGHT) {
+          URL.revokeObjectURL(blobUrl);
+          setError(`Resolução muito alta. Use vídeos até ${MAX_VIDEO_HEIGHT}p.`);
+          return;
         }
+
+        objectUrlRef.current = blobUrl;
+        setDraft(prev => ({
+          ...prev,
+          file,
+          mediaUrl: blobUrl,
+          mediaType: 'video',
+          aspectRatio: 'portrait',
+          duration: isFinite(dur) ? Math.round(dur) : 0,
+          videoHeight: h || 0,
+          title: prev.title || file.name.split('.')[0],
+        }));
       };
 
       metaEl.onerror = () => {
+        setIsLoadingPreview(false);
         URL.revokeObjectURL(blobUrl);
         setError('Não foi possível ler o vídeo. Tente outro arquivo.');
       };
@@ -434,24 +302,10 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
             </motion.div>
           )}
 
-          {isTranscoding ? (
-            <div className="w-full aspect-square rounded-[2.5rem] border border-white/10 bg-white/5 flex flex-col items-center justify-center gap-6">
-              <div className="w-16 h-16 rounded-3xl bg-white/5 flex items-center justify-center">
-                <Loader2 size={32} className="text-white/40 animate-spin" />
-              </div>
-              <div className="text-center space-y-4 w-full px-8">
-                <p className="text-white font-black uppercase tracking-[0.2em] text-xs">Otimizando vídeo...</p>
-                <div className="space-y-1.5">
-                  <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-white rounded-full"
-                      animate={{ width: `${transcodeProgress}%` }}
-                      transition={{ ease: 'linear' }}
-                    />
-                  </div>
-                  <p className="text-white/20 font-bold uppercase tracking-widest text-[8px] text-right">{transcodeProgress}%</p>
-                </div>
-              </div>
+          {isLoadingPreview ? (
+            <div className="w-full aspect-square rounded-[2.5rem] border border-white/10 bg-white/5 flex flex-col items-center justify-center gap-4">
+              <Loader2 size={28} className="text-white/30 animate-spin" />
+              <p className="text-white/30 font-black uppercase tracking-[0.2em] text-[10px]">Carregando preview...</p>
             </div>
           ) : !draft.mediaUrl ? (
             <div
@@ -466,7 +320,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               </div>
               <div className="text-center space-y-2">
                 <p className="text-white font-black uppercase tracking-[0.2em] text-xs">Selecionar Mídia</p>
-                <p className="text-white/30 font-bold uppercase tracking-widest text-[8px]">Fotos ou Vídeos · Máx 2 minutos</p>
+                <p className="text-white/30 font-bold uppercase tracking-widest text-[8px]">Fotos ou Vídeos · Máx 2 min · 1080p</p>
               </div>
               <input
                 type="file"
@@ -609,14 +463,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           )}
           <button
             onClick={submitPost}
-            disabled={!draft.mediaUrl || isSubmitting || isTranscoding}
+            disabled={!draft.mediaUrl || isSubmitting || isLoadingPreview}
             className="w-full py-5 bg-white text-black rounded-[1.5rem] font-black uppercase tracking-[0.3em] text-[10px] hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-3 shadow-2xl active:scale-95"
           >
             {isSubmitting
               ? <><Loader2 className="animate-spin" size={16} /> {uploadProgress < 100 ? 'Enviando...' : 'Publicando...'}</>
-              : isTranscoding
-                ? <><Loader2 className="animate-spin" size={16} /> Otimizando...</>
-                : <><Plus size={16} /> Publicar Agora</>}
+              : <><Plus size={16} /> Publicar Agora</>}
           </button>
         </div>
       </motion.div>
