@@ -61,9 +61,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   }, []);
 
   useEffect(() => {
-    if (draft.mediaType === 'video' && draft.mediaUrl && videoRef.current) {
-      const vid = videoRef.current;
-      vid.play().catch(() => {});
+    if (draft.mediaType !== 'video' || !draft.mediaUrl || !videoRef.current) return;
+    const vid = videoRef.current;
+    const tryPlay = () => vid.play().catch(() => {});
+    if (vid.readyState >= 3) {
+      tryPlay();
+    } else {
+      vid.addEventListener('canplay', tryPlay, { once: true });
+      return () => vid.removeEventListener('canplay', tryPlay);
     }
   }, [draft.mediaUrl, draft.mediaType]);
 
@@ -86,6 +91,16 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       const blobUrl = URL.createObjectURL(file);
       objectUrlRef.current = blobUrl;
 
+      setDraft(prev => ({
+        ...prev,
+        file,
+        mediaUrl: blobUrl,
+        mediaType: 'video',
+        aspectRatio: 'portrait',
+        duration: 0,
+        title: prev.title || file.name.split('.')[0]
+      }));
+
       const metaEl = document.createElement('video');
       metaEl.preload = 'metadata';
       metaEl.onloadedmetadata = () => {
@@ -93,25 +108,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         if (isFinite(dur) && dur > MAX_VIDEO_DURATION) {
           URL.revokeObjectURL(blobUrl);
           objectUrlRef.current = null;
+          setDraft(prev => ({ ...prev, mediaUrl: null, file: null }));
           setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION} segundos.`);
           return;
         }
-        setDraft(prev => ({
-          ...prev,
-          file,
-          mediaUrl: blobUrl,
-          mediaType: 'video',
-          aspectRatio: 'portrait',
-          duration: isFinite(dur) ? Math.round(dur) : 0,
-          title: prev.title || file.name.split('.')[0]
-        }));
-      };
-      metaEl.onerror = () => {
-        setDraft(prev => ({
-          ...prev, file, mediaUrl: blobUrl, mediaType: 'video',
-          aspectRatio: 'portrait', duration: 0,
-          title: prev.title || file.name.split('.')[0]
-        }));
+        setDraft(prev => ({ ...prev, duration: isFinite(dur) ? Math.round(dur) : 0 }));
       };
       metaEl.src = blobUrl;
       return;
@@ -305,13 +306,17 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                       key={draft.mediaUrl}
                       ref={videoRef}
                       src={draft.mediaUrl || undefined}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover cursor-pointer"
                       autoPlay
                       muted
                       loop
                       playsInline
                       preload="auto"
                       onCanPlay={(e) => { (e.target as HTMLVideoElement).play().catch(() => {}); }}
+                      onClick={(e) => {
+                        const v = e.currentTarget;
+                        v.paused ? v.play().catch(() => {}) : v.pause();
+                      }}
                     />
                   ) : (
                     <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="Preview" />
