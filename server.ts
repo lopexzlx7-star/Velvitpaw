@@ -10,13 +10,10 @@ const PORT = 3001;
 const SERVER_TIMEOUT_MS = 10 * 60 * 1000;
 
 // ─── Video routing thresholds ─────────────────────────────────────────────────
-// Files at or above this size always go to ImageKit first (heavy route)
+// Files below this size go to ImageKit (light route)
+// Files at or above this size go to Cloudinary (heavy route)
 const HEAVY_VIDEO_MIN_MB = 50;
 const HEAVY_VIDEO_MIN_BYTES = HEAVY_VIDEO_MIN_MB * 1024 * 1024;
-
-// Round-robin counter for light videos — alternates between Cloudinary and ImageKit
-// so neither service accumulates all the load
-let lightVideoCounter = 0;
 
 // ─── Cloudinary config (read once at startup) ─────────────────────────────────
 const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME ?? '';
@@ -156,34 +153,24 @@ app.post('/api/upload-video', upload.single('file'), async (req, res) => {
   const fileSizeMB = (req.file.size / 1024 / 1024).toFixed(1);
   const isHeavy = req.file.size >= HEAVY_VIDEO_MIN_BYTES;
 
-  let primaryService: 'Cloudinary' | 'ImageKit';
-  let fallbackService: 'Cloudinary' | 'ImageKit';
+  // Light videos (< 50MB) → ImageKit primary, Cloudinary fallback
+  // Heavy videos (>= 50MB) → Cloudinary primary, ImageKit fallback
+  const primaryService: 'Cloudinary' | 'ImageKit' = isHeavy ? 'Cloudinary' : 'ImageKit';
+  const fallbackService: 'Cloudinary' | 'ImageKit' = isHeavy ? 'ImageKit' : 'Cloudinary';
 
-  if (isHeavy) {
-    // Heavy videos always go to ImageKit first
-    primaryService = 'ImageKit';
-    fallbackService = 'Cloudinary';
-  } else {
-    // Light videos alternate between services on each upload (round-robin)
-    const useCloudinaryFirst = lightVideoCounter % 2 === 0;
-    primaryService = useCloudinaryFirst ? 'Cloudinary' : 'ImageKit';
-    fallbackService = useCloudinaryFirst ? 'ImageKit' : 'Cloudinary';
-    lightVideoCounter++;
-  }
-
-  const routeLabel = isHeavy ? 'pesado' : `leve #${lightVideoCounter}`;
+  const routeLabel = isHeavy ? 'pesado' : 'leve';
   console.log(`[upload-video] Arquivo: ${req.file.originalname} | Tamanho: ${fileSizeMB}MB | Tipo: ${routeLabel} | Rota: ${primaryService} (fallback: ${fallbackService})`);
 
   const { buffer, mimetype, originalname } = req.file;
 
+  const runUpload = async (service: 'Cloudinary' | 'ImageKit') =>
+    service === 'ImageKit'
+      ? uploadToImageKit(buffer, originalname)
+      : uploadToCloudinary(buffer, mimetype, originalname);
+
   // ─── Primary attempt ───────────────────────────────────────────────────────
   try {
-    let url: string;
-    if (isHeavy) {
-      url = await uploadToImageKit(buffer, originalname);
-    } else {
-      url = await uploadToCloudinary(buffer, mimetype, originalname);
-    }
+    const url = await runUpload(primaryService);
     console.log(`[upload-video] ✓ ${primaryService} sucesso: ${url}`);
     return res.json({ url, provider: primaryService.toLowerCase() });
   } catch (primaryErr: any) {
@@ -192,12 +179,7 @@ app.post('/api/upload-video', upload.single('file'), async (req, res) => {
 
   // ─── Fallback attempt ──────────────────────────────────────────────────────
   try {
-    let url: string;
-    if (isHeavy) {
-      url = await uploadToCloudinary(buffer, mimetype, originalname);
-    } else {
-      url = await uploadToImageKit(buffer, originalname);
-    }
+    const url = await runUpload(fallbackService);
     console.log(`[upload-video] ✓ Fallback ${fallbackService} sucesso: ${url}`);
     return res.json({ url, provider: fallbackService.toLowerCase() });
   } catch (fallbackErr: any) {
