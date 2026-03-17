@@ -9,10 +9,14 @@ app.use(express.json());
 const PORT = 3001;
 const SERVER_TIMEOUT_MS = 10 * 60 * 1000;
 
-// ─── Video routing threshold ──────────────────────────────────────────────────
-// Files below this size go to Cloudinary first; at or above go to ImageKit first
-const LIGHT_VIDEO_MAX_MB = 50;
-const LIGHT_VIDEO_MAX_BYTES = LIGHT_VIDEO_MAX_MB * 1024 * 1024;
+// ─── Video routing thresholds ─────────────────────────────────────────────────
+// Files at or above this size always go to ImageKit first (heavy route)
+const HEAVY_VIDEO_MIN_MB = 50;
+const HEAVY_VIDEO_MIN_BYTES = HEAVY_VIDEO_MIN_MB * 1024 * 1024;
+
+// Round-robin counter for light videos — alternates between Cloudinary and ImageKit
+// so neither service accumulates all the load
+let lightVideoCounter = 0;
 
 // ─── Cloudinary config (read once at startup) ─────────────────────────────────
 const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME ?? '';
@@ -150,11 +154,25 @@ app.post('/api/upload-video', upload.single('file'), async (req, res) => {
   }
 
   const fileSizeMB = (req.file.size / 1024 / 1024).toFixed(1);
-  const isHeavy = req.file.size >= LIGHT_VIDEO_MAX_BYTES;
-  const primaryService = isHeavy ? 'ImageKit' : 'Cloudinary';
-  const fallbackService = isHeavy ? 'Cloudinary' : 'ImageKit';
+  const isHeavy = req.file.size >= HEAVY_VIDEO_MIN_BYTES;
 
-  console.log(`[upload-video] Arquivo: ${req.file.originalname} | Tamanho: ${fileSizeMB}MB | Rota: ${primaryService} (fallback: ${fallbackService})`);
+  let primaryService: 'Cloudinary' | 'ImageKit';
+  let fallbackService: 'Cloudinary' | 'ImageKit';
+
+  if (isHeavy) {
+    // Heavy videos always go to ImageKit first
+    primaryService = 'ImageKit';
+    fallbackService = 'Cloudinary';
+  } else {
+    // Light videos alternate between services on each upload (round-robin)
+    const useCloudinaryFirst = lightVideoCounter % 2 === 0;
+    primaryService = useCloudinaryFirst ? 'Cloudinary' : 'ImageKit';
+    fallbackService = useCloudinaryFirst ? 'ImageKit' : 'Cloudinary';
+    lightVideoCounter++;
+  }
+
+  const routeLabel = isHeavy ? 'pesado' : `leve #${lightVideoCounter}`;
+  console.log(`[upload-video] Arquivo: ${req.file.originalname} | Tamanho: ${fileSizeMB}MB | Tipo: ${routeLabel} | Rota: ${primaryService} (fallback: ${fallbackService})`);
 
   const { buffer, mimetype, originalname } = req.file;
 
