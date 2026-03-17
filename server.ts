@@ -9,27 +9,41 @@ app.use(express.json());
 const PORT = 3001;
 const SERVER_TIMEOUT_MS = 10 * 60 * 1000;
 
+// ─── Video routing threshold ──────────────────────────────────────────────────
+// Files below this size go to Cloudinary first; at or above go to ImageKit first
+const LIGHT_VIDEO_MAX_MB = 50;
+const LIGHT_VIDEO_MAX_BYTES = LIGHT_VIDEO_MAX_MB * 1024 * 1024;
+
+// ─── Cloudinary config (read once at startup) ─────────────────────────────────
 const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME ?? '';
 const UPLOAD_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET ?? '';
+const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY ?? '';
+const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET ?? '';
 
+// ─── ImageKit config (read once at startup) ───────────────────────────────────
 const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY ?? '';
 const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT ?? '';
 const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY ?? '';
 
-if (!CLOUD_NAME || !UPLOAD_PRESET) {
-  console.error('[AVISO] CLOUDINARY_CLOUD_NAME ou CLOUDINARY_UPLOAD_PRESET não definidos.');
+// ─── Startup diagnostics ──────────────────────────────────────────────────────
+const cloudinaryReady = !!(CLOUD_NAME && UPLOAD_PRESET);
+const imagekitReady = !!(IMAGEKIT_PRIVATE_KEY && IMAGEKIT_URL_ENDPOINT && IMAGEKIT_PUBLIC_KEY);
+
+if (cloudinaryReady) {
+  console.log(`[OK] Cloudinary pronto: cloud=${CLOUD_NAME}`);
 } else {
-  console.log(`[OK] Cloudinary configurado: ${CLOUD_NAME}`);
+  console.error('[AVISO] Cloudinary NÃO configurado. Defina CLOUDINARY_CLOUD_NAME e CLOUDINARY_UPLOAD_PRESET nos Secrets.');
 }
 
-if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
-  console.error('[AVISO] IMAGEKIT_PRIVATE_KEY ou IMAGEKIT_URL_ENDPOINT não definidos.');
+if (imagekitReady) {
+  console.log(`[OK] ImageKit pronto: endpoint=${IMAGEKIT_URL_ENDPOINT}`);
 } else {
-  console.log(`[OK] ImageKit configurado: ${IMAGEKIT_URL_ENDPOINT}`);
+  console.error('[AVISO] ImageKit NÃO configurado. Defina IMAGEKIT_PRIVATE_KEY, IMAGEKIT_PUBLIC_KEY e IMAGEKIT_URL_ENDPOINT nos Secrets.');
 }
 
+// ─── ImageKit client ──────────────────────────────────────────────────────────
 let imagekit: ImageKit | null = null;
-if (IMAGEKIT_PRIVATE_KEY && IMAGEKIT_URL_ENDPOINT && IMAGEKIT_PUBLIC_KEY) {
+if (imagekitReady) {
   imagekit = new ImageKit({
     publicKey: IMAGEKIT_PUBLIC_KEY,
     privateKey: IMAGEKIT_PRIVATE_KEY,
@@ -37,11 +51,13 @@ if (IMAGEKIT_PRIVATE_KEY && IMAGEKIT_URL_ENDPOINT && IMAGEKIT_PUBLIC_KEY) {
   });
 }
 
+// ─── Multer (memory storage, 500 MB cap) ─────────────────────────────────────
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 },
 });
 
+// ─── Retry helper ─────────────────────────────────────────────────────────────
 async function withRetry<T>(
   fn: () => Promise<T>,
   retries = 3,
@@ -53,13 +69,45 @@ async function withRetry<T>(
       return await fn();
     } catch (err: any) {
       if (attempt === retries) throw err;
-      console.warn(`[${label}] Tentativa ${attempt} falhou: ${err?.message}. Tentando novamente em ${delayMs * attempt}ms...`);
+      console.warn(`[${label}] Tentativa ${attempt} falhou: ${err?.message}. Aguardando ${delayMs * attempt}ms...`);
       await new Promise(r => setTimeout(r, delayMs * attempt));
     }
   }
   throw new Error('Máximo de tentativas atingido');
 }
 
+// ─── Upload helpers ───────────────────────────────────────────────────────────
+async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName: string): Promise<string> {
+  if (!cloudinaryReady) throw new Error('Cloudinary não configurado');
+  const fileName = originalName || 'upload';
+  return withRetry(async () => {
+    const form = new FormData();
+    const blob = new Blob([buffer], { type: mimetype });
+    form.append('file', blob, fileName);
+    form.append('upload_preset', UPLOAD_PRESET);
+    form.append('resource_type', 'video');
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
+      { method: 'POST', body: form }
+    );
+    const data: any = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || 'Cloudinary retornou erro');
+    return data.secure_url as string;
+  }, 3, 2000, 'Cloudinary');
+}
+
+async function uploadToImageKit(buffer: Buffer, originalName: string): Promise<string> {
+  if (!imagekitReady || !imagekit) throw new Error('ImageKit não configurado');
+  const fileName = `${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  return withRetry(
+    () => imagekit!.upload({ file: buffer, fileName, folder: '/videos', useUniqueFileName: true })
+      .then(r => r.url),
+    3, 2000, 'ImageKit'
+  );
+}
+
+// ─── /api/suggest-tags ────────────────────────────────────────────────────────
 app.post('/api/suggest-tags', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -87,6 +135,62 @@ app.post('/api/suggest-tags', async (req, res) => {
   }
 });
 
+// ─── /api/upload-video ────────────────────────────────────────────────────────
+// All upload logic lives here. Frontend never decides which service to use.
+app.post('/api/upload-video', upload.single('file'), async (req, res) => {
+  res.setTimeout(SERVER_TIMEOUT_MS);
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+  }
+
+  // MIME validation — only video types allowed
+  if (!req.file.mimetype.startsWith('video/')) {
+    return res.status(400).json({ error: 'Tipo de arquivo inválido. Apenas vídeos são aceitos.' });
+  }
+
+  const fileSizeMB = (req.file.size / 1024 / 1024).toFixed(1);
+  const isHeavy = req.file.size >= LIGHT_VIDEO_MAX_BYTES;
+  const primaryService = isHeavy ? 'ImageKit' : 'Cloudinary';
+  const fallbackService = isHeavy ? 'Cloudinary' : 'ImageKit';
+
+  console.log(`[upload-video] Arquivo: ${req.file.originalname} | Tamanho: ${fileSizeMB}MB | Rota: ${primaryService} (fallback: ${fallbackService})`);
+
+  const { buffer, mimetype, originalname } = req.file;
+
+  // ─── Primary attempt ───────────────────────────────────────────────────────
+  try {
+    let url: string;
+    if (isHeavy) {
+      url = await uploadToImageKit(buffer, originalname);
+    } else {
+      url = await uploadToCloudinary(buffer, mimetype, originalname);
+    }
+    console.log(`[upload-video] ✓ ${primaryService} sucesso: ${url}`);
+    return res.json({ url, provider: primaryService.toLowerCase() });
+  } catch (primaryErr: any) {
+    console.error(`[upload-video] ✗ ${primaryService} falhou: ${primaryErr?.message}. Ativando fallback para ${fallbackService}...`);
+  }
+
+  // ─── Fallback attempt ──────────────────────────────────────────────────────
+  try {
+    let url: string;
+    if (isHeavy) {
+      url = await uploadToCloudinary(buffer, mimetype, originalname);
+    } else {
+      url = await uploadToImageKit(buffer, originalname);
+    }
+    console.log(`[upload-video] ✓ Fallback ${fallbackService} sucesso: ${url}`);
+    return res.json({ url, provider: fallbackService.toLowerCase() });
+  } catch (fallbackErr: any) {
+    console.error(`[upload-video] ✗ Fallback ${fallbackService} também falhou: ${fallbackErr?.message}`);
+    return res.status(500).json({
+      error: `Upload falhou em ambos os serviços (${primaryService} e ${fallbackService}). Verifique as credenciais nos Secrets e tente novamente.`,
+    });
+  }
+});
+
+// ─── /api/upload (mantido para compatibilidade — imagens) ─────────────────────
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   res.setTimeout(SERVER_TIMEOUT_MS);
 
@@ -97,59 +201,31 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   const provider = req.body?.provider ?? 'cloudinary';
   const isHeavy = provider === 'imagekit';
 
-  console.log(`[Upload] Arquivo: ${req.file.originalname}, Tamanho: ${(req.file.size / 1024 / 1024).toFixed(1)}MB, Rota: ${isHeavy ? 'ImageKit' : 'Cloudinary'}`);
+  console.log(`[upload] Arquivo: ${req.file.originalname}, Tamanho: ${(req.file.size / 1024 / 1024).toFixed(1)}MB, Rota: ${isHeavy ? 'ImageKit' : 'Cloudinary'}`);
 
   try {
     if (isHeavy) {
-      if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
-        return res.status(500).json({ error: 'Serviço de vídeos pesados não configurado.' });
+      if (!imagekitReady) {
+        return res.status(500).json({ error: 'Serviço ImageKit não configurado.' });
       }
-
-      const fileName = `${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      const fileBuffer = req.file.buffer;
-
-      const response = await withRetry(
-        () => imagekit!.upload({ file: fileBuffer, fileName, folder: '/videos', useUniqueFileName: true }),
-        3, 2000, 'ImageKit'
-      );
-
-      console.log(`[ImageKit] Upload concluído: ${response.url}`);
-      return res.json({ url: response.url, provider: 'imagekit' });
-
+      const url = await uploadToImageKit(req.file.buffer, req.file.originalname);
+      console.log(`[upload] ImageKit concluído: ${url}`);
+      return res.json({ url, provider: 'imagekit' });
     } else {
-      if (!CLOUD_NAME || !UPLOAD_PRESET) {
-        return res.status(500).json({ error: 'Serviço de vídeos leves não configurado.' });
+      if (!cloudinaryReady) {
+        return res.status(500).json({ error: 'Serviço Cloudinary não configurado.' });
       }
-
-      const fileBuffer = req.file.buffer;
-      const fileMimetype = req.file.mimetype;
-      const fileName = req.file.originalname || 'upload';
-
-      const url = await withRetry(async () => {
-        const form = new FormData();
-        const blob = new Blob([fileBuffer], { type: fileMimetype });
-        form.append('file', blob, fileName);
-        form.append('upload_preset', UPLOAD_PRESET);
-
-        const response = await fetch(
-          `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
-          { method: 'POST', body: form }
-        );
-
-        const data: any = await response.json();
-        if (!response.ok) throw new Error(data?.error?.message || 'Cloudinary retornou erro');
-        return data.secure_url as string;
-      }, 3, 2000, 'Cloudinary');
-
-      console.log(`[Cloudinary] Upload concluído: ${url}`);
+      const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype, req.file.originalname);
+      console.log(`[upload] Cloudinary concluído: ${url}`);
       return res.json({ url, provider: 'cloudinary' });
     }
   } catch (err: any) {
-    console.error('[Upload] Falha após todas as tentativas:', err?.message);
-    res.status(500).json({ error: 'Falha no upload após várias tentativas. Tente novamente.' });
+    console.error('[upload] Falha:', err?.message);
+    res.status(500).json({ error: 'Falha no upload. Tente novamente.' });
   }
 });
 
+// ─── Server bootstrap ─────────────────────────────────────────────────────────
 const server = app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
 });
@@ -159,7 +235,7 @@ server.keepAliveTimeout = SERVER_TIMEOUT_MS;
 
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`[ERRO] Porta ${PORT} ocupada. Tente reiniciar o servidor.`);
+    console.error(`[ERRO] Porta ${PORT} ocupada. Reinicie o servidor.`);
     process.exit(1);
   } else {
     throw err;

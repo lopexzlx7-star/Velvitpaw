@@ -27,10 +27,8 @@ interface Draft {
   description: string;
 }
 
-const LIGHT_MAX_DURATION = 60;
 const MAX_VIDEO_DURATION = 120;
 const MAX_DESCRIPTION_WORDS = 50;
-const LIGHT_MAX_HEIGHT = 720;
 const MAX_VIDEO_HEIGHT = 1080;
 
 const INITIAL_DRAFT: Draft = {
@@ -213,18 +211,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     reader.readAsDataURL(file);
   };
 
-  const uploadVideo = (file: File, videoHeight: number, duration: number): Promise<string> => {
-    const isHeavy = videoHeight > LIGHT_MAX_HEIGHT || duration > LIGHT_MAX_DURATION;
-
+  const uploadVideo = (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('provider', isHeavy ? 'imagekit' : 'cloudinary');
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       activeXhrRef.current = xhr;
 
-      xhr.open('POST', '/api/upload');
+      xhr.open('POST', '/api/upload-video');
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 90));
@@ -255,8 +250,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const uploadVideoWithRetry = async (
     file: File,
-    videoHeight: number,
-    duration: number,
     maxAttempts = 3
   ): Promise<string> => {
     let lastError: Error = new Error('Falha no upload.');
@@ -266,7 +259,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           setUploadProgress(0);
           await new Promise(r => setTimeout(r, 2000 * attempt));
         }
-        return await uploadVideo(file, videoHeight, duration);
+        return await uploadVideo(file);
       } catch (err: any) {
         lastError = err;
         const isRetryable = err?.message === 'network_error';
@@ -287,11 +280,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       let finalUrl = draft.mediaUrl;
 
       if (draft.mediaType === 'video') {
-        finalUrl = await uploadVideoWithRetry(
-          draft.file,
-          draft.videoHeight ?? 0,
-          draft.duration ?? 0
-        );
+        finalUrl = await uploadVideoWithRetry(draft.file);
       }
 
       const postData: Record<string, unknown> = {
