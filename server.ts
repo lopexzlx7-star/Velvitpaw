@@ -15,8 +15,6 @@ const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY ?? '';
 const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT ?? '';
 const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY ?? '';
 
-const LIGHT_VIDEO_LIMIT = 50 * 1024 * 1024;
-
 if (!CLOUD_NAME || !UPLOAD_PRESET) {
   console.error('[AVISO] CLOUDINARY_CLOUD_NAME ou CLOUDINARY_UPLOAD_PRESET não definidos.');
 } else {
@@ -72,10 +70,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
   }
 
-  const fileSize = req.file.size;
-  const isHeavy = fileSize > LIGHT_VIDEO_LIMIT;
+  const provider = req.body?.provider ?? 'cloudinary';
+  const isHeavy = provider === 'imagekit';
 
-  console.log(`[Upload] Arquivo: ${req.file.originalname}, Tamanho: ${(fileSize / 1024 / 1024).toFixed(1)}MB, Rota: ${isHeavy ? 'ImageKit (pesado)' : 'Cloudinary (leve)'}`);
+  console.log(`[Upload] Arquivo: ${req.file.originalname}, Tamanho: ${(req.file.size / 1024 / 1024).toFixed(1)}MB, Rota: ${isHeavy ? 'ImageKit (pesado)' : 'Cloudinary (leve)'}`);
 
   try {
     if (isHeavy) {
