@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, Mail } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { 
   doc, 
@@ -1489,10 +1489,10 @@ export default function App() {
                     <button
                       onClick={() => { setShowEmailPopup(true); setEmailPopupError(null); setRecoveryEmail(''); }}
                       title="Vincular e-mail de recuperação"
-                      className="absolute top-6 right-6 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[9px] uppercase tracking-widest text-white/40 hover:text-white transition-all"
+                      className="absolute bottom-4 right-4 flex items-center gap-1 px-2 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[8px] uppercase tracking-widest text-white/30 hover:text-white/60 transition-all"
                     >
-                      <Mail size={11} />
-                      Sincronizar e-mail
+                      <RotateCcw size={9} />
+                      sync
                     </button>
                   )}
                   <div className="flex flex-col md:flex-row items-center gap-8 border-b border-white/10 pb-8 mb-8">
