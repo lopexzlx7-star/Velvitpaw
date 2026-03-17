@@ -9,6 +9,16 @@ app.use(express.json());
 
 const PORT = 3001;
 
+const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME ?? '';
+const UPLOAD_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET ?? '';
+
+if (!CLOUD_NAME || !UPLOAD_PRESET) {
+  console.error('[AVISO] CLOUDINARY_CLOUD_NAME ou CLOUDINARY_UPLOAD_PRESET não definidos. Uploads de vídeo não funcionarão.');
+} else {
+  cloudinary.config({ cloud_name: CLOUD_NAME });
+  console.log(`[OK] Cloudinary configurado para cloud: ${CLOUD_NAME}`);
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 150 * 1024 * 1024 },
@@ -42,29 +52,17 @@ app.post('/api/suggest-tags', async (req, res) => {
 });
 
 app.post('/api/upload', upload.single('file'), async (req, res) => {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-  const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
-
-  if (!cloudName || !uploadPreset) {
-    return res.status(500).json({ error: 'Cloudinary não configurado no servidor.' });
-  }
-
   if (!req.file) {
     return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
   }
 
-  cloudinary.config({ cloud_name: cloudName });
-
   try {
     const stream = cloudinary.uploader.upload_stream(
-      {
-        upload_preset: uploadPreset,
-        resource_type: 'auto',
-      },
+      { upload_preset: UPLOAD_PRESET, resource_type: 'auto' },
       (error, result) => {
         if (error || !result) {
-          console.error('Cloudinary upload error:', error);
-          return res.status(500).json({ error: error?.message || 'Falha no upload para Cloudinary.' });
+          console.error('[Cloudinary]', error?.message);
+          return res.status(500).json({ error: 'Falha no upload. Tente novamente.' });
         }
         res.json({ url: result.secure_url });
       }
@@ -75,7 +73,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     readable.push(null);
     readable.pipe(stream);
   } catch (err: any) {
-    console.error('Upload proxy error:', err?.message);
+    console.error('[Upload]', err?.message);
     res.status(500).json({ error: 'Erro interno no upload.' });
   }
 });
