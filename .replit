@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "nix"]
+modules = ["nodejs-20", "bash", "web", "nix"]
 [agent]
 expertMode = true
 
@@ -44,3 +44,4 @@ waitForPort = 5000
 
 [nix]
 channel = "stable-25_05"
+packages = ["ffmpeg"]

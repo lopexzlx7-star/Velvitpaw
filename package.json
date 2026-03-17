@@ -24,7 +24,7 @@
     "firebase": "^12.10.0",
     "imagekit": "^6.0.0",
     "lucide-react": "^0.546.0",
-    "motion": "^12.37.0",
+    "motion": "^12.38.0",
     "multer": "^2.1.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
