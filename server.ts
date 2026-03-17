@@ -28,11 +28,14 @@ if (!IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
   console.log(`[OK] ImageKit configurado: ${IMAGEKIT_URL_ENDPOINT}`);
 }
 
-const imagekit = new ImageKit({
-  publicKey: IMAGEKIT_PUBLIC_KEY || 'public_placeholder',
-  privateKey: IMAGEKIT_PRIVATE_KEY,
-  urlEndpoint: IMAGEKIT_URL_ENDPOINT,
-});
+let imagekit: ImageKit | null = null;
+if (IMAGEKIT_PRIVATE_KEY && IMAGEKIT_URL_ENDPOINT && IMAGEKIT_PUBLIC_KEY) {
+  imagekit = new ImageKit({
+    publicKey: IMAGEKIT_PUBLIC_KEY,
+    privateKey: IMAGEKIT_PRIVATE_KEY,
+    urlEndpoint: IMAGEKIT_URL_ENDPOINT,
+  });
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -106,7 +109,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       const fileBuffer = req.file.buffer;
 
       const response = await withRetry(
-        () => imagekit.upload({ file: fileBuffer, fileName, folder: '/videos', useUniqueFileName: true }),
+        () => imagekit!.upload({ file: fileBuffer, fileName, folder: '/videos', useUniqueFileName: true }),
         3, 2000, 'ImageKit'
       );
 
