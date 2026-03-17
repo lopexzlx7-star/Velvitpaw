@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import multer from 'multer';
@@ -28,13 +29,14 @@ const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT ?? '';
 const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY ?? '';
 
 // ─── Startup diagnostics ──────────────────────────────────────────────────────
-const cloudinaryReady = !!(CLOUD_NAME && UPLOAD_PRESET);
+// Signed uploads require cloud name + API key + API secret (no preset needed)
+const cloudinaryReady = !!(CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
 const imagekitReady = !!(IMAGEKIT_PRIVATE_KEY && IMAGEKIT_URL_ENDPOINT && IMAGEKIT_PUBLIC_KEY);
 
 if (cloudinaryReady) {
-  console.log(`[OK] Cloudinary pronto: cloud=${CLOUD_NAME}`);
+  console.log(`[OK] Cloudinary pronto (signed): cloud=${CLOUD_NAME}`);
 } else {
-  console.error('[AVISO] Cloudinary NÃO configurado. Defina CLOUDINARY_CLOUD_NAME e CLOUDINARY_UPLOAD_PRESET nos Secrets.');
+  console.error('[AVISO] Cloudinary NÃO configurado. Defina CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY e CLOUDINARY_API_SECRET nos Secrets.');
 }
 
 if (imagekitReady) {
@@ -86,16 +88,40 @@ async function withRetry<T>(
   throw new Error('Máximo de tentativas atingido');
 }
 
+// ─── Cloudinary signed-upload helper ─────────────────────────────────────────
+// Generates a SHA-1 signature from sorted params + API secret, as required by
+// Cloudinary's signed upload flow. No upload preset is needed.
+function buildCloudinarySignature(params: Record<string, string>): string {
+  const sortedStr = Object.keys(params)
+    .sort()
+    .map(k => `${k}=${params[k]}`)
+    .join('&');
+  return crypto
+    .createHash('sha1')
+    .update(sortedStr + CLOUDINARY_API_SECRET)
+    .digest('hex');
+}
+
 // ─── Upload helpers ───────────────────────────────────────────────────────────
 async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName: string): Promise<string> {
   if (!cloudinaryReady) throw new Error('Cloudinary não configurado');
   const fileName = originalName || 'upload';
+
   return withRetry(async () => {
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const folder = 'videos';
+
+    // Only the params that will be sent in the request body (excluding file, api_key, resource_type)
+    const paramsToSign: Record<string, string> = { folder, timestamp };
+    const signature = buildCloudinarySignature(paramsToSign);
+
     const form = new FormData();
     const blob = new Blob([buffer], { type: mimetype });
     form.append('file', blob, fileName);
-    form.append('upload_preset', UPLOAD_PRESET);
-    form.append('resource_type', 'video');
+    form.append('folder', folder);
+    form.append('timestamp', timestamp);
+    form.append('api_key', CLOUDINARY_API_KEY);
+    form.append('signature', signature);
 
     const response = await fetch(
       `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
