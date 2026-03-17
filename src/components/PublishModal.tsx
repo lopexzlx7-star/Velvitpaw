@@ -1,11 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
   Maximize2, Square, Smartphone, Plus, Film
 } from 'lucide-react';
-import { db, auth } from '../firebase';
+import { db, auth, storage } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 interface PublishModalProps {
   isOpen: boolean;
@@ -27,10 +28,8 @@ interface Draft {
   description: string;
 }
 
-const LIGHT_MAX_DURATION = 60;
 const MAX_VIDEO_DURATION = 120;
 const MAX_DESCRIPTION_WORDS = 50;
-const LIGHT_MAX_HEIGHT = 720;
 const MAX_VIDEO_HEIGHT = 1080;
 
 const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -64,6 +63,16 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       }
     };
   }, []);
+
+  const resetDraft = () => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setDraft({ title: '', aspectRatio: 'portrait', mediaUrl: null, mediaType: 'image', file: null, description: '' });
+    setUploadProgress(0);
+    setError(null);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -127,6 +136,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
         if (isFinite(capturedDur) && capturedDur > MAX_VIDEO_DURATION) {
           URL.revokeObjectURL(blobUrl);
+          cleanup();
           setIsLoadingPreview(false);
           setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION / 60} minutos.`);
           return;
@@ -134,6 +144,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
         if (capturedH > MAX_VIDEO_HEIGHT) {
           URL.revokeObjectURL(blobUrl);
+          cleanup();
           setIsLoadingPreview(false);
           setError(`Resolução muito alta. Use vídeos até ${MAX_VIDEO_HEIGHT}p.`);
           return;
@@ -185,50 +196,35 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     reader.readAsDataURL(file);
   };
 
-  const uploadVideo = (file: File, videoHeight: number, duration: number): Promise<string> => {
-    const isHeavy = videoHeight > LIGHT_MAX_HEIGHT || duration > LIGHT_MAX_DURATION;
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('provider', isHeavy ? 'imagekit' : 'cloudinary');
-
+  const uploadToFirebaseStorage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/upload');
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 90));
-      };
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const data = JSON.parse(xhr.responseText);
-          setUploadProgress(100);
-          resolve(data.url);
-        } else {
-          let msg = 'Falha no upload.';
-          try { msg = JSON.parse(xhr.responseText)?.error || msg; } catch {}
-          reject(new Error(msg));
-        }
-      };
-      xhr.onerror = () => reject(new Error('network_error'));
-      xhr.send(formData);
-    });
-  };
+      const uid = auth.currentUser!.uid;
+      const timestamp = Date.now();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `posts/${uid}/${timestamp}_${safeName}`;
+      const storageRef = ref(storage, storagePath);
+      const uploadTask = uploadBytesResumable(storageRef, file);
 
-  const uploadVideoWithRetry = async (file: File, videoHeight: number, duration: number, maxAttempts = 3): Promise<string> => {
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        if (attempt > 1) {
-          setUploadProgress(0);
-          await new Promise(r => setTimeout(r, 2000 * attempt));
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 90);
+          setUploadProgress(pct);
+        },
+        (err) => {
+          reject(new Error(err.message || 'Erro no upload para o Firebase Storage.'));
+        },
+        async () => {
+          try {
+            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            setUploadProgress(100);
+            resolve(downloadUrl);
+          } catch (e: any) {
+            reject(new Error(e.message || 'Erro ao obter URL do arquivo.'));
+          }
         }
-        return await uploadVideo(file, videoHeight, duration);
-      } catch (err: any) {
-        if (attempt === maxAttempts) throw err;
-        if (err?.message !== 'network_error') throw err;
-        console.warn(`[Upload] Tentativa ${attempt} falhou, tentando novamente...`);
-      }
-    }
-    throw new Error('Falha no upload após várias tentativas.');
+      );
+    });
   };
 
   const submitPost = async () => {
@@ -241,7 +237,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       let finalUrl = draft.mediaUrl;
 
       if (draft.mediaType === 'video') {
-        finalUrl = await uploadVideoWithRetry(draft.file, draft.videoHeight ?? 0, draft.duration ?? 0);
+        finalUrl = await uploadToFirebaseStorage(draft.file);
       }
 
       const postData = {
@@ -262,14 +258,13 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       };
 
       await addDoc(collection(db, 'posts'), postData);
-      if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
+      resetDraft();
       onSuccess();
       onClose();
-      setDraft({ title: '', aspectRatio: 'portrait', mediaUrl: null, mediaType: 'image', file: null, description: '' });
-      setUploadProgress(0);
     } catch (err: any) {
       console.error('Error submitting post:', err);
       setError(err.message || 'Erro ao publicar. Tente novamente.');
+      setIsSubmitting(false);
     } finally {
       setIsSubmitting(false);
     }
