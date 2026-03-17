@@ -23,6 +23,7 @@ interface Draft {
   file: File | null;
   duration?: number;
   videoHeight?: number;
+  videoThumbnail?: string | null;
   description: string;
 }
 
@@ -48,7 +49,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -64,22 +64,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       }
     };
   }, []);
-
-  useEffect(() => {
-    const vid = videoRef.current;
-    if (!vid) return;
-
-    if (draft.mediaType === 'video' && draft.mediaUrl) {
-      const tryPlay = () => vid.play().catch(() => {});
-      vid.src = draft.mediaUrl;
-      vid.load();
-      vid.addEventListener('canplay', tryPlay, { once: true });
-      return () => vid.removeEventListener('canplay', tryPlay);
-    } else {
-      vid.removeAttribute('src');
-      vid.load();
-    }
-  }, [draft.mediaUrl, draft.mediaType]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -97,34 +81,59 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       setIsLoadingPreview(true);
 
       const metaEl = document.createElement('video');
-      metaEl.preload = 'metadata';
+      metaEl.preload = 'auto';
+      metaEl.muted = true;
+      metaEl.playsInline = true;
+
+      let validated = false;
+      let capturedDur = 0;
+      let capturedH = 0;
 
       metaEl.onloadedmetadata = () => {
-        const dur = metaEl.duration;
-        const h = metaEl.videoHeight;
-        setIsLoadingPreview(false);
+        capturedDur = metaEl.duration;
+        capturedH = metaEl.videoHeight;
 
-        if (isFinite(dur) && dur > MAX_VIDEO_DURATION) {
+        if (isFinite(capturedDur) && capturedDur > MAX_VIDEO_DURATION) {
           URL.revokeObjectURL(blobUrl);
+          setIsLoadingPreview(false);
           setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION / 60} minutos.`);
           return;
         }
 
-        if (h > MAX_VIDEO_HEIGHT) {
+        if (capturedH > MAX_VIDEO_HEIGHT) {
           URL.revokeObjectURL(blobUrl);
+          setIsLoadingPreview(false);
           setError(`Resolução muito alta. Use vídeos até ${MAX_VIDEO_HEIGHT}p.`);
           return;
         }
 
+        validated = true;
+        metaEl.currentTime = Math.max(0.001, Math.min(0.5, capturedDur * 0.05));
+      };
+
+      metaEl.onseeked = () => {
+        if (!validated) return;
+
+        const MAX_THUMB_W = 640;
+        const scale = Math.min(1, MAX_THUMB_W / metaEl.videoWidth);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(metaEl.videoWidth * scale);
+        canvas.height = Math.round(metaEl.videoHeight * scale);
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.drawImage(metaEl, 0, 0, canvas.width, canvas.height);
+        const thumbnail = canvas.toDataURL('image/jpeg', 0.85);
+
         objectUrlRef.current = blobUrl;
+        setIsLoadingPreview(false);
         setDraft(prev => ({
           ...prev,
           file,
           mediaUrl: blobUrl,
           mediaType: 'video',
+          videoThumbnail: thumbnail,
           aspectRatio: 'portrait',
-          duration: isFinite(dur) ? Math.round(dur) : 0,
-          videoHeight: h || 0,
+          duration: isFinite(capturedDur) ? Math.round(capturedDur) : 0,
+          videoHeight: capturedH || 0,
           title: prev.title || file.name.split('.')[0],
         }));
       };
@@ -346,19 +355,18 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   className={`relative w-full overflow-hidden rounded-[2rem] border border-white/10 bg-black/50 transition-all duration-500 ${getAspectClass()}`}
                 >
                   {isVideo ? (
-                    <video
-                      ref={videoRef}
-                      className="w-full h-full object-cover cursor-pointer"
-                      muted
-                      loop
-                      playsInline
-                      preload="auto"
-                      onError={() => setError('Não foi possível carregar o vídeo. Tente outro arquivo.')}
-                      onClick={(e) => {
-                        const v = e.currentTarget;
-                        v.paused ? v.play().catch(() => {}) : v.pause();
-                      }}
-                    />
+                    <>
+                      <img
+                        src={draft.videoThumbnail || undefined}
+                        className="w-full h-full object-cover"
+                        alt="Preview do vídeo"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center border border-white/20">
+                          <svg viewBox="0 0 24 24" fill="white" className="w-6 h-6 ml-1"><path d="M8 5v14l11-7z"/></svg>
+                        </div>
+                      </div>
+                    </>
                   ) : (
                     <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="Preview" />
                   )}
@@ -366,7 +374,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   <button
                     onClick={() => {
                       if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
-                      setDraft(prev => ({ ...prev, mediaUrl: null, file: null }));
+                      setDraft(prev => ({ ...prev, mediaUrl: null, file: null, videoThumbnail: null }));
                     }}
                     className="absolute top-4 right-4 p-3 bg-black/50 backdrop-blur-xl rounded-2xl text-white hover:bg-red-500 transition-all border border-white/10"
                   >
