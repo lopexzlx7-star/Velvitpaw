@@ -216,13 +216,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           return;
         }
 
-        if (h > MAX_VIDEO_HEIGHT) {
-          URL.revokeObjectURL(blobUrl);
-          setError(`Resolução muito alta. Máximo ${MAX_VIDEO_HEIGHT}p.`);
-          return;
-        }
-
-        const targetHeight = getTargetHeight(h);
+        const targetHeight = h > MAX_VIDEO_HEIGHT ? 720 : getTargetHeight(h);
 
         if (targetHeight) {
           setIsTranscoding(true);
@@ -472,7 +466,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               </div>
               <div className="text-center space-y-2">
                 <p className="text-white font-black uppercase tracking-[0.2em] text-xs">Selecionar Mídia</p>
-                <p className="text-white/30 font-bold uppercase tracking-widest text-[8px]">Fotos ou Vídeos (máx 2 min · 1080p)</p>
+                <p className="text-white/30 font-bold uppercase tracking-widest text-[8px]">Fotos ou Vídeos · Máx 2 minutos</p>
               </div>
               <input
                 type="file"
