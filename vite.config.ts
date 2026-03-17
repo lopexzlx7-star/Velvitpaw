@@ -7,10 +7,6 @@ export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     base: './',
-    define: {
-      'process.env.CLOUDINARY_CLOUD_NAME': JSON.stringify(process.env.CLOUDINARY_CLOUD_NAME || ''),
-      'process.env.CLOUDINARY_UPLOAD_PRESET': JSON.stringify(process.env.CLOUDINARY_UPLOAD_PRESET || ''),
-    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

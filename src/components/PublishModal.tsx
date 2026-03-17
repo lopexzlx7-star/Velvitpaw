@@ -26,8 +26,6 @@ interface Draft {
 }
 
 const MAX_VIDEO_DURATION = 60;
-const CLOUDINARY_CLOUD = process.env.CLOUDINARY_CLOUD_NAME || '';
-const CLOUDINARY_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET || '';
 const MAX_DESCRIPTION_WORDS = 50;
 
 const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -147,16 +145,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   };
 
   const uploadToCloudinary = (file: File): Promise<string> => {
-    if (!CLOUDINARY_CLOUD || !CLOUDINARY_PRESET) {
-      return Promise.reject(new Error('Credenciais do Cloudinary não configuradas. Contate o administrador.'));
-    }
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_PRESET);
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`);
+      xhr.open('POST', '/api/upload');
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 90));
       };
@@ -164,13 +158,16 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         if (xhr.status === 200) {
           const data = JSON.parse(xhr.responseText);
           setUploadProgress(100);
-          resolve(data.secure_url);
+          resolve(data.url);
         } else {
-          const msg = xhr.responseText ? JSON.parse(xhr.responseText)?.error?.message : null;
-          reject(new Error(msg || 'Falha no upload para Cloudinary.'));
+          let msg = 'Falha no upload.';
+          try { msg = JSON.parse(xhr.responseText)?.error || msg; } catch {}
+          reject(new Error(msg));
         }
       };
-      xhr.onerror = () => reject(new Error('Erro de rede ao fazer upload.'));
+      xhr.onerror = () => reject(new Error('Erro de conexão. Verifique sua internet e tente novamente.'));
+      xhr.ontimeout = () => reject(new Error('Upload expirou. Tente com um vídeo menor ou conexão melhor.'));
+      xhr.timeout = 120000;
       xhr.send(formData);
     });
   };

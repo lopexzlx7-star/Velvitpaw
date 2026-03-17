@@ -1,10 +1,18 @@
 import express from 'express';
 import { GoogleGenAI } from '@google/genai';
+import multer from 'multer';
+import { v2 as cloudinary } from 'cloudinary';
+import { Readable } from 'stream';
 
 const app = express();
 app.use(express.json());
 
 const PORT = 3001;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 150 * 1024 * 1024 },
+});
 
 app.post('/api/suggest-tags', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -30,6 +38,45 @@ app.post('/api/suggest-tags', async (req, res) => {
   } catch (err: any) {
     console.error('Gemini error:', err?.message);
     res.status(500).json({ error: 'Erro ao chamar a API Gemini.' });
+  }
+});
+
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
+
+  if (!cloudName || !uploadPreset) {
+    return res.status(500).json({ error: 'Cloudinary não configurado no servidor.' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+  }
+
+  cloudinary.config({ cloud_name: cloudName });
+
+  try {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        upload_preset: uploadPreset,
+        resource_type: 'auto',
+      },
+      (error, result) => {
+        if (error || !result) {
+          console.error('Cloudinary upload error:', error);
+          return res.status(500).json({ error: error?.message || 'Falha no upload para Cloudinary.' });
+        }
+        res.json({ url: result.secure_url });
+      }
+    );
+
+    const readable = new Readable();
+    readable.push(req.file.buffer);
+    readable.push(null);
+    readable.pipe(stream);
+  } catch (err: any) {
+    console.error('Upload proxy error:', err?.message);
+    res.status(500).json({ error: 'Erro interno no upload.' });
   }
 });
 
