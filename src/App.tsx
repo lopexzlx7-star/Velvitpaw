@@ -1390,9 +1390,11 @@ export default function App() {
                               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
                                 {globalPosts.slice(0, 6).map(item => {
                                   const thumbUrl = item.type === 'video'
-                                    ? item.url.includes('res.cloudinary.com')
-                                      ? item.url.replace('/upload/', '/upload/so_0/').replace(/\.[^./]+$/, '.jpg')
-                                      : item.url
+                                    ? item.thumbnailUrl
+                                      || (item.url.includes('res.cloudinary.com')
+                                        ? item.url.replace('/upload/', '/upload/so_0/').replace(/\.[^./]+$/, '.jpg')
+                                        : null)
+                                      || item.url
                                     : item.url;
                                   return (
                                   <button

@@ -336,7 +336,17 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   </button>
                 )}
               </div>
-              <button className="p-2.5 bg-white/10 backdrop-blur-xl rounded-2xl text-white hover:bg-white/20 transition-all">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (navigator.share) {
+                    navigator.share({ title: item.title, url: item.url }).catch(() => {});
+                  } else {
+                    navigator.clipboard?.writeText(item.url).catch(() => {});
+                  }
+                }}
+                className="p-2.5 bg-white/10 backdrop-blur-xl rounded-2xl text-white hover:bg-white/20 transition-all"
+              >
                 <Share2 size={18} />
               </button>
             </div>
