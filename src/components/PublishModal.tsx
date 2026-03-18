@@ -31,6 +31,7 @@ const MAX_VIDEO_HEIGHT = 1080;
 const MAX_FILE_SIZE_MB = 490;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const XHR_TIMEOUT_MS = 9 * 60 * 1000;
+const HEAVY_VIDEO_MIN_BYTES = 50 * 1024 * 1024;
 
 const INITIAL_DRAFT: Draft = {
   title: '',
@@ -211,15 +212,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     reader.readAsDataURL(file);
   };
 
-  const uploadVideo = (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    return new Promise((resolve, reject) => {
+  const xhrDirectUpload = (url: string, formData: FormData): Promise<any> =>
+    new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       activeXhrRef.current = xhr;
-
-      xhr.open('POST', '/api/upload-video');
+      xhr.open('POST', url);
       xhr.timeout = XHR_TIMEOUT_MS;
 
       xhr.upload.onprogress = (e) => {
@@ -228,16 +225,13 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
       xhr.onload = () => {
         activeXhrRef.current = null;
-        if (xhr.status === 200) {
-          let data: any;
-          try { data = JSON.parse(xhr.responseText); } catch {
-            return reject(new Error('Resposta inválida do servidor.'));
-          }
+        let data: any = {};
+        try { data = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status >= 200 && xhr.status < 300) {
           setUploadProgress(100);
-          resolve(data.url);
+          resolve(data);
         } else {
-          let msg = 'Falha no upload.';
-          try { msg = JSON.parse(xhr.responseText)?.error || msg; } catch {}
+          const msg = data?.error?.message || data?.error || `Erro ${xhr.status}`;
           const err = new Error(msg) as any;
           err.isServerError = xhr.status >= 500;
           reject(err);
@@ -248,12 +242,54 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         activeXhrRef.current = null;
         reject(new Error('O upload demorou muito. Verifique sua conexão e tente novamente.'));
       };
-
       xhr.onerror = () => { activeXhrRef.current = null; reject(new Error('network_error')); };
       xhr.onabort = () => { activeXhrRef.current = null; reject(new Error('upload_aborted')); };
 
       xhr.send(formData);
     });
+
+  const uploadVideo = async (file: File): Promise<string> => {
+    const isLight = file.size < HEAVY_VIDEO_MIN_BYTES;
+
+    if (isLight) {
+      // ── ImageKit direct upload (< 50 MB) ────────────────────────────────
+      const authRes = await fetch('/api/imagekit-auth');
+      if (!authRes.ok) throw new Error('Não foi possível obter credenciais ImageKit.');
+      const auth = await authRes.json();
+
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('fileName', `${Date.now()}_${file.name}`);
+      fd.append('folder', '/videos');
+      fd.append('token', auth.token);
+      fd.append('expire', String(auth.expire));
+      fd.append('signature', auth.signature);
+      fd.append('publicKey', auth.publicKey);
+
+      const data = await xhrDirectUpload('https://upload.imagekit.io/api/v1/files/upload', fd);
+      if (!data.url) throw new Error('ImageKit não retornou URL do vídeo.');
+      return data.url as string;
+
+    } else {
+      // ── Cloudinary direct upload (>= 50 MB) ─────────────────────────────
+      const signRes = await fetch('/api/cloudinary-sign');
+      if (!signRes.ok) throw new Error('Não foi possível obter assinatura Cloudinary.');
+      const sign = await signRes.json();
+
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('timestamp', sign.timestamp);
+      fd.append('folder', sign.folder);
+      fd.append('signature', sign.signature);
+      fd.append('api_key', sign.apiKey);
+      fd.append('resource_type', 'video');
+
+      const data = await xhrDirectUpload(
+        `https://api.cloudinary.com/v1_1/${sign.cloudName}/video/upload`, fd
+      );
+      if (!data.secure_url) throw new Error('Cloudinary não retornou URL do vídeo.');
+      return data.secure_url as string;
+    }
   };
 
   const MAX_UPLOAD_ATTEMPTS = 5;

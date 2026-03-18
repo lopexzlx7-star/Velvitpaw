@@ -11,6 +11,15 @@ import ImageKit from 'imagekit';
 const app = express();
 app.use(express.json());
 
+// ─── CORS — allow browser to call port 3001 directly for large uploads ─────────
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  next();
+});
+app.options('*', (_req: Request, res: Response) => res.sendStatus(204));
+
 const PORT = 3001;
 const SERVER_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024;
@@ -403,6 +412,45 @@ app.post('/api/upload', (req: Request, res: Response) => {
       console.error('[upload] Falha:', err?.message);
       res.status(500).json({ error: 'Falha no upload. Tente novamente.' });
     }
+  });
+});
+
+// ─── /api/imagekit-auth — credenciais para upload direto do browser ──────────
+// The browser calls this first to get a short-lived signature, then uploads
+// the video file directly to ImageKit (bypassing the Replit/Vite proxy chain).
+app.get('/api/imagekit-auth', (_req: Request, res: Response) => {
+  if (!imagekitReady || !imagekit) {
+    return res.status(503).json({ error: 'ImageKit não configurado.' });
+  }
+  try {
+    const authParams = imagekit.getAuthenticationParameters();
+    return res.json({
+      ...authParams,
+      publicKey: IMAGEKIT_PUBLIC_KEY,
+      urlEndpoint: IMAGEKIT_URL_ENDPOINT,
+    });
+  } catch (err: any) {
+    console.error('[imagekit-auth] Erro:', err?.message);
+    return res.status(500).json({ error: 'Erro ao gerar credenciais ImageKit.' });
+  }
+});
+
+// ─── /api/cloudinary-sign — assinatura para upload direto do browser ──────────
+// Returns signed params the browser uses to upload directly to Cloudinary.
+app.get('/api/cloudinary-sign', (_req: Request, res: Response) => {
+  if (!cloudinaryReady) {
+    return res.status(503).json({ error: 'Cloudinary não configurado.' });
+  }
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const folder = 'videos';
+  const paramsToSign: Record<string, string> = { folder, timestamp };
+  const signature = buildCloudinarySignature(paramsToSign);
+  return res.json({
+    timestamp,
+    folder,
+    signature,
+    apiKey: CLOUDINARY_API_KEY,
+    cloudName: CLOUD_NAME,
   });
 });
 
