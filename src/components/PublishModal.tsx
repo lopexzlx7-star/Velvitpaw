@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
-  Maximize2, Square, Smartphone, Plus, Film
+  Maximize2, Square, Smartphone, Plus, Film, RotateCcw
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
@@ -45,6 +45,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [draft, setDraft] = useState<Draft>(INITIAL_DRAFT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadAttempt, setUploadAttempt] = useState(0);
+  const [uploadFailed, setUploadFailed] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +79,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     }
     setDraft(INITIAL_DRAFT);
     setUploadProgress(0);
+    setUploadAttempt(0);
+    setUploadFailed(false);
     setError(null);
     setIsSubmitting(false);
     setIsValidating(false);
@@ -252,14 +256,17 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     });
   };
 
-  const uploadVideoWithRetry = async (file: File, maxAttempts = 3): Promise<string> => {
+  const MAX_UPLOAD_ATTEMPTS = 5;
+
+  const uploadVideoWithRetry = async (file: File): Promise<string> => {
     let lastError: Error = new Error('Falha no upload.');
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
       try {
+        setUploadAttempt(attempt);
         if (attempt > 1) {
           setUploadProgress(0);
-          const waitMs = 2000 * attempt;
-          console.warn(`[Upload] Tentativa ${attempt} em ${waitMs / 1000}s...`);
+          const waitMs = 3000 * (attempt - 1);
+          console.warn(`[Upload] Tentativa ${attempt}/${MAX_UPLOAD_ATTEMPTS} em ${waitMs / 1000}s...`);
           await new Promise(r => setTimeout(r, waitMs));
         }
         return await uploadVideo(file);
@@ -267,7 +274,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         lastError = err;
         if (err?.message === 'upload_aborted') throw err;
         const isRetryable = err?.message === 'network_error' || err?.isServerError === true;
-        if (!isRetryable || attempt === maxAttempts) throw err;
+        if (!isRetryable || attempt === MAX_UPLOAD_ATTEMPTS) throw err;
         console.warn(`[Upload] Tentativa ${attempt} falhou (${err.message}), tentando novamente...`);
       }
     }
@@ -278,6 +285,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     if (!auth.currentUser || !draft.mediaUrl || !draft.file) return;
     setIsSubmitting(true);
     setUploadProgress(0);
+    setUploadAttempt(0);
+    setUploadFailed(false);
     setError(null);
 
     try {
@@ -325,7 +334,13 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     } catch (err: any) {
       if (err?.message === 'upload_aborted') return;
       console.error('Error submitting post:', err);
-      setError(err.message || 'Erro ao publicar. Tente novamente.');
+      const isNetworkErr = err?.message === 'network_error';
+      setUploadFailed(draft.mediaType === 'video');
+      setError(
+        isNetworkErr
+          ? 'Sem conexão durante o envio. Toque em "Tentar de novo" para continuar.'
+          : err.message || 'Erro ao publicar. Toque em "Tentar de novo".'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -517,11 +532,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         </div>
 
         <div className="p-6 border-t border-white/5 bg-white/5 backdrop-blur-xl space-y-3">
-          {isSubmitting && uploadProgress > 0 && (
+          {isSubmitting && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">
-                  {uploadProgress < 100 ? 'Enviando vídeo...' : 'Publicando...'}
+                  {uploadProgress >= 100
+                    ? 'Publicando...'
+                    : uploadAttempt > 1
+                      ? `Tentativa ${uploadAttempt} de ${MAX_UPLOAD_ATTEMPTS}...`
+                      : 'Enviando vídeo...'}
                 </span>
                 <span className="text-[9px] text-white/40 font-bold">{uploadProgress}%</span>
               </div>
@@ -535,15 +554,28 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               </div>
             </div>
           )}
-          <button
-            onClick={submitPost}
-            disabled={!draft.mediaUrl || isSubmitting || isValidating}
-            className="w-full py-5 bg-white text-black rounded-[1.5rem] font-black uppercase tracking-[0.3em] text-[10px] hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-3 shadow-2xl active:scale-95"
-          >
-            {isSubmitting
-              ? <><Loader2 className="animate-spin" size={16} /> {uploadProgress < 100 ? 'Enviando...' : 'Publicando...'}</>
-              : <><Plus size={16} /> Publicar Agora</>}
-          </button>
+
+          {uploadFailed ? (
+            <button
+              onClick={submitPost}
+              disabled={isSubmitting}
+              className="w-full py-5 bg-red-500/20 border border-red-500/40 text-red-300 rounded-[1.5rem] font-black uppercase tracking-[0.3em] text-[10px] hover:bg-red-500/30 transition-all disabled:opacity-40 flex items-center justify-center gap-3 active:scale-95"
+            >
+              {isSubmitting
+                ? <><Loader2 className="animate-spin" size={16} /> Tentando de novo...</>
+                : <><RotateCcw size={16} /> Tentar de novo</>}
+            </button>
+          ) : (
+            <button
+              onClick={submitPost}
+              disabled={!draft.mediaUrl || isSubmitting || isValidating}
+              className="w-full py-5 bg-white text-black rounded-[1.5rem] font-black uppercase tracking-[0.3em] text-[10px] hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-3 shadow-2xl active:scale-95"
+            >
+              {isSubmitting
+                ? <><Loader2 className="animate-spin" size={16} /> {uploadProgress < 100 ? 'Enviando...' : 'Publicando...'}</>
+                : <><Plus size={16} /> Publicar Agora</>}
+            </button>
+          )}
         </div>
       </motion.div>
     </div>
