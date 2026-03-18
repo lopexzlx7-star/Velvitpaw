@@ -22,8 +22,6 @@ interface Draft {
   mediaType: 'image' | 'video';
   file: File | null;
   duration?: number;
-  videoHeight?: number;
-  videoThumbnail?: string | null;
   description: string;
 }
 
@@ -32,7 +30,6 @@ const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_HEIGHT = 1080;
 const MAX_FILE_SIZE_MB = 490;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-// XHR timeout: 9 minutes (slightly below server's 10-minute limit)
 const XHR_TIMEOUT_MS = 9 * 60 * 1000;
 
 const INITIAL_DRAFT: Draft = {
@@ -48,7 +45,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [draft, setDraft] = useState<Draft>(INITIAL_DRAFT);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -82,7 +79,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setUploadProgress(0);
     setError(null);
     setIsSubmitting(false);
-    setIsLoadingPreview(false);
+    setIsValidating(false);
   };
 
   const handleClose = () => {
@@ -99,7 +96,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const processFile = (file: File) => {
     setError(null);
 
-    // Front-end file size guard — reject before even touching the server
     if (file.size > MAX_FILE_SIZE_BYTES) {
       setError(`Arquivo muito grande. O limite é ${MAX_FILE_SIZE_MB}MB.`);
       return;
@@ -113,191 +109,69 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         objectUrlRef.current = null;
       }
       const blobUrl = URL.createObjectURL(file);
-      setIsLoadingPreview(true);
+      setIsValidating(true);
 
       const metaEl = document.createElement('video');
-      metaEl.preload = 'auto';
+      metaEl.preload = 'metadata';
       metaEl.muted = true;
       metaEl.playsInline = true;
       metaEl.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
       document.body.appendChild(metaEl);
 
-      let capturedDur = 0;
-      let capturedH = 0;
-      let capturedW = 0;
-      let validationPassed = false;
-      let thumbnailExtracted = false;
-
-      // Safety timeout — if events never fire (some browsers / formats), bail gracefully
-      const safetyTimer = setTimeout(() => {
-        if (!thumbnailExtracted) {
-          cleanup();
-          objectUrlRef.current = blobUrl;
-          setIsLoadingPreview(false);
-          setDraft(prev => ({
-            ...prev,
-            file,
-            mediaUrl: blobUrl,
-            mediaType: 'video',
-            videoThumbnail: null,
-            aspectRatio: 'portrait',
-            duration: isFinite(capturedDur) ? Math.round(capturedDur) : 0,
-            videoHeight: capturedH || 0,
-            title: prev.title || file.name.split('.')[0],
-          }));
-        }
-      }, 8000);
-
       const cleanup = () => {
-        clearTimeout(safetyTimer);
         if (metaEl.parentNode) metaEl.parentNode.removeChild(metaEl);
       };
 
-      // Returns true if the canvas is essentially all-black (frame not yet decoded)
-      const isBlackFrame = (canvas: HTMLCanvasElement): boolean => {
-        try {
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return false;
-          // Sample 20 pixels spread across the canvas
-          const { width, height } = canvas;
-          const data = ctx.getImageData(0, 0, width, height).data;
-          let brightPixels = 0;
-          const step = Math.max(1, Math.floor(data.length / (20 * 4)));
-          for (let i = 0; i < data.length; i += step * 4) {
-            if (data[i] > 10 || data[i + 1] > 10 || data[i + 2] > 10) brightPixels++;
-          }
-          return brightPixels === 0;
-        } catch { return false; }
-      };
-
-      const fetchServerThumbnail = async (): Promise<void> => {
-        try {
-          const SLICE_BYTES = 30 * 1024 * 1024;
-          const slice = file.slice(0, SLICE_BYTES);
-          const form = new FormData();
-          form.append('file', new File([slice], file.name, { type: file.type }));
-          const resp = await fetch('/api/thumbnail', { method: 'POST', body: form });
-          if (resp.ok) {
-            const { thumbnail } = await resp.json();
-            if (thumbnail) {
-              setDraft(prev => ({ ...prev, videoThumbnail: thumbnail }));
-            }
-          }
-        } catch { /* upload proceeds without thumbnail */ }
-        finally { setIsLoadingPreview(false); }
-      };
-
-      const extractFrame = () => {
-        if (thumbnailExtracted) return;
-        thumbnailExtracted = true;
-
+      const commitDraft = (dur: number) => {
         cleanup();
         objectUrlRef.current = blobUrl;
-
-        // Commit the draft immediately so the UI unlocks
-        const commitDraft = (thumb: string | null) => {
-          setDraft(prev => ({
-            ...prev,
-            file,
-            mediaUrl: blobUrl,
-            mediaType: 'video',
-            videoThumbnail: thumb,
-            aspectRatio: 'portrait',
-            duration: isFinite(capturedDur) ? Math.round(capturedDur) : 0,
-            videoHeight: capturedH || 0,
-            title: prev.title || file.name.split('.')[0],
-          }));
-        };
-
-        try {
-          const MAX_THUMB_W = 640;
-          const scale = capturedW > 0 ? Math.min(1, MAX_THUMB_W / capturedW) : 1;
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.max(1, Math.round((capturedW || 320) * scale));
-          canvas.height = Math.max(1, Math.round((capturedH || 568) * scale));
-          const ctx = canvas.getContext('2d');
-          if (ctx) ctx.drawImage(metaEl, 0, 0, canvas.width, canvas.height);
-
-          if (isBlackFrame(canvas)) {
-            // Browser produced a black frame — fall back to server
-            commitDraft(null);
-            fetchServerThumbnail();
-            return;
-          }
-
-          const thumbnail = canvas.toDataURL('image/jpeg', 0.85);
-          commitDraft(thumbnail);
-          setIsLoadingPreview(false);
-        } catch {
-          // Canvas draw failed — fall back to server
-          commitDraft(null);
-          fetchServerThumbnail();
-        }
-      };
-
-      metaEl.onloadedmetadata = () => {
-        capturedDur = metaEl.duration;
-        capturedH = metaEl.videoHeight;
-        capturedW = metaEl.videoWidth;
-
-        if (isFinite(capturedDur) && capturedDur > MAX_VIDEO_DURATION) {
-          cleanup();
-          URL.revokeObjectURL(blobUrl);
-          setIsLoadingPreview(false);
-          setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION / 60} minutos.`);
-          return;
-        }
-
-        if (capturedH > MAX_VIDEO_HEIGHT) {
-          cleanup();
-          URL.revokeObjectURL(blobUrl);
-          setIsLoadingPreview(false);
-          setError(`Resolução muito alta. Use vídeos até ${MAX_VIDEO_HEIGHT}p.`);
-          return;
-        }
-
-        validationPassed = true;
-
-        // Seek to 0.5s to get a representative frame.
-        // The 'seeked' event fires reliably on iOS Safari, Android Chrome,
-        // Firefox and desktop Chrome — unlike 'onloadeddata'.
-        metaEl.currentTime = Math.min(0.5, isFinite(capturedDur) ? capturedDur * 0.1 : 0.5);
-      };
-
-      // 'seeked' fires after currentTime is set — works across all major browsers
-      metaEl.onseeked = () => {
-        if (!validationPassed) return;
-        extractFrame();
-      };
-
-      // Fallback: some browsers fire 'canplay' before 'seeked'
-      metaEl.oncanplay = () => {
-        if (!validationPassed || thumbnailExtracted) return;
-        // Only use as fallback if seeked hasn't fired yet
-        setTimeout(() => {
-          if (!thumbnailExtracted && validationPassed) extractFrame();
-        }, 300);
-      };
-
-      // onerror fires when the browser can't decode the video (e.g. HEVC/H.265 from CapCut).
-      // Fall back to server-side thumbnail extraction via ffmpeg.
-      metaEl.onerror = () => {
-        if (thumbnailExtracted) return;
-        thumbnailExtracted = true;
-        cleanup();
-        objectUrlRef.current = blobUrl;
+        setIsValidating(false);
         setDraft(prev => ({
           ...prev,
           file,
           mediaUrl: blobUrl,
           mediaType: 'video',
-          videoThumbnail: null,
           aspectRatio: 'portrait',
-          duration: 0,
-          videoHeight: 0,
+          duration: Math.round(dur),
           title: prev.title || file.name.split('.')[0],
         }));
-        fetchServerThumbnail();
+      };
+
+      // Safety timeout — if metadata never fires, accept the file anyway
+      const safetyTimer = setTimeout(() => {
+        commitDraft(0);
+      }, 5000);
+
+      metaEl.onloadedmetadata = () => {
+        clearTimeout(safetyTimer);
+
+        const dur = isFinite(metaEl.duration) ? metaEl.duration : 0;
+        const h = metaEl.videoHeight;
+
+        if (dur > MAX_VIDEO_DURATION) {
+          cleanup();
+          clearTimeout(safetyTimer);
+          URL.revokeObjectURL(blobUrl);
+          setIsValidating(false);
+          setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION / 60} minutos.`);
+          return;
+        }
+
+        if (h > MAX_VIDEO_HEIGHT) {
+          cleanup();
+          clearTimeout(safetyTimer);
+          URL.revokeObjectURL(blobUrl);
+          setIsValidating(false);
+          setError(`Resolução muito alta. Use vídeos até ${MAX_VIDEO_HEIGHT}p.`);
+          return;
+        }
+
+        commitDraft(dur);
+      };
+
+      metaEl.onerror = () => {
+        clearTimeout(safetyTimer);
+        commitDraft(0);
       };
 
       metaEl.src = blobUrl;
@@ -345,7 +219,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       xhr.timeout = XHR_TIMEOUT_MS;
 
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 90));
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 95));
       };
 
       xhr.onload = () => {
@@ -360,7 +234,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         } else {
           let msg = 'Falha no upload.';
           try { msg = JSON.parse(xhr.responseText)?.error || msg; } catch {}
-          // Tag server errors so retry logic can handle them
           const err = new Error(msg) as any;
           err.isServerError = xhr.status >= 500;
           reject(err);
@@ -379,10 +252,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     });
   };
 
-  const uploadVideoWithRetry = async (
-    file: File,
-    maxAttempts = 3
-  ): Promise<string> => {
+  const uploadVideoWithRetry = async (file: File, maxAttempts = 3): Promise<string> => {
     let lastError: Error = new Error('Falha no upload.');
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -396,28 +266,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       } catch (err: any) {
         lastError = err;
         if (err?.message === 'upload_aborted') throw err;
-        // Retry on network errors and transient server errors (5xx)
         const isRetryable = err?.message === 'network_error' || err?.isServerError === true;
         if (!isRetryable || attempt === maxAttempts) throw err;
         console.warn(`[Upload] Tentativa ${attempt} falhou (${err.message}), tentando novamente...`);
       }
     }
     throw lastError;
-  };
-
-  const uploadThumbnailToImageKit = async (base64: string): Promise<string | null> => {
-    try {
-      const resp = await fetch('/api/upload-thumbnail', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ thumbnail: base64 }),
-      });
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      return data.url ?? null;
-    } catch {
-      return null;
-    }
   };
 
   const submitPost = async () => {
@@ -431,12 +285,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
       if (draft.mediaType === 'video') {
         finalUrl = await uploadVideoWithRetry(draft.file);
-      }
-
-      // Upload thumbnail to ImageKit so only a URL (not base64) is stored in Firestore
-      let thumbnailUrl: string | null = null;
-      if (draft.mediaType === 'video' && draft.videoThumbnail) {
-        thumbnailUrl = await uploadThumbnailToImageKit(draft.videoThumbnail);
       }
 
       const extractedHashtags = Array.from(
@@ -462,10 +310,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         description: draft.description.trim() || '',
         hashtags: extractedHashtags,
       };
-
-      if (thumbnailUrl) {
-        postData.thumbnailUrl = thumbnailUrl;
-      }
 
       await addDoc(collection(db, 'posts'), postData);
 
@@ -533,10 +377,10 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
             </motion.div>
           )}
 
-          {isLoadingPreview ? (
+          {isValidating ? (
             <div className="w-full aspect-square rounded-[2.5rem] border border-white/10 bg-white/5 flex flex-col items-center justify-center gap-4">
               <Loader2 size={28} className="text-white/30 animate-spin" />
-              <p className="text-white/30 font-black uppercase tracking-[0.2em] text-[10px]">Carregando preview...</p>
+              <p className="text-white/30 font-black uppercase tracking-[0.2em] text-[10px]">Preparando vídeo...</p>
             </div>
           ) : !draft.mediaUrl ? (
             <div
@@ -577,27 +421,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   className={`relative w-full overflow-hidden rounded-[2rem] border border-white/10 bg-black/50 transition-all duration-500 ${getAspectClass()}`}
                 >
                   {isVideo ? (
-                    <>
-                      {draft.videoThumbnail ? (
-                        <img
-                          src={draft.videoThumbnail}
-                          className="w-full h-full object-cover"
-                          alt="Preview do vídeo"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-white/5 flex flex-col items-center justify-center gap-2">
-                          <Film size={36} className="text-white/20" />
-                          <p className="text-[9px] uppercase tracking-widest font-black text-white/20 text-center px-4">
-                            Preview indisponível<br/>O vídeo será enviado normalmente
-                          </p>
-                        </div>
-                      )}
-                      <div className="absolute top-3 left-3 pointer-events-none">
-                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-black/30 backdrop-blur-sm">
-                          <svg viewBox="0 0 24 24" fill="white" className="w-3 h-3 ml-0.5 opacity-60"><path d="M8 5v14l11-7z"/></svg>
-                        </div>
-                      </div>
-                    </>
+                    <video
+                      src={draft.mediaUrl}
+                      className="w-full h-full object-cover"
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                    />
                   ) : (
                     <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="Preview" />
                   )}
@@ -608,7 +439,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                         URL.revokeObjectURL(objectUrlRef.current);
                         objectUrlRef.current = null;
                       }
-                      setDraft(prev => ({ ...prev, mediaUrl: null, file: null, videoThumbnail: null }));
+                      setDraft(prev => ({ ...prev, mediaUrl: null, file: null }));
                       setError(null);
                     }}
                     className="absolute top-4 right-4 p-3 bg-black/50 backdrop-blur-xl rounded-2xl text-white hover:bg-red-500 transition-all border border-white/10"
@@ -690,7 +521,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-[9px] uppercase tracking-widest text-white/40 font-bold">
-                  {uploadProgress < 100 ? 'Enviando mídia...' : 'Publicando...'}
+                  {uploadProgress < 100 ? 'Enviando vídeo...' : 'Publicando...'}
                 </span>
                 <span className="text-[9px] text-white/40 font-bold">{uploadProgress}%</span>
               </div>
@@ -706,7 +537,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           )}
           <button
             onClick={submitPost}
-            disabled={!draft.mediaUrl || isSubmitting || isLoadingPreview}
+            disabled={!draft.mediaUrl || isSubmitting || isValidating}
             className="w-full py-5 bg-white text-black rounded-[1.5rem] font-black uppercase tracking-[0.3em] text-[10px] hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-3 shadow-2xl active:scale-95"
           >
             {isSubmitting
