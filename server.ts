@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import express, { Request, Response, NextFunction } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import multer from 'multer';
 import ImageKit from 'imagekit';
 
@@ -169,7 +169,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
     services: {
       cloudinary: cloudinaryReady ? 'configured' : 'missing',
       imagekit: imagekitReady ? 'configured' : 'missing',
-      gemini: !!process.env.GEMINI_API_KEY ? 'configured' : 'missing',
+      openai: !!process.env.OPENAI_API_KEY ? 'configured' : 'missing',
     },
     routing: {
       light: `< ${HEAVY_VIDEO_MIN_MB}MB → ImageKit (fallback: Cloudinary)`,
@@ -231,11 +231,43 @@ app.post('/api/thumbnail', (req: Request, res: Response) => {
   });
 });
 
+// ─── OpenAI client (singleton, reused across all requests) ───────────────────
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
+
+// ─── Tags DB — file-based JSON store for user hashtags ───────────────────────
+// Stored at project root so it persists across restarts.
+const TAGS_DB_PATH = path.join(process.cwd(), 'tags_db.json');
+
+/** Read the tags DB from disk (returns empty array if not yet created). */
+function readTagsDb(): Array<{ postId: string; hashtags: string[] }> {
+  try {
+    if (fs.existsSync(TAGS_DB_PATH)) {
+      return JSON.parse(fs.readFileSync(TAGS_DB_PATH, 'utf-8'));
+    }
+  } catch {}
+  return [];
+}
+
+/** Append user hashtags for a post and persist to disk. */
+function saveUserHashtags(postId: string, hashtags: string[]): void {
+  const db = readTagsDb();
+  // Replace existing entry for the same postId, or push a new one
+  const idx = db.findIndex(e => e.postId === postId);
+  if (idx >= 0) {
+    db[idx].hashtags = [...new Set([...db[idx].hashtags, ...hashtags])];
+  } else {
+    db.push({ postId, hashtags });
+  }
+  fs.writeFileSync(TAGS_DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
+}
+
 // ─── /api/suggest-tags ────────────────────────────────────────────────────────
+// Single-post shortcut kept for backward compatibility with the frontend.
+// Accepts: { title, mediaType? }
+// Returns: { tags: string[] }
 app.post('/api/suggest-tags', async (req: Request, res: Response) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'GEMINI_API_KEY não configurada no servidor.' });
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor.' });
   }
 
   const { title, mediaType } = req.body as { title?: string; mediaType?: string };
@@ -244,19 +276,115 @@ app.post('/api/suggest-tags', async (req: Request, res: Response) => {
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `Sugira 5 tags curtas e relevantes (em português, sem #) para um post de ${mediaType ?? 'imagem'} com o título: "${title}". Retorne apenas as tags separadas por vírgula, sem explicações.`;
-    const result = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'Você sugere tags curtas e relevantes para posts de mídia social. Retorne apenas as tags separadas por vírgula, sem # e sem explicações.',
+        },
+        {
+          role: 'user',
+          content: `Sugira 5 tags para um post de ${mediaType ?? 'imagem'} com o título: "${title}".`,
+        },
+      ],
+      max_tokens: 60,
     });
-    const text = result.text ?? '';
+
+    const text = completion.choices[0]?.message?.content ?? '';
     const tags = text.split(',').map((t: string) => t.trim()).filter(Boolean).slice(0, 5);
     res.json({ tags });
   } catch (err: any) {
-    console.error('Gemini error:', err?.message);
-    res.status(500).json({ error: 'Erro ao chamar a API Gemini.' });
+    console.error('[suggest-tags] OpenAI error:', err?.message);
+    res.status(500).json({ error: 'Erro ao chamar a API OpenAI.' });
   }
+});
+
+// ─── /api/generate-tags-multi ─────────────────────────────────────────────────
+// Processes multiple posts in a single request.
+// Body: { posts: [{ postId, title, description, userHashtags? }] }
+// Returns: [{ postId, tags, userHashtags }]
+app.post('/api/generate-tags-multi', async (req: Request, res: Response) => {
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor.' });
+  }
+
+  const { posts } = req.body as {
+    posts?: Array<{
+      postId: string;
+      title: string;
+      description: string;
+      userHashtags?: string;
+    }>;
+  };
+
+  if (!posts || !Array.isArray(posts) || posts.length === 0) {
+    return res.status(400).json({ error: 'Envie um array de posts em { posts: [...] }.' });
+  }
+
+  try {
+    const results = [];
+
+    for (const post of posts) {
+      const { postId, title, description, userHashtags } = post;
+      if (!postId || !title || !description) continue;
+
+      // Call GPT to generate 5 tags based on title + description
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'Você gera tags para vídeos — palavras únicas, separadas por espaço, sem # e sem explicações.',
+          },
+          {
+            role: 'user',
+            content: `Título: "${title}"\nDescrição: "${description}"\nRetorne exatamente 5 tags separadas por espaço.`,
+          },
+        ],
+        max_tokens: 40,
+      });
+
+      const tags = completion.choices[0]?.message?.content?.trim() ?? '';
+
+      // Save the user's own hashtags to the local DB for future /search-tags lookups
+      if (userHashtags) {
+        const parsed = userHashtags
+          .split(/\s+/)
+          .map((t: string) => t.replace(/^#/, '').trim())
+          .filter(Boolean);
+        if (parsed.length > 0) saveUserHashtags(postId, parsed);
+      }
+
+      results.push({ postId, tags, userHashtags: userHashtags ?? '' });
+    }
+
+    res.json(results);
+  } catch (err: any) {
+    console.error('[generate-tags-multi] OpenAI error:', err?.message);
+    res.status(500).json({ error: 'Erro ao processar múltiplos posts.' });
+  }
+});
+
+// ─── /api/search-tags/:query ──────────────────────────────────────────────────
+// Searches the local hashtag DB for tags that contain the query string.
+// Returns: { related: string[] }
+app.get('/api/search-tags/:query', (req: Request, res: Response) => {
+  const query = (req.params.query ?? '').toLowerCase().replace(/^#/, '');
+  if (!query) return res.json({ related: [] });
+
+  const db = readTagsDb();
+  const related: string[] = [];
+
+  for (const entry of db) {
+    for (const tag of entry.hashtags) {
+      if (tag.toLowerCase().includes(query) && !related.includes(tag)) {
+        related.push(tag);
+      }
+    }
+  }
+
+  res.json({ related });
 });
 
 // ─── /api/upload-video ────────────────────────────────────────────────────────

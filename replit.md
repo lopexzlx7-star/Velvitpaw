@@ -10,7 +10,8 @@ A social media app for sharing images, GIFs, and videos with a glassmorphism aes
 - **Auth**: Firebase Auth (Email/Password)
 - **Video Storage**: Cloudinary (light videos ≤720p / ≤60s) or ImageKit (heavy videos >720p / >60s)
 - **Thumbnails**: First frame of video extracted on client (canvas JPEG), saved as `thumbnailUrl` in Firestore
-- **AI**: Google Gemini (`/api/suggest-tags`) — requires `GEMINI_API_KEY` env var
+- **AI**: OpenAI GPT-4o-mini (`/api/suggest-tags`, `/api/generate-tags-multi`) — requires `OPENAI_API_KEY` env var
+- **Hashtag DB**: Local JSON file (`tags_db.json`) storing user hashtags per post for `/api/search-tags`
 
 ## Key Files
 
@@ -27,7 +28,7 @@ A social media app for sharing images, GIFs, and videos with a glassmorphism aes
 
 ## Environment Variables Required
 
-- `GEMINI_API_KEY` — AI tag suggestions
+- `OPENAI_API_KEY` — AI tag suggestions (requires billing enabled at platform.openai.com)
 - `CLOUDINARY_CLOUD_NAME` — Cloudinary cloud name
 - `CLOUDINARY_API_KEY` — Cloudinary API key (signed uploads)
 - `CLOUDINARY_API_SECRET` — Cloudinary API secret (signed uploads)
@@ -50,7 +51,9 @@ A social media app for sharing images, GIFs, and videos with a glassmorphism aes
 ### Original endpoints (unchanged)
 - `GET  /api/health` — service status check
 - `POST /api/thumbnail` — extract first frame from video via ffmpeg
-- `POST /api/suggest-tags` — Gemini AI tag suggestions (requires GEMINI_API_KEY)
+- `POST /api/suggest-tags` — OpenAI GPT tag suggestions for a single post (requires OPENAI_API_KEY)
+- `POST /api/generate-tags-multi` — GPT tags for multiple posts + saves user hashtags to tags_db.json
+- `GET  /api/search-tags/:query` — searches saved hashtags in tags_db.json by substring
 - `POST /api/upload-video` — proxy upload to Cloudinary or ImageKit based on file size
 - `POST /api/upload-thumbnail` — upload JPEG thumbnail to ImageKit
 - `POST /api/upload` — image/video upload (legacy route)
