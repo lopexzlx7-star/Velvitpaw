@@ -436,14 +436,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   className={`relative w-full overflow-hidden rounded-[2rem] border border-white/10 bg-black/50 transition-all duration-500 ${getAspectClass()}`}
                 >
                   {isVideo ? (
-                    <video
-                      src={draft.mediaUrl}
-                      className="w-full h-full object-cover"
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                    />
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5">
+                      <Film size={40} className="text-white/20" />
+                      <p className="text-[9px] uppercase tracking-widest font-black text-white/20 text-center px-6">
+                        Preview desativado<br/>O vídeo será publicado normalmente
+                      </p>
+                    </div>
                   ) : (
                     <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="Preview" />
                   )}
