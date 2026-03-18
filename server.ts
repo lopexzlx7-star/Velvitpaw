@@ -587,6 +587,70 @@ app.get('/api/cloudinary-sign', (_req: Request, res: Response) => {
   });
 });
 
+// ─── /api/upload-frames ───────────────────────────────────────────────────────
+// Receives multiple PNG frames (extracted from videos on the client side) and
+// uploads each one to ImageKit. Only frames are ever sent — never full videos.
+// Accepts: multipart/form-data, field name "frames" (up to 20 files)
+// Returns: { message, frames: [{ name, url }] }
+const framesUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,  // 10 MB per frame is more than enough for a PNG
+    files: 20,                    // maximum 20 frames per request
+  },
+});
+
+app.post('/api/upload-frames', (req: Request, res: Response) => {
+  framesUpload.array('frames', 20)(req, res, async (multerErr) => {
+    if (multerErr) {
+      console.error('[upload-frames] Multer error:', multerErr.message);
+      return res.status(400).json({ error: multerErr.message });
+    }
+
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'Nenhum frame recebido.' });
+    }
+
+    if (!imagekitReady || !imagekit) {
+      return res.status(503).json({
+        error: 'ImageKit não configurado. Defina IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY e IMAGEKIT_URL_ENDPOINT nos Secrets.',
+      });
+    }
+
+    console.log(`[upload-frames] Recebidos ${files.length} frame(s)`);
+
+    const results: Array<{ name: string; url: string }> = [];
+
+    for (const file of files) {
+      // Build a unique filename: timestamp + original name
+      const safeName = `frame_${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+      try {
+        const uploaded = await imagekit!.upload({
+          file: file.buffer,           // Buffer from memory storage — no temp file needed
+          fileName: safeName,
+          folder: '/frames',           // Stored in a dedicated /frames folder on ImageKit
+          useUniqueFileName: true,
+        });
+
+        console.log(`[upload-frames] ✓ ${safeName} → ${uploaded.url}`);
+        results.push({ name: uploaded.name, url: uploaded.url });
+      } catch (err: any) {
+        console.error(`[upload-frames] ✗ Falha no frame ${safeName}:`, err?.message);
+        // Don't abort — continue with remaining frames and report the failure inline
+        results.push({ name: safeName, url: '' });
+      }
+    }
+
+    const succeeded = results.filter(r => r.url).length;
+    res.json({
+      message: `${succeeded} de ${files.length} frame(s) enviado(s) com sucesso.`,
+      frames: results,
+    });
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // NEW VIDEO UPLOAD ROUTES (via CloudinaryStorage)
 // All routes below are additive — nothing above has been modified.
@@ -605,9 +669,11 @@ cloudinaryV2.config({
 // resource_type 'video' handles all common video formats (mp4, mov, webm, etc.)
 const videoCloudinaryStorage = new CloudinaryStorage({
   cloudinary: cloudinaryV2,
+  // @ts-ignore — the bundled types for multer-storage-cloudinary don't declare
+  // folder/resource_type but they are valid Cloudinary upload params at runtime
   params: {
-    folder: 'videos',          // Cloudinary folder where videos are stored
-    resource_type: 'video',   // Ensures Cloudinary treats uploads as video assets
+    folder: 'videos',
+    resource_type: 'video',
   },
 });
 
