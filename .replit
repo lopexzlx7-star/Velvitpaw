@@ -45,3 +45,8 @@ waitForPort = 5000
 [nix]
 channel = "stable-25_05"
 packages = ["ffmpeg"]
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["tsx", "server.ts"]
+build = ["npm", "run", "build"]

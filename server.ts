@@ -25,7 +25,11 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
 });
 app.options('*', (_req: Request, res: Response) => res.sendStatus(204));
 
-const PORT = 3001;
+// In development Vite runs on 5000 and proxies /api to this server on 3001.
+// In production Replit sets PORT automatically; the Express server serves both
+// the API and the built Vite frontend from the dist/ folder.
+const IS_PROD = process.env.NODE_ENV === 'production';
+const PORT = IS_PROD ? (Number(process.env.PORT) || 3000) : 3001;
 const SERVER_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024;
 
@@ -733,6 +737,18 @@ app.post('/upload-multiple', uploadVideoCloud.array('videos', 5), (req: Request,
 // ═══════════════════════════════════════════════════════════════════════════════
 // END OF NEW VIDEO UPLOAD ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Production: serve the Vite build + SPA fallback ─────────────────────────
+// All /api/* routes are already registered above, so this block only runs for
+// non-API requests (the frontend). The catch-all sends index.html so that
+// React Router / client-side navigation works correctly on any URL.
+if (IS_PROD) {
+  const distDir = path.join(process.cwd(), 'dist');
+  app.use(express.static(distDir));
+  app.get('*', (_req: Request, res: Response) => {
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
