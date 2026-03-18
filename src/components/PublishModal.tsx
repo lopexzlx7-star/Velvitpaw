@@ -26,6 +26,60 @@ interface Draft {
 }
 
 const MAX_VIDEO_DURATION = 120;
+
+// ─── Captura o primeiro frame visível de um vídeo via canvas ─────────────────
+// Usa preload='auto' para garantir que haja dados suficientes para pintar.
+// Resolve com um data-URL JPEG (qualidade 0.85); rejeita em caso de erro/timeout.
+function captureVideoFrame(file: File, w = 640, h = 360): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const objectUrl = URL.createObjectURL(file);
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.src = objectUrl;
+
+    const done = (fn: () => void) => {
+      URL.revokeObjectURL(objectUrl);
+      fn();
+    };
+
+    const timeout = setTimeout(() => done(() => reject(new Error('timeout'))), 10_000);
+
+    // Seek to frame 0 once enough data has loaded
+    video.addEventListener('loadeddata', () => { video.currentTime = 0; });
+
+    video.addEventListener('seeked', () => {
+      clearTimeout(timeout);
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d')!.drawImage(video, 0, 0, w, h);
+        done(() => resolve(canvas.toDataURL('image/jpeg', 0.85)));
+      } catch (e) {
+        done(() => reject(e));
+      }
+    });
+
+    video.addEventListener('error', () => {
+      clearTimeout(timeout);
+      done(() => reject(new Error('video_error')));
+    });
+  });
+}
+
+// ─── Fetch seguro: lança erro descritivo se a resposta não for JSON ───────────
+async function safeFetchJson(url: string): Promise<any> {
+  const res = await fetch(url);
+  const ct = res.headers.get('content-type') ?? '';
+  if (!ct.includes('application/json')) {
+    throw new Error('Servidor indisponível. Verifique sua conexão e tente novamente.');
+  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
+  return data;
+}
 const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_HEIGHT = 1080;
 const MAX_FILE_SIZE_MB = 490;
@@ -50,6 +104,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [uploadFailed, setUploadFailed] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const activeXhrRef = useRef<XMLHttpRequest | null>(null);
@@ -85,6 +140,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setError(null);
     setIsSubmitting(false);
     setIsValidating(false);
+    setThumbnailUrl(null);
   };
 
   const handleClose = () => {
@@ -131,6 +187,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         cleanup();
         objectUrlRef.current = blobUrl;
         setIsValidating(false);
+        setThumbnailUrl(null);
         setDraft(prev => ({
           ...prev,
           file,
@@ -140,6 +197,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           duration: Math.round(dur),
           title: prev.title || file.name.split('.')[0],
         }));
+
+        // Capture first frame in the background — does not block draft commit
+        captureVideoFrame(file).then(setThumbnailUrl).catch(() => {
+          // Silently ignore — the Film-icon placeholder will show instead
+        });
       };
 
       // Safety timeout — if metadata never fires, accept the file anyway
@@ -253,9 +315,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
     if (isLight) {
       // ── ImageKit direct upload (< 50 MB) ────────────────────────────────
-      const authRes = await fetch('/api/imagekit-auth');
-      if (!authRes.ok) throw new Error('Não foi possível obter credenciais ImageKit.');
-      const auth = await authRes.json();
+      const auth = await safeFetchJson('/api/imagekit-auth');
 
       const fd = new FormData();
       fd.append('file', file);
@@ -272,9 +332,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
     } else {
       // ── Cloudinary direct upload (>= 50 MB) ─────────────────────────────
-      const signRes = await fetch('/api/cloudinary-sign');
-      if (!signRes.ok) throw new Error('Não foi possível obter assinatura Cloudinary.');
-      const sign = await signRes.json();
+      const sign = await safeFetchJson('/api/cloudinary-sign');
 
       const fd = new FormData();
       fd.append('file', file);
@@ -472,12 +530,22 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   className={`relative w-full overflow-hidden rounded-[2rem] border border-white/10 bg-black/50 transition-all duration-500 ${getAspectClass()}`}
                 >
                   {isVideo ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5">
-                      <Film size={40} className="text-white/20" />
-                      <p className="text-[9px] uppercase tracking-widest font-black text-white/20 text-center px-6">
-                        Preview desativado<br/>O vídeo será publicado normalmente
-                      </p>
-                    </div>
+                    thumbnailUrl ? (
+                      // First frame captured — show it as preview
+                      <img
+                        src={thumbnailUrl}
+                        className="w-full h-full object-cover"
+                        alt="Primeiro frame do vídeo"
+                      />
+                    ) : (
+                      // Still capturing — show spinner
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5">
+                        <Loader2 size={28} className="text-white/30 animate-spin" />
+                        <p className="text-[9px] uppercase tracking-widest font-black text-white/20 text-center px-6">
+                          Carregando preview...
+                        </p>
+                      </div>
+                    )
                   ) : (
                     <img src={draft.mediaUrl || undefined} className="w-full h-full object-cover" alt="Preview" />
                   )}
