@@ -618,6 +618,14 @@ app.post('/api/upload-frames', (req: Request, res: Response) => {
       });
     }
 
+    // Reject any file that is not an image — clients must only send PNG/JPEG frames
+    const nonImages = files.filter(f => !f.mimetype.startsWith('image/'));
+    if (nonImages.length > 0) {
+      return res.status(400).json({
+        error: `Tipo inválido: apenas imagens são aceitas como frames. Arquivos rejeitados: ${nonImages.map(f => f.originalname).join(', ')}`,
+      });
+    }
+
     console.log(`[upload-frames] Recebidos ${files.length} frame(s)`);
 
     const results: Array<{ name: string; url: string }> = [];
@@ -669,12 +677,12 @@ cloudinaryV2.config({
 // resource_type 'video' handles all common video formats (mp4, mov, webm, etc.)
 const videoCloudinaryStorage = new CloudinaryStorage({
   cloudinary: cloudinaryV2,
-  // @ts-ignore — the bundled types for multer-storage-cloudinary don't declare
-  // folder/resource_type but they are valid Cloudinary upload params at runtime
+  // Cast to any: multer-storage-cloudinary types don't declare folder/resource_type
+  // but both are valid Cloudinary upload params at runtime.
   params: {
     folder: 'videos',
     resource_type: 'video',
-  },
+  } as any,
 });
 
 // ─── Multer instance backed by Cloudinary (for new routes only) ───────────────
