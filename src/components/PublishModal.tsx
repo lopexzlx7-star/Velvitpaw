@@ -385,9 +385,28 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
     try {
       let finalUrl = draft.mediaUrl;
+      let hostedThumbnailUrl: string | null = null;
 
       if (draft.mediaType === 'video') {
         finalUrl = await uploadVideoWithRetry(draft.file);
+
+        // Upload the first-frame thumbnail to ImageKit so we store a hosted URL
+        // instead of a base64 blob (which would exceed Firestore's 1MB doc limit)
+        if (thumbnailUrl) {
+          try {
+            const res = await fetch('/api/upload-thumbnail', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ thumbnail: thumbnailUrl }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              hostedThumbnailUrl = data.url ?? null;
+            }
+          } catch {
+            // Non-fatal — post will still be created without a thumbnail URL
+          }
+        }
       }
 
       const extractedHashtags = Array.from(
@@ -412,6 +431,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         duration: draft.duration || 0,
         description: draft.description.trim() || '',
         hashtags: extractedHashtags,
+        ...(hostedThumbnailUrl ? { thumbnailUrl: hostedThumbnailUrl } : {}),
       };
 
       await addDoc(collection(db, 'posts'), postData);

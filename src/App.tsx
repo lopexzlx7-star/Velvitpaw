@@ -34,7 +34,7 @@ import GlassCard from './components/GlassCard';
 import FloatingNav from './components/FloatingNav';
 import PublishModal from './components/PublishModal';
 import PostDetailModal from './components/PostDetailModal';
-import FrameUploadModal from './components/FrameUploadModal';
+
 
 enum OperationType {
   CREATE = 'create',
@@ -149,7 +149,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPublishModal, setShowPublishModal] = useState(false);
-  const [showFrameUploadModal, setShowFrameUploadModal] = useState(false);
+
   const [bgImage, setBgImage] = useState<string | null>(() => localStorage.getItem('velvit_bg'));
   const [profilePic, setProfilePic] = useState<string | null>(() => localStorage.getItem('velvit_profile_pic'));
   const [username, setUsername] = useState<string>(() => localStorage.getItem('velvit_username') || 'Usuário');
@@ -1734,7 +1734,6 @@ export default function App() {
         onHomeClick={handleHomeClick}
         onAddClick={() => setShowPublishModal(true)}
         onProfileClick={() => setCurrentTab('profile')}
-        onFrameUploadClick={() => setShowFrameUploadModal(true)}
       />
 
       <PublishModal 
@@ -1744,14 +1743,6 @@ export default function App() {
           setShowPublishModal(false);
         }}
       />
-
-      {/* Frame Upload Modal — captures first frame from each selected video
-          and uploads only the PNG frames (never full videos) to ImageKit */}
-      <AnimatePresence>
-        {showFrameUploadModal && (
-          <FrameUploadModal onClose={() => setShowFrameUploadModal(false)} />
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {selectedPost && (
