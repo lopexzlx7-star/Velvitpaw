@@ -122,6 +122,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [error, setError] = useState<string | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [thumbnailSlow, setThumbnailSlow] = useState(false);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const activeXhrRef = useRef<XMLHttpRequest | null>(null);
@@ -164,6 +165,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setIsValidating(false);
     setThumbnailUrl(null);
     setThumbnailSlow(false);
+    setThumbnailFailed(false);
   };
 
   const handleClose = () => {
@@ -223,6 +225,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
         // Capture first frame in background — start a 6s slow-warning timer
         setThumbnailSlow(false);
+        setThumbnailFailed(false);
         thumbTimerRef.current = setTimeout(() => setThumbnailSlow(true), 6000);
 
         captureVideoFrame(file)
@@ -232,6 +235,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               thumbTimerRef.current = null;
             }
             setThumbnailSlow(false);
+            setThumbnailFailed(false);
             setThumbnailUrl(url);
           })
           .catch(() => {
@@ -240,6 +244,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               thumbTimerRef.current = null;
             }
             setThumbnailSlow(false);
+            setThumbnailFailed(true);
           });
       };
 
@@ -596,6 +601,17 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                         className="w-full h-full object-cover"
                         alt="Primeiro frame do vídeo"
                       />
+                    ) : thumbnailFailed ? (
+                      // Frame capture failed — video format not supported in browser
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5 px-8">
+                        <Film size={28} className="text-white/20" />
+                        <p className="text-[9px] uppercase tracking-widest font-black text-white/40 text-center">
+                          Preview indisponível
+                        </p>
+                        <p className="text-[8px] uppercase tracking-widest font-bold text-white/20 text-center leading-relaxed">
+                          O vídeo será postado normalmente
+                        </p>
+                      </div>
                     ) : thumbnailSlow ? (
                       // Preview is taking too long — reassure the user
                       <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5 px-8">

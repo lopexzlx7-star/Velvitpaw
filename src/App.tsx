@@ -1390,37 +1390,46 @@ export default function App() {
                                 <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendações</span>
                               </div>
                               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                                {globalPosts.slice(0, 6).map(item => {
-                                  const thumbUrl = item.type === 'video'
-                                    ? item.thumbnailUrl
-                                      || (item.url.includes('res.cloudinary.com')
-                                        ? item.url.replace(/\.[^./]+$/, '.jpg')
-                                        : null)
-                                    : item.url;
-                                  return (
-                                  <button
-                                    key={`search-rec-${item.id}`}
-                                    onClick={() => {
-                                      setSearchQuery(item.title);
-                                      handleSearch(item.title);
-                                      setShowHistory(false);
-                                    }}
-                                    className="min-w-[100px] aspect-[9/16] rounded-xl overflow-hidden relative group bg-white/5"
-                                  >
-                                    {thumbUrl && (
-                                      <img
-                                        src={thumbUrl}
-                                        className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
-                                        alt=""
-                                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                                      />
-                                    )}
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
-                                      <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
-                                    </div>
-                                  </button>
-                                  );
-                                })}
+                                {globalPosts.length === 0 ? (
+                                  Array.from({ length: 4 }).map((_, i) => (
+                                    <div
+                                      key={`rec-skel-${i}`}
+                                      className="min-w-[100px] aspect-[9/16] rounded-xl bg-white/5 animate-pulse flex-shrink-0"
+                                    />
+                                  ))
+                                ) : (
+                                  globalPosts.slice(0, 6).map(item => {
+                                    const thumbUrl = item.type === 'video'
+                                      ? item.thumbnailUrl
+                                        || (item.url.includes('res.cloudinary.com')
+                                          ? item.url.replace(/\.[^./]+$/, '.jpg')
+                                          : null)
+                                      : item.url;
+                                    return (
+                                      <button
+                                        key={`search-rec-${item.id}`}
+                                        onClick={() => {
+                                          setSearchQuery(item.title);
+                                          handleSearch(item.title);
+                                          setShowHistory(false);
+                                        }}
+                                        className="min-w-[100px] aspect-[9/16] rounded-xl overflow-hidden relative group bg-white/5 flex-shrink-0"
+                                      >
+                                        {thumbUrl && (
+                                          <img
+                                            src={thumbUrl}
+                                            className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                                            alt=""
+                                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                          />
+                                        )}
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
+                                          <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
+                                        </div>
+                                      </button>
+                                    );
+                                  })
+                                )}
                               </div>
                             </motion.div>
                           </>
