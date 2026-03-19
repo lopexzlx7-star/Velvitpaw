@@ -292,10 +292,6 @@ app.post('/api/suggest-tags', async (req: Request, res: Response) => {
 // Body: { posts: [{ postId, title, description, userHashtags? }] }
 // Returns: [{ postId, tags, userHashtags }]
 app.post('/api/generate-tags-multi', async (req: Request, res: Response) => {
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor.' });
-  }
-
   const { posts } = req.body as {
     posts?: Array<{
       postId: string;
@@ -309,48 +305,50 @@ app.post('/api/generate-tags-multi', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Envie um array de posts em { posts: [...] }.' });
   }
 
-  try {
-    const results = [];
+  const hasOpenAI = !!process.env.OPENAI_API_KEY;
+  const results = [];
 
-    for (const post of posts) {
-      const { postId, title, description, userHashtags } = post;
-      if (!postId || !title || !description) continue;
+  for (const post of posts) {
+    const { postId, title, description, userHashtags } = post;
+    if (!postId || !title || !description) continue;
 
-      // Call GPT to generate 5 tags based on title + description
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'Você gera tags para vídeos — palavras únicas, separadas por espaço, sem # e sem explicações.',
-          },
-          {
-            role: 'user',
-            content: `Título: "${title}"\nDescrição: "${description}"\nRetorne exatamente 5 tags separadas por espaço.`,
-          },
-        ],
-        max_tokens: 40,
-      });
-
-      const tags = completion.choices[0]?.message?.content?.trim() ?? '';
-
-      // Save the user's own hashtags to the local DB for future /search-tags lookups
-      if (userHashtags) {
-        const parsed = userHashtags
-          .split(/\s+/)
-          .map((t: string) => t.replace(/^#/, '').trim())
-          .filter(Boolean);
-        if (parsed.length > 0) saveUserHashtags(postId, parsed);
-      }
-
-      results.push({ postId, tags, userHashtags: userHashtags ?? '' });
+    // Always persist the user's own hashtags to the local DB regardless of OpenAI
+    if (userHashtags) {
+      const parsed = userHashtags
+        .split(/\s+/)
+        .map((t: string) => t.replace(/^#/, '').trim())
+        .filter(Boolean);
+      if (parsed.length > 0) saveUserHashtags(postId, parsed);
     }
 
-    res.json(results);
-  } catch (err: any) {
-    console.error('[generate-tags-multi] OpenAI error:', err?.message);
-    res.status(500).json({ error: 'Erro ao processar múltiplos posts.' });
+    let tags = '';
+
+    if (hasOpenAI) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'Você gera tags para vídeos — palavras únicas, separadas por espaço, sem # e sem explicações.',
+            },
+            {
+              role: 'user',
+              content: `Título: "${title}"\nDescrição: "${description}"\nRetorne exatamente 5 tags separadas por espaço.`,
+            },
+          ],
+          max_tokens: 40,
+        });
+        tags = completion.choices[0]?.message?.content?.trim() ?? '';
+      } catch (err: any) {
+        console.warn(`[generate-tags-multi] OpenAI error for post ${postId}:`, err?.message);
+      }
+    }
+
+    results.push({ postId, tags, userHashtags: userHashtags ?? '' });
   }
+
+  res.json(results);
 });
 
 // ─── /api/search-tags/:query ──────────────────────────────────────────────────
