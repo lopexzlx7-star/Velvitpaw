@@ -8,10 +8,8 @@ import OpenAI from 'openai';
 import multer from 'multer';
 import ImageKit from 'imagekit';
 
-// ─── Cloudinary v2 client (used by CloudinaryStorage for the new video routes) ─
+// ─── Cloudinary v2 client ─────────────────────────────────────────────────────
 import { v2 as cloudinaryV2 } from 'cloudinary';
-// @ts-ignore — multer-storage-cloudinary ships CommonJS without bundled types
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 const app = express();
 app.use(express.json());
@@ -677,61 +675,41 @@ cloudinaryV2.config({
   api_secret: CLOUDINARY_API_SECRET,
 });
 
-// ─── CloudinaryStorage — stores uploaded videos directly in Cloudinary ────────
-// resource_type 'video' handles all common video formats (mp4, mov, webm, etc.)
-const videoCloudinaryStorage = new CloudinaryStorage({
-  cloudinary: cloudinaryV2,
-  // Cast to any: multer-storage-cloudinary types don't declare folder/resource_type
-  // but both are valid Cloudinary upload params at runtime.
-  params: {
-    folder: 'videos',
-    resource_type: 'video',
-  } as any,
-});
-
-// ─── Multer instance backed by Cloudinary (for new routes only) ───────────────
-// Separate from the existing memory-storage `upload` instance to avoid conflicts.
-const uploadVideoCloud = multer({ storage: videoCloudinaryStorage });
+// ─── Multer instance with memory storage (for legacy routes) ─────────────────
+const uploadVideoCloud = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE_BYTES } });
 
 // ─── GET / ─── Health / sanity check ─────────────────────────────────────────
-// Simple route so you can verify the server is reachable from any client.
 app.get('/', (_req: Request, res: Response) => {
   res.send('Backend funcionando!');
 });
 
 // ─── POST /upload ─── Upload de 1 vídeo via Cloudinary ───────────────────────
-// Accepts a single file field named "video".
-// Works on desktop and mobile browsers — multipart/form-data is used.
-app.post('/upload', uploadVideoCloud.single('video'), (req: Request, res: Response) => {
-  // Multer populates req.file when a file was received and stored successfully
+app.post('/upload', uploadVideoCloud.single('video'), async (req: Request, res: Response) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Nenhum vídeo enviado.' });
   }
-
-  // CloudinaryStorage sets req.file.path to the secure Cloudinary URL
-  return res.json({
-    message: 'Upload realizado com sucesso!',
-    url: (req.file as any).path,
-  });
+  try {
+    const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype, req.file.originalname);
+    return res.json({ message: 'Upload realizado com sucesso!', url });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Falha no upload.' });
+  }
 });
 
 // ─── POST /upload-multiple ─── Upload de até 5 vídeos via Cloudinary ─────────
-// Accepts up to 5 files in the "videos" field.
-// Returns an array of Cloudinary URLs in the same order as the uploaded files.
-app.post('/upload-multiple', uploadVideoCloud.array('videos', 5), (req: Request, res: Response) => {
+app.post('/upload-multiple', uploadVideoCloud.array('videos', 5), async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[] | undefined;
-
   if (!files || files.length === 0) {
     return res.status(400).json({ error: 'Nenhum vídeo enviado.' });
   }
-
-  // Map each stored file to its Cloudinary URL
-  const urls = files.map((file: any) => file.path);
-
-  return res.json({
-    message: 'Uploads realizados com sucesso!',
-    urls,
-  });
+  try {
+    const urls = await Promise.all(
+      files.map(f => uploadToCloudinary(f.buffer, f.mimetype, f.originalname))
+    );
+    return res.json({ message: 'Uploads realizados com sucesso!', urls });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Falha no upload.' });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
