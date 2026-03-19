@@ -21,6 +21,18 @@ interface FloatingHeart {
 
 const isVideoType = (type: string) => type === 'video' || type === 'gif';
 
+// Throttle helper — calls fn at most once per intervalMs
+function throttle<T extends (...args: any[]) => void>(fn: T, intervalMs: number): T {
+  let last = 0;
+  return ((...args: any[]) => {
+    const now = performance.now();
+    if (now - last >= intervalMs) {
+      last = now;
+      fn(...args);
+    }
+  }) as T;
+}
+
 const PostDetailModal: React.FC<PostDetailModalProps> = ({
   item,
   onClose,
@@ -69,6 +81,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
   useEffect(() => { setLocalIsLiked(isLiked); }, [isLiked]);
 
+  // Fetch author info after modal is open (non-blocking)
   useEffect(() => {
     if (!item.authorUid) return;
     const fetchAuthor = async () => {
@@ -81,16 +94,24 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         }
       } catch {}
     };
-    fetchAuthor();
+    // Defer fetch so it doesn't compete with the opening animation
+    const timer = setTimeout(fetchAuthor, 300);
+    return () => clearTimeout(timer);
   }, [item.authorUid, item.authorName]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !isVideo) return;
-    const onTime = () => { if (!isSeeking) setCurrentTime(video.currentTime); };
+
+    // Throttled to 4fps — enough for a smooth seek bar without constant re-renders
+    const onTime = throttle(() => {
+      if (!isSeeking) setCurrentTime(video.currentTime);
+    }, 250);
+
     const onMeta = () => setDuration(video.duration || item.duration || 0);
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
+
     video.addEventListener('timeupdate', onTime);
     video.addEventListener('loadedmetadata', onMeta);
     video.addEventListener('play', onPlay);
@@ -160,25 +181,29 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
       className="fixed inset-0 z-[100] flex items-center justify-center px-4"
-      style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
+      // Solid overlay — no backdrop blur on the full screen (very expensive during animation)
+      style={{ background: 'rgba(0,0,0,0.88)' }}
       onClick={onClose}
     >
       <motion.div
-        initial={{ y: 50, opacity: 0, scale: 0.9 }}
-        animate={{ y: 0, opacity: 1, scale: 1 }}
-        exit={{ y: 50, opacity: 0, scale: 0.9 }}
-        transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+        // Simplified animation: only y + opacity, no scale
+        // Tween is cheaper than spring — fewer intermediate frames
+        initial={{ y: 32, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 32, opacity: 0 }}
+        transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
         onClick={(e) => e.stopPropagation()}
+        // will-change promotes to GPU layer so transforms are composited off the main thread
         style={{
           width: getModalWidth(),
           borderRadius: '2.2rem',
-          background: 'rgba(14,14,14,0.92)',
-          backdropFilter: 'blur(40px)',
-          WebkitBackdropFilter: 'blur(40px)',
+          background: 'rgba(14,14,14,0.96)',
           border: '1px solid rgba(255,255,255,0.12)',
-          boxShadow: '0 50px 120px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.07)',
+          boxShadow: '0 40px 100px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.07)',
           overflow: 'hidden',
+          willChange: 'transform',
         }}
       >
         {/* Author row */}
@@ -230,23 +255,23 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   style={{ cursor: 'pointer', display: 'block' }}
                 />
 
-                {/* Central play/pause flash */}
+                {/* Central play/pause flash — no blur, just a dark circle */}
                 <AnimatePresence>
                   {showPlayPause && (
                     <motion.div
-                      initial={{ opacity: 0.9, scale: 0.8 }}
+                      initial={{ opacity: 0.9, scale: 0.85 }}
                       animate={{ opacity: 0.9, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.2 }}
-                      transition={{ duration: 0.25 }}
+                      exit={{ opacity: 0, scale: 1.15 }}
+                      transition={{ duration: 0.2 }}
                       className="absolute inset-0 flex items-center justify-center pointer-events-none"
                     >
                       <div
                         className="w-16 h-16 flex items-center justify-center rounded-full"
-                        style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(6px)' }}
+                        style={{ background: 'rgba(0,0,0,0.55)' }}
                       >
                         {isPlaying
-                          ? <Pause size={26} className="text-white/80" fill="currentColor" />
-                          : <Play size={26} className="text-white/80" fill="currentColor" />}
+                          ? <Pause size={26} className="text-white/90" fill="currentColor" />
+                          : <Play size={26} className="text-white/90" fill="currentColor" />}
                       </div>
                     </motion.div>
                   )}
@@ -261,8 +286,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   <div className="relative w-full mb-2" style={{ height: '18px', display: 'flex', alignItems: 'center' }}>
                     <div className="absolute left-0 right-0 h-[3px] rounded-full bg-white/20 overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-white transition-all"
-                        style={{ width: `${progress}%` }}
+                        className="h-full rounded-full bg-white"
+                        style={{ width: `${progress}%`, transition: 'width 0.25s linear' }}
                       />
                     </div>
                     <input
@@ -359,7 +384,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
           )}
         </div>
 
-        {/* Description — below title */}
+        {/* Description */}
         {item.description && (
           <div className="px-4 pb-4">
             <p className="text-[9px] font-normal text-white/35 leading-relaxed lowercase break-words">
