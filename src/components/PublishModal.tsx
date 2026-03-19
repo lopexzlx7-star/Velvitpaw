@@ -97,7 +97,7 @@ async function safeFetchJson(url: string): Promise<any> {
   return data;
 }
 const MAX_DESCRIPTION_WORDS = 50;
-const MAX_VIDEO_HEIGHT = 1080;
+const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const XHR_TIMEOUT_MS = 9 * 60 * 1000;
@@ -257,7 +257,10 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         clearTimeout(safetyTimer);
 
         const dur = isFinite(metaEl.duration) ? metaEl.duration : 0;
+        const w = metaEl.videoWidth;
         const h = metaEl.videoHeight;
+        // Use the longer side so portrait AND landscape videos are checked fairly
+        const longerSide = Math.max(w, h);
 
         if (dur > MAX_VIDEO_DURATION) {
           cleanup();
@@ -268,12 +271,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           return;
         }
 
-        if (h > MAX_VIDEO_HEIGHT) {
+        // Only reject if BOTH dimensions are known and the longer side exceeds the cap.
+        // If the browser returns 0 for either dimension (common on mobile), skip the check.
+        if (w > 0 && h > 0 && longerSide > MAX_VIDEO_SHORT_SIDE) {
           cleanup();
           clearTimeout(safetyTimer);
           URL.revokeObjectURL(blobUrl);
           setIsValidating(false);
-          setError(`Resolução muito alta. Use vídeos até ${MAX_VIDEO_HEIGHT}p.`);
+          setError(`Resolução muito alta (${w}×${h}). Use vídeos até ${MAX_VIDEO_SHORT_SIDE}p no lado longo.`);
           return;
         }
 
@@ -403,17 +408,19 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         setUploadAttempt(attempt);
         if (attempt > 1) {
           setUploadProgress(0);
-          const waitMs = 3000 * (attempt - 1);
+          // Fixed 3s wait between retries (not cumulative) for faster recovery
+          const waitMs = 3000;
           console.warn(`[Upload] Tentativa ${attempt}/${MAX_UPLOAD_ATTEMPTS} em ${waitMs / 1000}s...`);
           await new Promise(r => setTimeout(r, waitMs));
         }
         return await uploadVideo(file);
       } catch (err: any) {
         lastError = err;
+        // Only skip retry if user explicitly cancelled
         if (err?.message === 'upload_aborted') throw err;
-        const isRetryable = err?.message === 'network_error' || err?.isServerError === true;
-        if (!isRetryable || attempt === MAX_UPLOAD_ATTEMPTS) throw err;
-        console.warn(`[Upload] Tentativa ${attempt} falhou (${err.message}), tentando novamente...`);
+        // Retry all other errors (network, timeout, auth fetch fail, CORS, 5xx, etc.)
+        if (attempt === MAX_UPLOAD_ATTEMPTS) throw err;
+        console.warn(`[Upload] Tentativa ${attempt} falhou (${err?.message ?? err}), tentando novamente...`);
       }
     }
     throw lastError;
