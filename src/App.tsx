@@ -35,13 +35,26 @@ import FloatingNav from './components/FloatingNav';
 import PublishModal from './components/PublishModal';
 import PostDetailModal from './components/PostDetailModal';
 
-// Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation
-// (seek to 0 s) and swapping the extension to .jpg.
+// Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
 function getCloudinaryThumb(videoUrl: string): string | null {
   if (!videoUrl.includes('res.cloudinary.com')) return null;
   return videoUrl
     .replace('/video/upload/', '/video/upload/so_0/')
     .replace(/\.[^./]+$/, '.jpg');
+}
+
+// Generates an ImageKit video thumbnail by appending /ik-thumbnail.jpg
+function getImageKitThumb(videoUrl: string): string | null {
+  if (!videoUrl.includes('ik.imagekit.io')) return null;
+  // Strip any existing query params, append ImageKit thumbnail suffix
+  const base = videoUrl.split('?')[0];
+  return `${base}/ik-thumbnail.jpg`;
+}
+
+// Returns the best available thumbnail URL for any video.
+function getVideoThumb(item: { url: string; thumbnailUrl?: string }): string | null {
+  if (item.thumbnailUrl) return item.thumbnailUrl;
+  return getCloudinaryThumb(item.url) || getImageKitThumb(item.url);
 }
 
 // ─── RecommendationCard ───────────────────────────────────────────────────────
@@ -57,9 +70,7 @@ interface RecCardProps {
 function RecommendationCard({ item, onClick }: RecCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const isVideo = item.type === 'video';
-  const previewUrl = isVideo
-    ? (item.thumbnailUrl || getCloudinaryThumb(item.url))
-    : item.url;
+  const previewUrl = isVideo ? getVideoThumb(item) : item.url;
 
   const handleMouseEnter = () => {
     if (videoRef.current) {

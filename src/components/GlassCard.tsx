@@ -15,6 +15,16 @@ function getCloudinaryThumb(videoUrl: string): string | null {
     .replace(/\.[^./]+$/, '.jpg');
 }
 
+function getImageKitThumb(videoUrl: string): string | null {
+  if (!videoUrl.includes('ik.imagekit.io')) return null;
+  return `${videoUrl.split('?')[0]}/ik-thumbnail.jpg`;
+}
+
+function getVideoThumb(url: string, thumbnailUrl?: string): string | null {
+  if (thumbnailUrl) return thumbnailUrl;
+  return getCloudinaryThumb(url) || getImageKitThumb(url);
+}
+
 interface GlassCardProps {
   item: ContentItem;
   isLiked: boolean;
@@ -217,7 +227,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
         {/* Media Container */}
         <div className="relative overflow-hidden">
           {/* Skeleton Placeholder — only shown when there is no thumbnail to display */}
-          {!isLoaded && !item.thumbnailUrl && !getCloudinaryThumb(item.url) && (
+          {!isLoaded && !getVideoThumb(item.url, item.thumbnailUrl) && (
             <div 
               className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center"
               style={{ height: item.height || 300 }}
@@ -238,9 +248,9 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   {/* Thumbnail shown immediately as a static layer — visible before the
                       video element loads. The poster attribute on <video> is invisible
                       while the video has opacity-0, so we use a separate <img> layer. */}
-                  {!isLoaded && (item.thumbnailUrl || getCloudinaryThumb(item.url)) && (
+                  {!isLoaded && getVideoThumb(item.url, item.thumbnailUrl) && (
                     <img
-                      src={item.thumbnailUrl || getCloudinaryThumb(item.url)!}
+                      src={getVideoThumb(item.url, item.thumbnailUrl)!}
                       alt=""
                       className="absolute inset-0 w-full h-full object-cover"
                     />
