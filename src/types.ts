@@ -3,6 +3,7 @@ export interface ContentItem {
   title: string;
   url: string;
   thumbnailUrl?: string;
+  images?: string[];
   authorName: string;
   authorPhotoUrl: string;
   authorUid: string;

@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Heart, Bookmark, UserPlus, Trash2, 
   Volume2, VolumeX, Share2,
-  UserCheck
+  UserCheck, Images
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { auth } from '../firebase';
@@ -321,6 +321,13 @@ const GlassCard: React.FC<GlassCardProps> = ({
             >
               <Trash2 size={16} />
             </button>
+          )}
+
+          {item.type === 'image' && item.images && item.images.length > 1 && (
+            <div className="absolute top-3 left-3 flex items-center gap-1 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-full z-20 pointer-events-none">
+              <Images size={9} className="text-white/80" />
+              <span className="text-[9px] font-bold text-white/80">{item.images.length}</span>
+            </div>
           )}
 
           {/* Overlay Actions */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, VolumeX, Heart, User, Play, Pause } from 'lucide-react';
+import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -53,6 +53,25 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [floatingHearts, setFloatingHearts] = useState<FloatingHeart[]>([]);
   const [heartKey, setHeartKey] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
+
+  const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
+  const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
+
+  const swipeStartX = useRef<number | null>(null);
+
+  const handleSwipeStart = (e: React.TouchEvent) => {
+    swipeStartX.current = e.touches[0].clientX;
+  };
+  const handleSwipeEnd = (e: React.TouchEvent) => {
+    if (swipeStartX.current === null) return;
+    const diff = swipeStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 40) {
+      if (diff > 0 && activeImageIdx < allImages.length - 1) setActiveImageIdx(i => i + 1);
+      if (diff < 0 && activeImageIdx > 0) setActiveImageIdx(i => i - 1);
+    }
+    swipeStartX.current = null;
+  };
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const playPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -257,7 +276,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   style={{ cursor: 'pointer', display: 'block' }}
                 />
 
-                {/* Central play/pause flash — no blur, just a dark circle */}
                 <AnimatePresence>
                   {showPlayPause && (
                     <motion.div
@@ -267,62 +285,93 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       transition={{ duration: 0.2 }}
                       className="absolute inset-0 flex items-center justify-center pointer-events-none"
                     >
-                      <div
-                        className="w-16 h-16 flex items-center justify-center rounded-full"
-                        style={{ background: 'rgba(0,0,0,0.55)' }}
-                      >
-                        {isPlaying
-                          ? <Pause size={26} className="text-white/90" fill="currentColor" />
-                          : <Play size={26} className="text-white/90" fill="currentColor" />}
+                      <div className="w-16 h-16 flex items-center justify-center rounded-full" style={{ background: 'rgba(0,0,0,0.55)' }}>
+                        {isPlaying ? <Pause size={26} className="text-white/90" fill="currentColor" /> : <Play size={26} className="text-white/90" fill="currentColor" />}
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
 
-                {/* Video controls overlay at bottom */}
-                <div
-                  className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8"
-                  style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}
-                >
-                  {/* Seek bar */}
+                <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}>
                   <div className="relative w-full mb-2" style={{ height: '18px', display: 'flex', alignItems: 'center' }}>
                     <div className="absolute left-0 right-0 h-[3px] rounded-full bg-white/20 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-white"
-                        style={{ width: `${progress}%`, transition: 'width 0.25s linear' }}
-                      />
+                      <div className="h-full rounded-full bg-white" style={{ width: `${progress}%`, transition: 'width 0.25s linear' }} />
                     </div>
                     <input
-                      type="range"
-                      min={0}
-                      max={duration || 1}
-                      step={0.01}
-                      value={currentTime}
-                      onMouseDown={handleSeekStart}
-                      onTouchStart={handleSeekStart}
-                      onChange={handleSeekChange}
-                      onMouseUp={handleSeekEnd}
-                      onTouchEnd={handleSeekEnd}
+                      type="range" min={0} max={duration || 1} step={0.01} value={currentTime}
+                      onMouseDown={handleSeekStart} onTouchStart={handleSeekStart}
+                      onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute left-0 right-0 w-full opacity-0 cursor-pointer"
-                      style={{ height: '18px' }}
+                      className="absolute left-0 right-0 w-full opacity-0 cursor-pointer" style={{ height: '18px' }}
                     />
                   </div>
-
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-white/50 font-mono tabular-nums">
-                      {formatTime(currentTime)} / {formatTime(duration)}
-                    </span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }}
-                      className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors"
-                      style={{ background: 'rgba(0,0,0,0.3)' }}
-                    >
+                    <span className="text-[10px] text-white/50 font-mono tabular-nums">{formatTime(currentTime)} / {formatTime(duration)}</span>
+                    <button onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }} className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors" style={{ background: 'rgba(0,0,0,0.3)' }}>
                       {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
                     </button>
                   </div>
                 </div>
               </>
+            ) : isMultiImage ? (
+              /* ── Multi-image carousel ── */
+              <div
+                className="relative w-full h-full"
+                onTouchStart={handleSwipeStart}
+                onTouchEnd={handleSwipeEnd}
+              >
+                <AnimatePresence mode="wait">
+                  <motion.img
+                    key={activeImageIdx}
+                    src={allImages[activeImageIdx]}
+                    alt={item.title}
+                    initial={{ opacity: 0, x: 30 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -30 }}
+                    transition={{ duration: 0.2 }}
+                    className="w-full h-full object-cover block"
+                    referrerPolicy="no-referrer"
+                    style={{ display: 'block' }}
+                  />
+                </AnimatePresence>
+
+                {activeImageIdx > 0 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setActiveImageIdx(i => i - 1); }}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 backdrop-blur-sm rounded-full text-white hover:bg-black/70 transition-colors z-10"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                )}
+                {activeImageIdx < allImages.length - 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setActiveImageIdx(i => i + 1); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 backdrop-blur-sm rounded-full text-white hover:bg-black/70 transition-colors z-10"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                )}
+
+                {/* Dot indicator */}
+                <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 pointer-events-none">
+                  {allImages.map((_, i) => (
+                    <div
+                      key={i}
+                      className="rounded-full transition-all duration-200"
+                      style={{
+                        width: i === activeImageIdx ? 16 : 5,
+                        height: 5,
+                        background: i === activeImageIdx ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)',
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Counter */}
+                <div className="absolute top-3 right-3 px-2.5 py-1 bg-black/60 backdrop-blur-sm rounded-full text-[10px] font-bold text-white z-10">
+                  {activeImageIdx + 1}/{allImages.length}
+                </div>
+              </div>
             ) : (
               <img
                 src={item.url}
