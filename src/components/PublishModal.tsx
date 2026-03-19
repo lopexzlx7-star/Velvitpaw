@@ -28,8 +28,8 @@ interface Draft {
 const MAX_VIDEO_DURATION = 120;
 
 // ─── Captura o primeiro frame visível de um vídeo via canvas ─────────────────
-// Sempre produz um JPEG em proporção 9:16 (640×1138), usando scale + crop
-// centralizado — espelhando o filtro ffmpeg do servidor.
+// Usa múltiplos eventos para máxima compatibilidade cross-browser.
+// Em alguns browsers 'seeked' não dispara se currentTime já é 0.
 function captureVideoFrame(file: File): Promise<string> {
   const TARGET_W = 640;
   const TARGET_H = 1138;
@@ -42,45 +42,64 @@ function captureVideoFrame(file: File): Promise<string> {
     video.playsInline = true;
     video.src = objectUrl;
 
-    const done = (fn: () => void) => {
+    let settled = false;
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       URL.revokeObjectURL(objectUrl);
       fn();
     };
 
-    const timeout = setTimeout(() => done(() => reject(new Error('timeout'))), 10_000);
+    const timeout = setTimeout(() => finish(() => reject(new Error('timeout'))), 10_000);
 
-    video.addEventListener('loadeddata', () => { video.currentTime = 0; });
-
-    video.addEventListener('seeked', () => {
-      clearTimeout(timeout);
+    const capture = () => {
       try {
-        const vw = video.videoWidth  || TARGET_W;
+        const vw = video.videoWidth || TARGET_W;
         const vh = video.videoHeight || TARGET_H;
-
-        // Scale so the frame COVERS the 9:16 canvas (same as ffmpeg increase + crop)
         const scale = Math.max(TARGET_W / vw, TARGET_H / vh);
         const sw = vw * scale;
         const sh = vh * scale;
-
-        // Source rect in original-video coordinates (center-crop)
         const srcX = (sw - TARGET_W) / 2 / scale;
         const srcY = (sh - TARGET_H) / 2 / scale;
         const srcW = TARGET_W / scale;
         const srcH = TARGET_H / scale;
 
         const canvas = document.createElement('canvas');
-        canvas.width  = TARGET_W;
+        canvas.width = TARGET_W;
         canvas.height = TARGET_H;
         canvas.getContext('2d')!.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, TARGET_W, TARGET_H);
-        done(() => resolve(canvas.toDataURL('image/jpeg', 0.85)));
+        finish(() => resolve(canvas.toDataURL('image/jpeg', 0.85)));
       } catch (e) {
-        done(() => reject(e));
+        finish(() => reject(e));
+      }
+    };
+
+    // loadeddata: browser has enough data to render the current frame.
+    // If dimensions are ready, capture immediately instead of relying on seeked.
+    video.addEventListener('loadeddata', () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        capture();
+      } else {
+        // Seek slightly off zero to force a frame decode on all browsers
+        video.currentTime = 0.001;
       }
     });
 
+    // seeked: fires after currentTime is set — primary path when loadeddata
+    // doesn't have dimensions yet (some mobile/codec combinations).
+    video.addEventListener('seeked', () => {
+      if (!settled) capture();
+    });
+
+    // canplay: last-resort fallback in case neither loadeddata nor seeked fire
+    video.addEventListener('canplay', () => {
+      if (!settled && video.videoWidth > 0) capture();
+    });
+
     video.addEventListener('error', () => {
-      clearTimeout(timeout);
-      done(() => reject(new Error('video_error')));
+      finish(() => reject(new Error('video_error')));
     });
   });
 }
@@ -96,6 +115,7 @@ async function safeFetchJson(url: string): Promise<any> {
   if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
   return data;
 }
+
 const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
@@ -127,6 +147,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const objectUrlRef = useRef<string | null>(null);
   const activeXhrRef = useRef<XMLHttpRequest | null>(null);
   const thumbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Flag to signal the retry loop to stop even during a sleep interval
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -144,6 +166,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   }, []);
 
   const resetState = () => {
+    cancelledRef.current = true;
     if (activeXhrRef.current) {
       activeXhrRef.current.abort();
       activeXhrRef.current = null;
@@ -163,6 +186,32 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setError(null);
     setIsSubmitting(false);
     setIsValidating(false);
+    setThumbnailUrl(null);
+    setThumbnailSlow(false);
+    setThumbnailFailed(false);
+  };
+
+  // Cancels any active upload and clears just the media, keeping text fields intact
+  const cancelMedia = () => {
+    cancelledRef.current = true;
+    if (activeXhrRef.current) {
+      activeXhrRef.current.abort();
+      activeXhrRef.current = null;
+    }
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    if (thumbTimerRef.current) {
+      clearTimeout(thumbTimerRef.current);
+      thumbTimerRef.current = null;
+    }
+    setDraft(prev => ({ ...prev, mediaUrl: null, file: null }));
+    setUploadProgress(0);
+    setUploadAttempt(0);
+    setUploadFailed(false);
+    setIsSubmitting(false);
+    setError(null);
     setThumbnailUrl(null);
     setThumbnailSlow(false);
     setThumbnailFailed(false);
@@ -223,7 +272,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           title: prev.title || file.name.split('.')[0],
         }));
 
-        // Capture first frame in background — start a 6s slow-warning timer
         setThumbnailSlow(false);
         setThumbnailFailed(false);
         thumbTimerRef.current = setTimeout(() => setThumbnailSlow(true), 6000);
@@ -248,7 +296,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           });
       };
 
-      // Safety timeout — if metadata never fires, accept the file anyway
       const safetyTimer = setTimeout(() => {
         commitDraft(0);
       }, 5000);
@@ -259,7 +306,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         const dur = isFinite(metaEl.duration) ? metaEl.duration : 0;
         const w = metaEl.videoWidth;
         const h = metaEl.videoHeight;
-        // Use the longer side so portrait AND landscape videos are checked fairly
         const longerSide = Math.max(w, h);
 
         if (dur > MAX_VIDEO_DURATION) {
@@ -271,8 +317,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           return;
         }
 
-        // Only reject if BOTH dimensions are known and the longer side exceeds the cap.
-        // If the browser returns 0 for either dimension (common on mobile), skip the check.
         if (w > 0 && h > 0 && longerSide > MAX_VIDEO_SHORT_SIDE) {
           cleanup();
           clearTimeout(safetyTimer);
@@ -294,6 +338,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       return;
     }
 
+    // ── Image: compress and show preview immediately ──────────────────────────
     const reader = new FileReader();
     reader.onload = (event) => {
       const mediaUrl = event.target?.result as string;
@@ -323,12 +368,19 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     reader.readAsDataURL(file);
   };
 
-  const xhrDirectUpload = (url: string, formData: FormData): Promise<any> =>
+  // ─── XHR direct upload (used for video PUT to Storj and Cloudinary) ──────────
+  const xhrDirectUpload = (url: string, body: FormData | Blob, method: 'POST' | 'PUT' = 'POST', extraHeaders?: Record<string, string>): Promise<any> =>
     new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       activeXhrRef.current = xhr;
-      xhr.open('POST', url);
+      xhr.open(method, url);
       xhr.timeout = XHR_TIMEOUT_MS;
+
+      if (extraHeaders) {
+        for (const [k, v] of Object.entries(extraHeaders)) {
+          xhr.setRequestHeader(k, v);
+        }
+      }
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 95));
@@ -336,12 +388,16 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
       xhr.onload = () => {
         activeXhrRef.current = null;
-        let data: any = {};
-        try { data = JSON.parse(xhr.responseText); } catch {}
         if (xhr.status >= 200 && xhr.status < 300) {
           setUploadProgress(100);
+          // PUT to Storj returns empty body — resolve with empty object
+          if (!xhr.responseText.trim()) return resolve({});
+          let data: any = {};
+          try { data = JSON.parse(xhr.responseText); } catch {}
           resolve(data);
         } else {
+          let data: any = {};
+          try { data = JSON.parse(xhr.responseText); } catch {}
           const msg = data?.error?.message || data?.error || `Erro ${xhr.status}`;
           const err = new Error(msg) as any;
           err.isServerError = xhr.status >= 500;
@@ -356,31 +412,63 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       xhr.onerror = () => { activeXhrRef.current = null; reject(new Error('network_error')); };
       xhr.onabort = () => { activeXhrRef.current = null; reject(new Error('upload_aborted')); };
 
-      xhr.send(formData);
+      xhr.send(body);
     });
 
+  // ─── Upload image to Storj via server proxy ──────────────────────────────────
+  const uploadImage = async (file: File): Promise<string> => {
+    const fd = new FormData();
+    fd.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    activeXhrRef.current = xhr;
+
+    return new Promise((resolve, reject) => {
+      xhr.open('POST', '/api/upload-image');
+      xhr.timeout = XHR_TIMEOUT_MS;
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 95));
+      };
+
+      xhr.onload = () => {
+        activeXhrRef.current = null;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadProgress(100);
+          let data: any = {};
+          try { data = JSON.parse(xhr.responseText); } catch {}
+          if (!data.url) return reject(new Error('Storj não retornou URL da imagem.'));
+          resolve(data.url as string);
+        } else {
+          let data: any = {};
+          try { data = JSON.parse(xhr.responseText); } catch {}
+          reject(new Error(data?.error || `Erro ${xhr.status}`));
+        }
+      };
+
+      xhr.ontimeout = () => { activeXhrRef.current = null; reject(new Error('O upload demorou muito.')); };
+      xhr.onerror = () => { activeXhrRef.current = null; reject(new Error('network_error')); };
+      xhr.onabort = () => { activeXhrRef.current = null; reject(new Error('upload_aborted')); };
+
+      xhr.send(fd);
+    });
+  };
+
+  // ─── Upload video: Storj presigned PUT (<50MB) or Cloudinary direct (>=50MB) ─
   const uploadVideo = async (file: File): Promise<string> => {
     const isLight = file.size < HEAVY_VIDEO_MIN_BYTES;
 
     if (isLight) {
-      // ── ImageKit direct upload (< 50 MB) ────────────────────────────────
-      const auth = await safeFetchJson('/api/imagekit-auth');
+      // ── Storj presigned PUT upload ─────────────────────────────────────────
+      const ext = file.name.split('.').pop() || 'mp4';
+      const presign = await safeFetchJson(`/api/storj-presign?ext=${ext}&type=${encodeURIComponent(file.type)}`);
 
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('fileName', `${Date.now()}_${file.name}`);
-      fd.append('folder', '/videos');
-      fd.append('token', auth.token);
-      fd.append('expire', String(auth.expire));
-      fd.append('signature', auth.signature);
-      fd.append('publicKey', auth.publicKey);
+      // PUT directly to Storj — returns empty body on success
+      await xhrDirectUpload(presign.signedUrl, file, 'PUT', { 'Content-Type': file.type });
 
-      const data = await xhrDirectUpload('https://upload.imagekit.io/api/v1/files/upload', fd);
-      if (!data.url) throw new Error('ImageKit não retornou URL do vídeo.');
-      return data.url as string;
-
+      return presign.publicUrl as string;
     } else {
-      // ── Cloudinary direct upload (>= 50 MB) ─────────────────────────────
+      // ── Cloudinary direct upload (>=50MB) ──────────────────────────────────
       const sign = await safeFetchJson('/api/cloudinary-sign');
 
       const fd = new FormData();
@@ -401,24 +489,35 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const MAX_UPLOAD_ATTEMPTS = 5;
 
+  // Waits for ms, but rejects immediately if cancelled
+  const cancellableWait = (ms: number): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, ms);
+      const check = setInterval(() => {
+        if (cancelledRef.current) {
+          clearTimeout(timer);
+          clearInterval(check);
+          reject(new Error('upload_aborted'));
+        }
+      }, 100);
+      setTimeout(() => clearInterval(check), ms + 200);
+    });
+
   const uploadVideoWithRetry = async (file: File): Promise<string> => {
     let lastError: Error = new Error('Falha no upload.');
     for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
+      if (cancelledRef.current) throw new Error('upload_aborted');
       try {
         setUploadAttempt(attempt);
         if (attempt > 1) {
           setUploadProgress(0);
-          // Fixed 3s wait between retries (not cumulative) for faster recovery
-          const waitMs = 3000;
-          console.warn(`[Upload] Tentativa ${attempt}/${MAX_UPLOAD_ATTEMPTS} em ${waitMs / 1000}s...`);
-          await new Promise(r => setTimeout(r, waitMs));
+          console.warn(`[Upload] Tentativa ${attempt}/${MAX_UPLOAD_ATTEMPTS} em 3s...`);
+          await cancellableWait(3000);
         }
         return await uploadVideo(file);
       } catch (err: any) {
         lastError = err;
-        // Only skip retry if user explicitly cancelled
         if (err?.message === 'upload_aborted') throw err;
-        // Retry all other errors (network, timeout, auth fetch fail, CORS, 5xx, etc.)
         if (attempt === MAX_UPLOAD_ATTEMPTS) throw err;
         console.warn(`[Upload] Tentativa ${attempt} falhou (${err?.message ?? err}), tentando novamente...`);
       }
@@ -428,6 +527,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const submitPost = async () => {
     if (!auth.currentUser || !draft.mediaUrl || !draft.file) return;
+    cancelledRef.current = false;
     setIsSubmitting(true);
     setUploadProgress(0);
     setUploadAttempt(0);
@@ -441,8 +541,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       if (draft.mediaType === 'video') {
         finalUrl = await uploadVideoWithRetry(draft.file);
 
-        // Upload the first-frame thumbnail to ImageKit so we store a hosted URL
-        // instead of a base64 blob (which would exceed Firestore's 1MB doc limit)
         if (thumbnailUrl) {
           try {
             const res = await fetch('/api/upload-thumbnail', {
@@ -455,9 +553,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               hostedThumbnailUrl = data.url ?? null;
             }
           } catch {
-            // Non-fatal — post will still be created without a thumbnail URL
+            // Non-fatal
           }
         }
+      } else {
+        // ── Image: upload to Storj and replace the base64 local URL ────────────
+        finalUrl = await uploadImage(draft.file);
       }
 
       const extractedHashtags = Array.from(
@@ -602,14 +703,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 >
                   {isVideo ? (
                     thumbnailUrl ? (
-                      // First frame captured — show it as preview
                       <img
                         src={thumbnailUrl}
                         className="w-full h-full object-cover"
                         alt="Primeiro frame do vídeo"
                       />
                     ) : thumbnailFailed ? (
-                      // Frame capture failed — video format not supported in browser
                       <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5 px-8">
                         <Film size={28} className="text-white/20" />
                         <p className="text-[9px] uppercase tracking-widest font-black text-white/40 text-center">
@@ -620,7 +719,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                         </p>
                       </div>
                     ) : thumbnailSlow ? (
-                      // Preview is taking too long — reassure the user
                       <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5 px-8">
                         <Film size={28} className="text-white/20" />
                         <p className="text-[9px] uppercase tracking-widest font-black text-white/40 text-center">
@@ -631,7 +729,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                         </p>
                       </div>
                     ) : (
-                      // Still capturing — show spinner
                       <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5">
                         <Loader2 size={28} className="text-white/30 animate-spin" />
                         <p className="text-[9px] uppercase tracking-widest font-black text-white/20 text-center px-6">
@@ -644,14 +741,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
                   <button
-                    onClick={() => {
-                      if (objectUrlRef.current) {
-                        URL.revokeObjectURL(objectUrlRef.current);
-                        objectUrlRef.current = null;
-                      }
-                      setDraft(prev => ({ ...prev, mediaUrl: null, file: null }));
-                      setError(null);
-                    }}
+                    onClick={cancelMedia}
                     className="absolute top-4 right-4 p-3 bg-black/50 backdrop-blur-xl rounded-2xl text-white hover:bg-red-500 transition-all border border-white/10"
                   >
                     <X size={16} />
@@ -735,7 +825,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                     ? 'Publicando...'
                     : uploadAttempt > 1
                       ? `Tentativa ${uploadAttempt} de ${MAX_UPLOAD_ATTEMPTS}...`
-                      : 'Enviando vídeo...'}
+                      : draft.mediaType === 'video' ? 'Enviando vídeo...' : 'Enviando imagem...'}
                 </span>
                 <span className="text-[9px] text-white/40 font-bold">{uploadProgress}%</span>
               </div>
