@@ -274,6 +274,7 @@ export default function App() {
   });
   const [profileTab, setProfileTab] = useState<'posts' | 'liked'>('posts');
   const [activeTab, setActiveTab] = useState<'home' | 'foryou'>('home');
+  const [forYouItems, setForYouItems] = useState<ContentItem[]>([]);
   const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>(['Aesthetic', 'Nature', 'Art', 'Tech', 'Fashion', 'Architecture', 'Travel', 'Food']);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>(() => {
@@ -475,6 +476,42 @@ export default function App() {
       localStorage.setItem('velvit_likes', JSON.stringify(updatedLikedIds));
     }
   }, [globalPosts]);
+
+  useEffect(() => {
+    if (globalPosts.length === 0) return;
+
+    const likedSet = new Set(likedIds);
+    const savedSet = new Set(savedIds);
+    const currentUid = auth.currentUser?.uid;
+
+    const preferredTags = new Set<string>();
+    globalPosts.forEach(post => {
+      if (likedSet.has(post.id) || savedSet.has(post.id)) {
+        (post.hashtags || []).forEach(tag => preferredTags.add(tag));
+      }
+    });
+
+    const scored = globalPosts
+      .map(post => {
+        let score = 0;
+        if (currentUid && post.authorUid === currentUid) return { post, score: -999 };
+        if (likedSet.has(post.id)) score -= 50;
+        if (followingUids.includes((post as any).authorUid)) score += 50;
+        const tagMatches = (post.hashtags || []).filter(t => preferredTags.has(t)).length;
+        score += tagMatches * 30;
+        score += ((post.likesCount || 0) + ((post as any).savesCount || 0)) * 0.5;
+        const ageDays = (Date.now() - new Date(post.createdAt || 0).getTime()) / 86400000;
+        if (ageDays < 7) score += Math.max(0, (7 - ageDays) * 3);
+        return { post, score };
+      })
+      .filter(({ score }) => score > -500)
+      .sort((a, b) => b.score - a.score)
+      .map(({ post }) => post);
+
+    setForYouItems(scored.length > 0 ? scored : [...globalPosts].sort(
+      (a: any, b: any) => ((b.likesCount || 0) + (b.savesCount || 0)) - ((a.likesCount || 0) + (a.savesCount || 0))
+    ));
+  }, [globalPosts, likedIds, savedIds, followingUids]);
 
   const handleLogin = async () => {
     if (!loginUsername || loginUsername.length < 3) {
@@ -1503,9 +1540,8 @@ export default function App() {
                                       key={`search-rec-${item.id}`}
                                       item={item}
                                       onClick={() => {
-                                        setSearchQuery(item.title);
-                                        handleSearch(item.title);
                                         setShowHistory(false);
+                                        setSelectedPost(item);
                                       }}
                                     />
                                   ))
@@ -1627,7 +1663,7 @@ export default function App() {
                       <div key={i} className="mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: [250, 300, 400, 600][i % 4] }} />
                     ))
                   ) : (
-                    items.map((item) => (
+                    (activeTab === 'foryou' ? forYouItems : items).map((item) => (
                       <GlassCard 
                         key={item.id} 
                         item={item} 
@@ -1647,7 +1683,7 @@ export default function App() {
                   )}
                 </div>
 
-                {items.length === 0 && !loading && !isGeneratingFeed && (
+                {(activeTab === 'foryou' ? forYouItems : items).length === 0 && !loading && !isGeneratingFeed && (
                   <div className="flex flex-col items-center justify-center py-40 text-center">
                     <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
                       <ImageIcon size={32} className="text-white/10" />
@@ -1848,6 +1884,10 @@ export default function App() {
             onDelete={handleDeletePost}
             isLiked={likedIds.includes(selectedPost.id)}
             currentUserUid={auth.currentUser?.uid}
+            onHashtagClick={(tag) => {
+              setSelectedPost(null);
+              handleHashtagClick(tag);
+            }}
           />
         )}
       </AnimatePresence>

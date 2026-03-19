@@ -12,6 +12,7 @@ interface PostDetailModalProps {
   onDelete?: (id: string) => void;
   isLiked: boolean;
   currentUserUid?: string;
+  onHashtagClick?: (tag: string) => void;
 }
 
 interface FloatingHeart {
@@ -38,7 +39,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   onClose,
   onLike,
   isLiked,
-  currentUserUid
+  currentUserUid,
+  onHashtagClick,
 }) => {
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -386,7 +388,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
         {/* Description */}
         {item.description && (
-          <div className="px-4 pb-4">
+          <div className="px-4 pb-3">
             <p className="text-[9px] font-normal text-white/35 leading-relaxed lowercase break-words">
               {item.description.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
                 /^https?:\/\//.test(part) ? (
@@ -405,6 +407,31 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                 )
               )}
             </p>
+          </div>
+        )}
+
+        {/* Hashtags */}
+        {item.hashtags && item.hashtags.length > 0 && (
+          <div className="px-4 pb-4 flex flex-wrap gap-1.5">
+            {item.hashtags.map(tag => (
+              <button
+                key={tag}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onHashtagClick) {
+                    onHashtagClick(tag);
+                    onClose();
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide transition-all border ${
+                  onHashtagClick
+                    ? 'bg-white/5 hover:bg-white/15 border-white/10 hover:border-white/25 text-white/50 hover:text-white cursor-pointer'
+                    : 'bg-white/5 border-white/10 text-white/40 cursor-default'
+                }`}
+              >
+                #{tag}
+              </button>
+            ))}
           </div>
         )}
       </motion.div>
