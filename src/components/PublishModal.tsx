@@ -28,9 +28,12 @@ interface Draft {
 const MAX_VIDEO_DURATION = 120;
 
 // ─── Captura o primeiro frame visível de um vídeo via canvas ─────────────────
-// Usa preload='auto' para garantir que haja dados suficientes para pintar.
-// Resolve com um data-URL JPEG (qualidade 0.85); rejeita em caso de erro/timeout.
-function captureVideoFrame(file: File, w = 640, h = 360): Promise<string> {
+// Sempre produz um JPEG em proporção 9:16 (640×1138), usando scale + crop
+// centralizado — espelhando o filtro ffmpeg do servidor.
+function captureVideoFrame(file: File): Promise<string> {
+  const TARGET_W = 640;
+  const TARGET_H = 1138;
+
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     const objectUrl = URL.createObjectURL(file);
@@ -46,16 +49,29 @@ function captureVideoFrame(file: File, w = 640, h = 360): Promise<string> {
 
     const timeout = setTimeout(() => done(() => reject(new Error('timeout'))), 10_000);
 
-    // Seek to frame 0 once enough data has loaded
     video.addEventListener('loadeddata', () => { video.currentTime = 0; });
 
     video.addEventListener('seeked', () => {
       clearTimeout(timeout);
       try {
+        const vw = video.videoWidth  || TARGET_W;
+        const vh = video.videoHeight || TARGET_H;
+
+        // Scale so the frame COVERS the 9:16 canvas (same as ffmpeg increase + crop)
+        const scale = Math.max(TARGET_W / vw, TARGET_H / vh);
+        const sw = vw * scale;
+        const sh = vh * scale;
+
+        // Source rect in original-video coordinates (center-crop)
+        const srcX = (sw - TARGET_W) / 2 / scale;
+        const srcY = (sh - TARGET_H) / 2 / scale;
+        const srcW = TARGET_W / scale;
+        const srcH = TARGET_H / scale;
+
         const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d')!.drawImage(video, 0, 0, w, h);
+        canvas.width  = TARGET_W;
+        canvas.height = TARGET_H;
+        canvas.getContext('2d')!.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, TARGET_W, TARGET_H);
         done(() => resolve(canvas.toDataURL('image/jpeg', 0.85)));
       } catch (e) {
         done(() => reject(e));

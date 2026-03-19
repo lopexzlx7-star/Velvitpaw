@@ -1394,9 +1394,8 @@ export default function App() {
                                   const thumbUrl = item.type === 'video'
                                     ? item.thumbnailUrl
                                       || (item.url.includes('res.cloudinary.com')
-                                        ? item.url.replace('/upload/', '/upload/so_0/').replace(/\.[^./]+$/, '.jpg')
+                                        ? item.url.replace(/\.[^./]+$/, '.jpg')
                                         : null)
-                                      || item.url
                                     : item.url;
                                   return (
                                   <button
@@ -1406,9 +1405,16 @@ export default function App() {
                                       handleSearch(item.title);
                                       setShowHistory(false);
                                     }}
-                                    className="min-w-[120px] aspect-[4/5] rounded-xl overflow-hidden relative group"
+                                    className="min-w-[100px] aspect-[9/16] rounded-xl overflow-hidden relative group bg-white/5"
                                   >
-                                    <img src={thumbUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="" />
+                                    {thumbUrl && (
+                                      <img
+                                        src={thumbUrl}
+                                        className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                                        alt=""
+                                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                      />
+                                    )}
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
                                       <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
                                     </div>
