@@ -91,7 +91,7 @@ function RecommendationCard({ item, onClick }: RecCardProps) {
       onClick={onClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className="min-w-[100px] aspect-[9/16] rounded-xl overflow-hidden relative group bg-white/10 flex-shrink-0 border border-white/10"
+      className="w-[72px] min-w-[72px] max-w-[72px] aspect-[9/16] rounded-xl overflow-hidden relative group bg-white/10 flex-shrink-0 border border-white/10"
     >
       {isVideo ? (
         <>
