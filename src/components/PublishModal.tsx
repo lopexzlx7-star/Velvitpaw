@@ -105,9 +105,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbnailSlow, setThumbnailSlow] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const activeXhrRef = useRef<XMLHttpRequest | null>(null);
+  const thumbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -133,6 +135,10 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
     }
+    if (thumbTimerRef.current) {
+      clearTimeout(thumbTimerRef.current);
+      thumbTimerRef.current = null;
+    }
     setDraft(INITIAL_DRAFT);
     setUploadProgress(0);
     setUploadAttempt(0);
@@ -141,6 +147,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setIsSubmitting(false);
     setIsValidating(false);
     setThumbnailUrl(null);
+    setThumbnailSlow(false);
   };
 
   const handleClose = () => {
@@ -198,10 +205,26 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           title: prev.title || file.name.split('.')[0],
         }));
 
-        // Capture first frame in the background — does not block draft commit
-        captureVideoFrame(file).then(setThumbnailUrl).catch(() => {
-          // Silently ignore — the Film-icon placeholder will show instead
-        });
+        // Capture first frame in background — start a 6s slow-warning timer
+        setThumbnailSlow(false);
+        thumbTimerRef.current = setTimeout(() => setThumbnailSlow(true), 6000);
+
+        captureVideoFrame(file)
+          .then((url) => {
+            if (thumbTimerRef.current) {
+              clearTimeout(thumbTimerRef.current);
+              thumbTimerRef.current = null;
+            }
+            setThumbnailSlow(false);
+            setThumbnailUrl(url);
+          })
+          .catch(() => {
+            if (thumbTimerRef.current) {
+              clearTimeout(thumbTimerRef.current);
+              thumbTimerRef.current = null;
+            }
+            setThumbnailSlow(false);
+          });
       };
 
       // Safety timeout — if metadata never fires, accept the file anyway
@@ -557,6 +580,17 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                         className="w-full h-full object-cover"
                         alt="Primeiro frame do vídeo"
                       />
+                    ) : thumbnailSlow ? (
+                      // Preview is taking too long — reassure the user
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5 px-8">
+                        <Film size={28} className="text-white/20" />
+                        <p className="text-[9px] uppercase tracking-widest font-black text-white/40 text-center">
+                          Preview demorando...
+                        </p>
+                        <p className="text-[8px] uppercase tracking-widest font-bold text-white/20 text-center leading-relaxed">
+                          O vídeo será postado normalmente
+                        </p>
+                      </div>
                     ) : (
                       // Still capturing — show spinner
                       <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-white/5">
