@@ -50,3 +50,8 @@ packages = ["ffmpeg"]
 deploymentTarget = "autoscale"
 run = ["sh", "-c", "NODE_ENV=production tsx server.ts"]
 build = ["npm", "run", "build"]
+
+[userenv]
+
+[userenv.shared]
+STORJ_ENDPOINT = "https://gateway.storjshare.io"
