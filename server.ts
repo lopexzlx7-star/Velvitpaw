@@ -39,8 +39,10 @@ const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET ?? '';
 
 // ─── ImageKit config (read once at startup) ───────────────────────────────────
 const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY ?? '';
-const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT ?? '';
 const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY ?? '';
+// Accept both full URL and bare ID (e.g. "rdg0qbzla2" → "https://ik.imagekit.io/rdg0qbzla2")
+const _IK_RAW = process.env.IMAGEKIT_URL_ENDPOINT ?? '';
+const IMAGEKIT_URL_ENDPOINT = _IK_RAW.startsWith('http') ? _IK_RAW : _IK_RAW ? `https://ik.imagekit.io/${_IK_RAW}` : '';
 
 // ─── Startup diagnostics ──────────────────────────────────────────────────────
 const cloudinaryReady = !!(CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
