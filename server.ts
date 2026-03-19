@@ -7,7 +7,6 @@ import express, { Request, Response, NextFunction } from 'express';
 import OpenAI from 'openai';
 import multer from 'multer';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // ─── Cloudinary v2 client ─────────────────────────────────────────────────────
 import { v2 as cloudinaryV2 } from 'cloudinary';
@@ -177,8 +176,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
       openai: !!process.env.OPENAI_API_KEY ? 'configured' : 'missing',
     },
     routing: {
-      largeVideos: 'Cloudinary (>=50MB)',
-      smallVideos: 'Storj (<50MB)',
+      videos: 'Cloudinary (todos os tamanhos)',
       images: 'Storj',
       thumbnails: 'Storj',
       frames: 'Storj',
@@ -375,35 +373,6 @@ app.get('/api/search-tags/:query', (req: Request, res: Response) => {
   }
 
   res.json({ related });
-});
-
-// ─── /api/storj-presign — presigned PUT URL for browser-direct video upload ───
-// Browser fetches this, then PUTs the file directly to Storj without routing
-// the entire video through our server.
-app.get('/api/storj-presign', async (req: Request, res: Response) => {
-  if (!storjReady || !storjClient) {
-    return res.status(503).json({ error: 'Storj não configurado. Defina STORJ_ACCESS_KEY, STORJ_SECRET_KEY e STORJ_BUCKET nos Secrets.' });
-  }
-
-  const ext = (req.query.ext as string) || 'mp4';
-  const contentType = (req.query.type as string) || 'video/mp4';
-  const key = `videos/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-
-  try {
-    const command = new PutObjectCommand({
-      Bucket: STORJ_BUCKET,
-      Key: key,
-      ContentType: contentType,
-    });
-
-    const signedUrl = await getSignedUrl(storjClient, command, { expiresIn: 3600 });
-    const publicUrl = `${STORJ_PUBLIC_BASE}/${key}`;
-
-    return res.json({ signedUrl, publicUrl, key });
-  } catch (err: any) {
-    console.error('[storj-presign] Erro:', err?.message);
-    return res.status(500).json({ error: 'Erro ao gerar URL de upload.' });
-  }
 });
 
 // ─── /api/upload-image — server-side image upload to Storj ───────────────────

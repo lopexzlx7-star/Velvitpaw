@@ -121,7 +121,6 @@ const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const XHR_TIMEOUT_MS = 9 * 60 * 1000;
-const HEAVY_VIDEO_MIN_BYTES = 50 * 1024 * 1024;
 
 const INITIAL_DRAFT: Draft = {
   title: '',
@@ -454,37 +453,23 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     });
   };
 
-  // ─── Upload video: Storj presigned PUT (<50MB) or Cloudinary direct (>=50MB) ─
+  // ─── Upload video: todos os vídeos vão para Cloudinary ──────────────────────
   const uploadVideo = async (file: File): Promise<string> => {
-    const isLight = file.size < HEAVY_VIDEO_MIN_BYTES;
+    const sign = await safeFetchJson('/api/cloudinary-sign');
 
-    if (isLight) {
-      // ── Storj presigned PUT upload ─────────────────────────────────────────
-      const ext = file.name.split('.').pop() || 'mp4';
-      const presign = await safeFetchJson(`/api/storj-presign?ext=${ext}&type=${encodeURIComponent(file.type)}`);
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('timestamp', sign.timestamp);
+    fd.append('folder', sign.folder);
+    fd.append('signature', sign.signature);
+    fd.append('api_key', sign.apiKey);
+    fd.append('resource_type', 'video');
 
-      // PUT directly to Storj — returns empty body on success
-      await xhrDirectUpload(presign.signedUrl, file, 'PUT', { 'Content-Type': file.type });
-
-      return presign.publicUrl as string;
-    } else {
-      // ── Cloudinary direct upload (>=50MB) ──────────────────────────────────
-      const sign = await safeFetchJson('/api/cloudinary-sign');
-
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('timestamp', sign.timestamp);
-      fd.append('folder', sign.folder);
-      fd.append('signature', sign.signature);
-      fd.append('api_key', sign.apiKey);
-      fd.append('resource_type', 'video');
-
-      const data = await xhrDirectUpload(
-        `https://api.cloudinary.com/v1_1/${sign.cloudName}/video/upload`, fd
-      );
-      if (!data.secure_url) throw new Error('Cloudinary não retornou URL do vídeo.');
-      return data.secure_url as string;
-    }
+    const data = await xhrDirectUpload(
+      `https://api.cloudinary.com/v1_1/${sign.cloudName}/video/upload`, fd
+    );
+    if (!data.secure_url) throw new Error('Cloudinary não retornou URL do vídeo.');
+    return data.secure_url as string;
   };
 
   const MAX_UPLOAD_ATTEMPTS = 5;
