@@ -35,6 +35,14 @@ import FloatingNav from './components/FloatingNav';
 import PublishModal from './components/PublishModal';
 import PostDetailModal from './components/PostDetailModal';
 
+// Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation
+// (seek to 0 s) and swapping the extension to .jpg.
+function getCloudinaryThumb(videoUrl: string): string | null {
+  if (!videoUrl.includes('res.cloudinary.com')) return null;
+  return videoUrl
+    .replace('/video/upload/', '/video/upload/so_0/')
+    .replace(/\.[^./]+$/, '.jpg');
+}
 
 enum OperationType {
   CREATE = 'create',
@@ -1400,10 +1408,7 @@ export default function App() {
                                 ) : (
                                   globalPosts.slice(0, 6).map(item => {
                                     const thumbUrl = item.type === 'video'
-                                      ? item.thumbnailUrl
-                                        || (item.url.includes('res.cloudinary.com')
-                                          ? item.url.replace(/\.[^./]+$/, '.jpg')
-                                          : null)
+                                      ? (item.thumbnailUrl || getCloudinaryThumb(item.url))
                                       : item.url;
                                     return (
                                       <button
@@ -1413,18 +1418,22 @@ export default function App() {
                                           handleSearch(item.title);
                                           setShowHistory(false);
                                         }}
-                                        className="min-w-[100px] aspect-[9/16] rounded-xl overflow-hidden relative group bg-white/5 flex-shrink-0"
+                                        className="min-w-[100px] aspect-[9/16] rounded-xl overflow-hidden relative group bg-white/10 flex-shrink-0 border border-white/10"
                                       >
-                                        {thumbUrl && (
+                                        {thumbUrl ? (
                                           <img
                                             src={thumbUrl}
-                                            className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                                            className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"
                                             alt=""
                                             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                                           />
+                                        ) : (
+                                          <div className="w-full h-full bg-white/5 flex items-center justify-center">
+                                            <span className="text-white/20 text-2xl">▶</span>
+                                          </div>
                                         )}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-2">
-                                          <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter">{item.title}</span>
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex items-end p-2">
+                                          <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter w-full">{item.title}</span>
                                         </div>
                                       </button>
                                     );

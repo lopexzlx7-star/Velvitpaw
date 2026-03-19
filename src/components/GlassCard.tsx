@@ -8,6 +8,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { auth } from '../firebase';
 import { ContentItem } from '../types';
 
+function getCloudinaryThumb(videoUrl: string): string | null {
+  if (!videoUrl.includes('res.cloudinary.com')) return null;
+  return videoUrl
+    .replace('/video/upload/', '/video/upload/so_0/')
+    .replace(/\.[^./]+$/, '.jpg');
+}
+
 interface GlassCardProps {
   item: ContentItem;
   isLiked: boolean;
@@ -210,7 +217,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
         {/* Media Container */}
         <div className="relative overflow-hidden">
           {/* Skeleton Placeholder — only shown when there is no thumbnail to display */}
-          {!isLoaded && !item.thumbnailUrl && (
+          {!isLoaded && !item.thumbnailUrl && !getCloudinaryThumb(item.url) && (
             <div 
               className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center"
               style={{ height: item.height || 300 }}
@@ -231,9 +238,9 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   {/* Thumbnail shown immediately as a static layer — visible before the
                       video element loads. The poster attribute on <video> is invisible
                       while the video has opacity-0, so we use a separate <img> layer. */}
-                  {item.thumbnailUrl && !isLoaded && (
+                  {!isLoaded && (item.thumbnailUrl || getCloudinaryThumb(item.url)) && (
                     <img
-                      src={item.thumbnailUrl}
+                      src={item.thumbnailUrl || getCloudinaryThumb(item.url)!}
                       alt=""
                       className="absolute inset-0 w-full h-full object-cover"
                     />
