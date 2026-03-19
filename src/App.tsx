@@ -314,10 +314,11 @@ export default function App() {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    scrollY.set(el.scrollTop);
     const onScroll = () => scrollY.set(el.scrollTop);
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  });
+  }, [currentTab]);
 
   useEffect(() => {
     const resetVersion = 'v2_total_reset';

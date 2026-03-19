@@ -113,10 +113,8 @@ function registerVideo(id: string, el: HTMLVideoElement) {
   if (!registry.find(v => v.id === id)) {
     registry.push({ id, el });
   }
-  // If nothing is playing yet, start this one
-  if (activeId === null) {
-    triggerPlay(id);
-  }
+  // Do NOT auto-play on register — only IntersectionObserver triggers playback,
+  // ensuring the topmost visible video always plays first.
 }
 
 function unregisterVideo(id: string) {
