@@ -44,6 +44,87 @@ function getCloudinaryThumb(videoUrl: string): string | null {
     .replace(/\.[^./]+$/, '.jpg');
 }
 
+// ─── RecommendationCard ───────────────────────────────────────────────────────
+// Renders a single recommendation card in the search dropdown.
+// • Videos: static ImageKit/Cloudinary thumbnail → plays Cloudinary video on hover
+// • Images: standard <img> rendering
+interface RecCardProps {
+  key?: string | number;
+  item: ContentItem;
+  onClick: () => void;
+}
+
+function RecommendationCard({ item, onClick }: RecCardProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const isVideo = item.type === 'video';
+  const previewUrl = isVideo
+    ? (item.thumbnailUrl || getCloudinaryThumb(item.url))
+    : item.url;
+
+  const handleMouseEnter = () => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {});
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className="min-w-[100px] aspect-[9/16] rounded-xl overflow-hidden relative group bg-white/10 flex-shrink-0 border border-white/10"
+    >
+      {isVideo ? (
+        <>
+          {/* Static thumbnail — shown by default */}
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 group-hover:opacity-0"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+          ) : (
+            <div className="absolute inset-0 w-full h-full bg-white/5 flex items-center justify-center">
+              <span className="text-white/20 text-2xl">▶</span>
+            </div>
+          )}
+          {/* Cloudinary video — plays on hover */}
+          <video
+            ref={videoRef}
+            src={item.url}
+            muted
+            loop
+            playsInline
+            preload="none"
+            className="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+          />
+        </>
+      ) : (
+        <img
+          src={previewUrl || item.url}
+          alt=""
+          className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity duration-300"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+        />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex items-end p-2 pointer-events-none">
+        <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter w-full">
+          {item.title}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -1406,38 +1487,17 @@ export default function App() {
                                     />
                                   ))
                                 ) : (
-                                  globalPosts.slice(0, 6).map(item => {
-                                    const thumbUrl = item.type === 'video'
-                                      ? (item.thumbnailUrl || getCloudinaryThumb(item.url))
-                                      : item.url;
-                                    return (
-                                      <button
-                                        key={`search-rec-${item.id}`}
-                                        onClick={() => {
-                                          setSearchQuery(item.title);
-                                          handleSearch(item.title);
-                                          setShowHistory(false);
-                                        }}
-                                        className="min-w-[100px] aspect-[9/16] rounded-xl overflow-hidden relative group bg-white/10 flex-shrink-0 border border-white/10"
-                                      >
-                                        {thumbUrl ? (
-                                          <img
-                                            src={thumbUrl}
-                                            className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity"
-                                            alt=""
-                                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                                          />
-                                        ) : (
-                                          <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                                            <span className="text-white/20 text-2xl">▶</span>
-                                          </div>
-                                        )}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex items-end p-2">
-                                          <span className="text-[8px] text-white font-bold truncate uppercase tracking-tighter w-full">{item.title}</span>
-                                        </div>
-                                      </button>
-                                    );
-                                  })
+                                  globalPosts.slice(0, 6).map(item => (
+                                    <RecommendationCard
+                                      key={`search-rec-${item.id}`}
+                                      item={item}
+                                      onClick={() => {
+                                        setSearchQuery(item.title);
+                                        handleSearch(item.title);
+                                        setShowHistory(false);
+                                      }}
+                                    />
+                                  ))
                                 )}
                               </div>
                             </motion.div>

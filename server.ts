@@ -118,6 +118,20 @@ function buildCloudinarySignature(params: Record<string, string>): string {
 }
 
 // ─── Upload helpers ───────────────────────────────────────────────────────────
+async function uploadToImageKit(buffer: Buffer, originalName: string): Promise<string> {
+  if (!imagekitReady || !imagekit) throw new Error('ImageKit não configurado');
+  return withRetry(async () => {
+    const fileName = originalName || `upload_${Date.now()}`;
+    const result = await imagekit!.upload({
+      file: buffer,
+      fileName,
+      folder: '/uploads',
+      useUniqueFileName: true,
+    });
+    return result.url;
+  }, 3, 2000, 'ImageKit-upload');
+}
+
 async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName: string): Promise<string> {
   if (!cloudinaryReady) throw new Error('Cloudinary não configurado');
   const fileName = originalName || 'upload';
