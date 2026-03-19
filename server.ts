@@ -31,12 +31,6 @@ const PORT = IS_PROD ? (Number(process.env.PORT) || 3000) : 3001;
 const SERVER_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024;
 
-// ─── Video routing thresholds ─────────────────────────────────────────────────
-// Files below this size go to ImageKit (light route)
-// Files at or above this size go to Cloudinary (heavy route)
-const HEAVY_VIDEO_MIN_MB = 50;
-const HEAVY_VIDEO_MIN_BYTES = HEAVY_VIDEO_MIN_MB * 1024 * 1024;
-
 // ─── Cloudinary config (read once at startup) ─────────────────────────────────
 const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME ?? '';
 const UPLOAD_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET ?? '';
@@ -49,18 +43,17 @@ const IMAGEKIT_URL_ENDPOINT = process.env.IMAGEKIT_URL_ENDPOINT ?? '';
 const IMAGEKIT_PUBLIC_KEY = process.env.IMAGEKIT_PUBLIC_KEY ?? '';
 
 // ─── Startup diagnostics ──────────────────────────────────────────────────────
-// Signed uploads require cloud name + API key + API secret (no preset needed)
 const cloudinaryReady = !!(CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
 const imagekitReady = !!(IMAGEKIT_PRIVATE_KEY && IMAGEKIT_URL_ENDPOINT && IMAGEKIT_PUBLIC_KEY);
 
 if (cloudinaryReady) {
-  console.log(`[OK] Cloudinary pronto (signed): cloud=${CLOUD_NAME}`);
+  console.log(`[OK] Cloudinary pronto: cloud=${CLOUD_NAME} (todos os vídeos)`);
 } else {
   console.error('[AVISO] Cloudinary NÃO configurado. Defina CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY e CLOUDINARY_API_SECRET nos Secrets.');
 }
 
 if (imagekitReady) {
-  console.log(`[OK] ImageKit pronto: endpoint=${IMAGEKIT_URL_ENDPOINT}`);
+  console.log(`[OK] ImageKit pronto: endpoint=${IMAGEKIT_URL_ENDPOINT} (apenas thumbnails)`);
 } else {
   console.error('[AVISO] ImageKit NÃO configurado. Defina IMAGEKIT_PRIVATE_KEY, IMAGEKIT_PUBLIC_KEY e IMAGEKIT_URL_ENDPOINT nos Secrets.');
 }
@@ -153,16 +146,6 @@ async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName
   }, 3, 2000, 'Cloudinary');
 }
 
-async function uploadToImageKit(buffer: Buffer, originalName: string): Promise<string> {
-  if (!imagekitReady || !imagekit) throw new Error('ImageKit não configurado');
-  const fileName = `${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-  return withRetry(
-    () => imagekit!.upload({ file: buffer, fileName, folder: '/videos', useUniqueFileName: true })
-      .then(r => r.url),
-    3, 2000, 'ImageKit'
-  );
-}
-
 // ─── /api/health ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
@@ -174,8 +157,8 @@ app.get('/api/health', (_req: Request, res: Response) => {
       openai: !!process.env.OPENAI_API_KEY ? 'configured' : 'missing',
     },
     routing: {
-      light: `< ${HEAVY_VIDEO_MIN_MB}MB → ImageKit (fallback: Cloudinary)`,
-      heavy: `≥ ${HEAVY_VIDEO_MIN_MB}MB → Cloudinary (fallback: ImageKit)`,
+      videos: 'Cloudinary (todos os tamanhos)',
+      thumbnails: 'ImageKit (primeiro frame)',
     },
   });
 });
@@ -390,12 +373,11 @@ app.get('/api/search-tags/:query', (req: Request, res: Response) => {
 });
 
 // ─── /api/upload-video ────────────────────────────────────────────────────────
-// Multer error handler must be applied manually to catch file-size rejections
+// Todos os vídeos vão para o Cloudinary, independente do tamanho.
 app.post('/api/upload-video', (req: Request, res: Response) => {
   upload.single('file')(req, res, async (multerErr) => {
     res.setTimeout(SERVER_TIMEOUT_MS);
 
-    // Handle multer-specific errors (e.g. file too large) with a clean JSON response
     if (multerErr) {
       if ((multerErr as any).code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({
@@ -410,66 +392,27 @@ app.post('/api/upload-video', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
     }
 
-    // MIME validation — only video types allowed
     if (!req.file.mimetype.startsWith('video/')) {
       return res.status(400).json({ error: 'Tipo de arquivo inválido. Apenas vídeos são aceitos.' });
     }
 
-    // Ensure at least one service is available before doing any work
-    if (!imagekitReady && !cloudinaryReady) {
+    if (!cloudinaryReady) {
       return res.status(503).json({
-        error: 'Nenhum serviço de upload configurado. Adicione as credenciais nos Secrets.',
+        error: 'Cloudinary não configurado. Adicione as credenciais nos Secrets.',
       });
     }
 
     const fileSizeMB = (req.file.size / 1024 / 1024).toFixed(1);
-    const isHeavy = req.file.size >= HEAVY_VIDEO_MIN_BYTES;
+    console.log(`[upload-video] ${req.file.originalname} | ${fileSizeMB}MB → Cloudinary`);
 
-    // Light videos (< 50MB) → ImageKit primary, Cloudinary fallback
-    // Heavy videos (>= 50MB) → Cloudinary primary, ImageKit fallback
-    const primaryService: 'Cloudinary' | 'ImageKit' = isHeavy ? 'Cloudinary' : 'ImageKit';
-    const fallbackService: 'Cloudinary' | 'ImageKit' = isHeavy ? 'ImageKit' : 'Cloudinary';
-
-    const primaryReady = primaryService === 'Cloudinary' ? cloudinaryReady : imagekitReady;
-    const fallbackReady = fallbackService === 'Cloudinary' ? cloudinaryReady : imagekitReady;
-
-    const routeLabel = isHeavy ? 'pesado' : 'leve';
-    console.log(`[upload-video] ${req.file.originalname} | ${fileSizeMB}MB | ${routeLabel} | ${primaryService}${primaryReady ? '' : ' (não configurado)'} → fallback: ${fallbackService}${fallbackReady ? '' : ' (não configurado)'}`);
-
-    const { buffer, mimetype, originalname } = req.file;
-
-    const runUpload = async (service: 'Cloudinary' | 'ImageKit') =>
-      service === 'ImageKit'
-        ? uploadToImageKit(buffer, originalname)
-        : uploadToCloudinary(buffer, mimetype, originalname);
-
-    // ─── Primary attempt ─────────────────────────────────────────────────────
-    if (primaryReady) {
-      try {
-        const url = await runUpload(primaryService);
-        console.log(`[upload-video] ✓ ${primaryService} sucesso: ${url}`);
-        return res.json({ url, provider: primaryService.toLowerCase() });
-      } catch (primaryErr: any) {
-        console.error(`[upload-video] ✗ ${primaryService} falhou: ${primaryErr?.message}. Ativando fallback para ${fallbackService}...`);
-      }
-    } else {
-      console.warn(`[upload-video] ${primaryService} não configurado, pulando para fallback ${fallbackService}.`);
+    try {
+      const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype, req.file.originalname);
+      console.log(`[upload-video] ✓ Cloudinary sucesso: ${url}`);
+      return res.json({ url, provider: 'cloudinary' });
+    } catch (err: any) {
+      console.error(`[upload-video] ✗ Cloudinary falhou: ${err?.message}`);
+      return res.status(500).json({ error: 'Upload falhou. Verifique as credenciais do Cloudinary nos Secrets.' });
     }
-
-    // ─── Fallback attempt ────────────────────────────────────────────────────
-    if (fallbackReady) {
-      try {
-        const url = await runUpload(fallbackService);
-        console.log(`[upload-video] ✓ Fallback ${fallbackService} sucesso: ${url}`);
-        return res.json({ url, provider: fallbackService.toLowerCase() });
-      } catch (fallbackErr: any) {
-        console.error(`[upload-video] ✗ Fallback ${fallbackService} também falhou: ${fallbackErr?.message}`);
-      }
-    }
-
-    return res.status(500).json({
-      error: 'Upload falhou em todos os serviços disponíveis. Verifique as credenciais nos Secrets e tente novamente.',
-    });
   });
 });
 
