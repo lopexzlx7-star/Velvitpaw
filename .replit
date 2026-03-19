@@ -56,3 +56,5 @@ build = ["npm", "run", "build"]
 [userenv.shared]
 STORJ_ENDPOINT = "https://gateway.storjshare.io"
 STORJ_PUBLIC_BASE_URL = "https://link.storjshare.io/raw/jxyuu7jm36enzvozprfsbhiz2i4a/Velvitpaw"
+CLOUDINARY_CLOUD_NAME = "dekidzsq6"
+CLOUDINARY_UPLOAD_PRESET = "velvitpaw_uploads"
