@@ -8,7 +8,7 @@ const TEN_MINUTES_MS = 10 * 60 * 1000;
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
-    base: './',
+    base: '/',
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
