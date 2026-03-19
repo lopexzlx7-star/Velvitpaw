@@ -621,10 +621,12 @@ cloudinaryV2.config({
 // ─── Multer instance with memory storage (for legacy routes) ─────────────────
 const uploadVideoCloud = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE_BYTES } });
 
-// ─── GET / ─── Health / sanity check ─────────────────────────────────────────
-app.get('/', (_req: Request, res: Response) => {
-  res.send('Backend funcionando!');
-});
+// ─── GET / ─── Health / sanity check (dev only) ──────────────────────────────
+if (!IS_PROD) {
+  app.get('/', (_req: Request, res: Response) => {
+    res.send('Backend funcionando!');
+  });
+}
 
 // ─── POST /upload ─── Upload de 1 vídeo via Cloudinary ───────────────────────
 app.post('/upload', uploadVideoCloud.single('video'), async (req: Request, res: Response) => {
