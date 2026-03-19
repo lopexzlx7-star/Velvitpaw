@@ -194,7 +194,7 @@ app.post('/api/thumbnail', (req: Request, res: Response) => {
             '-i', tmpIn,
             '-vframes', '1',
             '-q:v', '3',
-            '-vf', 'scale=640:-1',
+            '-vf', 'scale=640:1138:force_original_aspect_ratio=increase,crop=640:1138',
             tmpOut,
           ],
           { timeout: 30_000 },
