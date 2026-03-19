@@ -48,5 +48,5 @@ packages = ["ffmpeg"]
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["tsx", "server.ts"]
+run = ["sh", "-c", "NODE_ENV=production tsx server.ts"]
 build = ["npm", "run", "build"]
