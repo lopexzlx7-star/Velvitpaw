@@ -35,7 +35,7 @@ const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const XHR_TIMEOUT_MS = 9 * 60 * 1000;
+const XHR_TIMEOUT_MS = 3 * 60 * 1000;
 const MAX_IMAGES = 10;
 
 function captureVideoFrame(file: File): Promise<string> {
@@ -138,7 +138,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadAttempt, setUploadAttempt] = useState(0);
   const [uploadFailed, setUploadFailed] = useState(false);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +180,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setThumbnailSlow(false);
     setThumbnailFailed(false);
     setUploadProgress(0);
-    setUploadAttempt(0);
     setUploadFailed(false);
     setUploadingIdx(null);
     setError(null);
@@ -398,32 +396,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     return data.secure_url as string;
   };
 
-  const cancellableWait = (ms: number): Promise<void> =>
-    new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, ms);
-      const check = setInterval(() => {
-        if (cancelledRef.current) { clearTimeout(timer); clearInterval(check); reject(new Error('upload_aborted')); }
-      }, 100);
-      setTimeout(() => clearInterval(check), ms + 200);
-    });
-
-  const uploadVideoWithRetry = async (file: File): Promise<string> => {
-    const MAX_ATTEMPTS = 5;
-    let lastError: Error = new Error('Falha no upload.');
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      if (cancelledRef.current) throw new Error('upload_aborted');
-      try {
-        setUploadAttempt(attempt);
-        if (attempt > 1) { setUploadProgress(0); await cancellableWait(3000); }
-        return await uploadVideo(file);
-      } catch (err: any) {
-        lastError = err;
-        if (err?.message === 'upload_aborted') throw err;
-        if (attempt === MAX_ATTEMPTS) throw err;
-      }
-    }
-    throw lastError;
-  };
 
   const submitPost = async () => {
     if (!auth.currentUser) return;
@@ -431,7 +403,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     cancelledRef.current = false;
     setIsSubmitting(true);
     setUploadProgress(0);
-    setUploadAttempt(0);
     setUploadFailed(false);
     setError(null);
 
@@ -472,7 +443,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
         await addDoc(collection(db, 'posts'), postData);
       } else if (videoDraft) {
-        const finalUrl = await uploadVideoWithRetry(videoDraft.file);
+        const finalUrl = await uploadVideo(videoDraft.file);
         let hostedThumbnailUrl: string | null = null;
         if (thumbnailUrl) {
           try {
@@ -513,12 +484,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     } catch (err: any) {
       if (err?.message === 'upload_aborted') return;
       console.error('Error submitting post:', err);
-      setUploadFailed(isVideo);
-      setError(
-        err?.message === 'network_error'
-          ? 'Sem conexão. Toque em "Tentar de novo".'
-          : err.message || 'Erro ao publicar. Toque em "Tentar de novo".'
-      );
+      if (isVideo) {
+        setUploadFailed(true);
+        setError('O upload do vídeo falhou ou demorou demais. Escolha o arquivo novamente.');
+      } else {
+        setError(err?.message === 'network_error' ? 'Sem conexão. Tente novamente.' : err.message || 'Erro ao publicar.');
+      }
     } finally {
       setIsSubmitting(false);
       setUploadingIdx(null);
@@ -782,8 +753,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   <span>
                     {isMultiImage && uploadingIdx !== null
                       ? `Enviando imagem ${uploadingIdx + 1} de ${images.length}...`
-                      : uploadAttempt > 1
-                      ? `Tentativa ${uploadAttempt}...`
                       : 'Enviando...'}
                   </span>
                   <span>{uploadProgress}%</span>
@@ -800,21 +769,22 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
               </div>
             ) : (
               <div className="flex gap-3">
-                {uploadFailed && (
+                {uploadFailed && isVideo ? (
                   <button
-                    onClick={submitPost}
+                    onClick={() => { setVideoDraft(null); setThumbnailUrl(null); setUploadFailed(false); setError(null); if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; } if (fileInputRef.current) fileInputRef.current.click(); }}
                     className="flex-1 py-4 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-2xl font-bold uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2"
                   >
-                    <RotateCcw size={14} /> Tentar de novo
+                    <RotateCcw size={14} /> Escolher novamente
+                  </button>
+                ) : (
+                  <button
+                    onClick={submitPost}
+                    disabled={wordCount > MAX_DESCRIPTION_WORDS}
+                    className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/90 active:scale-95 transition-all disabled:opacity-40"
+                  >
+                    {isMultiImage ? `Publicar ${images.length} ${images.length === 1 ? 'Imagem' : 'Imagens'}` : 'Publicar'}
                   </button>
                 )}
-                <button
-                  onClick={submitPost}
-                  disabled={wordCount > MAX_DESCRIPTION_WORDS}
-                  className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/90 active:scale-95 transition-all disabled:opacity-40"
-                >
-                  {isMultiImage ? `Publicar ${images.length} ${images.length === 1 ? 'Imagem' : 'Imagens'}` : 'Publicar'}
-                </button>
               </div>
             )}
           </div>
