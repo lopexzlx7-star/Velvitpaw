@@ -463,7 +463,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         e.stopPropagation();
                         if (onHashtagClick) { onHashtagClick(tag); onClose(); }
                       }}
-                      className={onHashtagClick ? 'text-white/60 hover:text-white transition-colors cursor-pointer' : 'text-white/35 cursor-default'}
+                      className={onHashtagClick ? 'text-blue-400 hover:text-blue-300 transition-colors cursor-pointer' : 'text-blue-400/50 cursor-default'}
                     >
                       {part}
                     </button>
