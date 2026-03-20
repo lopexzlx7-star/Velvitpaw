@@ -727,7 +727,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] uppercase tracking-widest text-white/30">Descrição e #hashtags</span>
+                  <span className="text-[10px] uppercase tracking-widest text-white/30">Descrição (opcional)</span>
                   <span className={`text-[9px] font-bold ${wordCount > MAX_DESCRIPTION_WORDS ? 'text-red-400' : 'text-white/20'}`}>
                     {wordCount}/{MAX_DESCRIPTION_WORDS}
                   </span>
