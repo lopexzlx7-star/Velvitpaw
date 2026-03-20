@@ -62,7 +62,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const swipeStartX = useRef<number | null>(null);
 
   const goToImage = (idx: number) => {
-    setSwipeDirection(idx > activeImageIdx ? 1 : -1);
+    setSwipeDirection(idx > activeImageIdx ? -1 : 1);
     setActiveImageIdx(idx);
   };
 
@@ -332,9 +332,14 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     src={allImages[activeImageIdx]}
                     alt={item.title}
                     custom={swipeDirection}
-                    initial={{ opacity: 0, x: swipeDirection * 60 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: swipeDirection * -60 }}
+                    variants={{
+                      enter: (d: number) => ({ opacity: 0, x: d * 60 }),
+                      center: { opacity: 1, x: 0 },
+                      exit: (d: number) => ({ opacity: 0, x: d * -60 }),
+                    }}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
                     transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
                     className="w-full h-full object-cover block"
                     referrerPolicy="no-referrer"
