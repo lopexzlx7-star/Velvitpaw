@@ -712,7 +712,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
             /* ── Video preview ── */
             <div className="space-y-4">
               <div className="relative rounded-3xl overflow-hidden bg-black/40">
-                <div className="aspect-[9/16] max-h-[55vh] overflow-hidden">
+                <div className="relative w-full" style={{ height: '55vh' }}>
                   <video
                     src={videoDraft.mediaUrl}
                     poster={thumbnailUrl || undefined}
@@ -810,7 +810,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 )}
                 <button
                   onClick={submitPost}
-                  disabled={!!error && !uploadFailed || wordCount > MAX_DESCRIPTION_WORDS}
+                  disabled={wordCount > MAX_DESCRIPTION_WORDS}
                   className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/90 active:scale-95 transition-all disabled:opacity-40"
                 >
                   {isMultiImage ? `Publicar ${images.length} ${images.length === 1 ? 'Imagem' : 'Imagens'}` : 'Publicar'}
