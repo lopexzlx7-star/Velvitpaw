@@ -25,7 +25,6 @@ import {
   signInWithEmailAndPassword,
   signOut,
   deleteUser,
-  updateEmail,
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { db, auth } from './firebase';
@@ -759,21 +758,12 @@ export default function App() {
     setEmailPopupLoading(true);
     setEmailPopupError(null);
     try {
-      await updateEmail(auth.currentUser, recoveryEmail.trim());
       await updateDoc(doc(db, 'users', username), { recoveryEmail: recoveryEmail.trim() });
       setShowEmailPopup(false);
       setRecoveryEmail('');
       setHasRecoveryEmail(true);
     } catch (err: any) {
-      if (err.code === 'auth/email-already-in-use') {
-        setEmailPopupError('Este e-mail já está em uso por outra conta.');
-      } else if (err.code === 'auth/invalid-email') {
-        setEmailPopupError('E-mail inválido.');
-      } else if (err.code === 'auth/requires-recent-login') {
-        setEmailPopupError('Por segurança, saia e entre novamente para vincular o e-mail.');
-      } else {
-        setEmailPopupError('Erro ao salvar e-mail. Tente novamente.');
-      }
+      setEmailPopupError('Erro ao salvar e-mail. Tente novamente.');
     } finally {
       setEmailPopupLoading(false);
     }
