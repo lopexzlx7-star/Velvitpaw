@@ -439,48 +439,39 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         {item.description && (
           <div className="px-4 pb-3">
             <p className="text-[9px] font-normal text-white/35 leading-relaxed lowercase break-words">
-              {item.description.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
-                /^https?:\/\//.test(part) ? (
-                  <a
-                    key={i}
-                    href={part}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-green-400 underline underline-offset-2 hover:text-green-300 transition-colors"
-                  >
-                    {part}
-                  </a>
-                ) : (
-                  <span key={i}>{part}</span>
-                )
-              )}
+              {item.description.split(/(https?:\/\/[^\s]+|\B#\w+)/g).map((part, i) => {
+                if (/^https?:\/\//.test(part)) {
+                  return (
+                    <a
+                      key={i}
+                      href={part}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-green-400 underline underline-offset-2 hover:text-green-300 transition-colors"
+                    >
+                      {part}
+                    </a>
+                  );
+                }
+                if (/^\B#\w+/.test(part) || part.startsWith('#')) {
+                  const tag = part.slice(1);
+                  return (
+                    <button
+                      key={i}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onHashtagClick) { onHashtagClick(tag); onClose(); }
+                      }}
+                      className={onHashtagClick ? 'text-white/60 hover:text-white transition-colors cursor-pointer' : 'text-white/35 cursor-default'}
+                    >
+                      {part}
+                    </button>
+                  );
+                }
+                return <span key={i}>{part}</span>;
+              })}
             </p>
-          </div>
-        )}
-
-        {/* Hashtags */}
-        {item.hashtags && item.hashtags.length > 0 && (
-          <div className="px-4 pb-4 flex flex-wrap gap-1.5">
-            {item.hashtags.map(tag => (
-              <button
-                key={tag}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onHashtagClick) {
-                    onHashtagClick(tag);
-                    onClose();
-                  }
-                }}
-                className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide transition-all border ${
-                  onHashtagClick
-                    ? 'bg-white/5 hover:bg-white/15 border-white/10 hover:border-white/25 text-white/50 hover:text-white cursor-pointer'
-                    : 'bg-white/5 border-white/10 text-white/40 cursor-default'
-                }`}
-              >
-                #{tag}
-              </button>
-            ))}
           </div>
         )}
       </motion.div>
