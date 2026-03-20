@@ -547,7 +547,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   <ImageIcon size={28} className="text-white/30" />
                 </div>
                 <p className="text-white/40 text-sm font-medium mb-1">Clique para selecionar</p>
-                <p className="text-white/20 text-xs">Imagens (até {MAX_IMAGES}) ou Vídeo (até {MAX_FILE_SIZE_MB}MB)</p>
+                <p className="text-white/20 text-xs">Imagens ou Vídeos</p>
               </div>
               <input
                 ref={fileInputRef}
@@ -745,7 +745,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         </div>
 
         {/* Footer */}
-        {hasMedia && !isValidating && (
+        {!isValidating && (
           <div className="p-6 border-t border-white/5 bg-white/5">
             {isSubmitting ? (
               <div className="space-y-3">
@@ -775,6 +775,13 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                     className="flex-1 py-4 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-2xl font-bold uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2"
                   >
                     <RotateCcw size={14} /> Escolher novamente
+                  </button>
+                ) : !hasMedia ? (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/90 active:scale-95 transition-all"
+                  >
+                    Publicar
                   </button>
                 ) : (
                   <button
