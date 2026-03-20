@@ -383,7 +383,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
             {highlightText(item.title, searchQuery)}
           </h3>
           {item.hashtags && item.hashtags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1.5">
+            <div className="flex flex-nowrap overflow-hidden gap-1 mt-1.5">
               {item.hashtags.slice(0, 4).map(tag => (
                 <button
                   key={tag}

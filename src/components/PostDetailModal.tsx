@@ -54,11 +54,17 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [heartKey, setHeartKey] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
+  const [swipeDirection, setSwipeDirection] = useState(1);
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
 
   const swipeStartX = useRef<number | null>(null);
+
+  const goToImage = (idx: number) => {
+    setSwipeDirection(idx > activeImageIdx ? 1 : -1);
+    setActiveImageIdx(idx);
+  };
 
   const handleSwipeStart = (e: React.TouchEvent) => {
     swipeStartX.current = e.touches[0].clientX;
@@ -67,8 +73,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     if (swipeStartX.current === null) return;
     const diff = swipeStartX.current - e.changedTouches[0].clientX;
     if (Math.abs(diff) > 40) {
-      if (diff > 0 && activeImageIdx < allImages.length - 1) setActiveImageIdx(i => i + 1);
-      if (diff < 0 && activeImageIdx > 0) setActiveImageIdx(i => i - 1);
+      if (diff > 0 && activeImageIdx < allImages.length - 1) goToImage(activeImageIdx + 1);
+      if (diff < 0 && activeImageIdx > 0) goToImage(activeImageIdx - 1);
     }
     swipeStartX.current = null;
   };
@@ -320,15 +326,16 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                 onTouchStart={handleSwipeStart}
                 onTouchEnd={handleSwipeEnd}
               >
-                <AnimatePresence mode="wait">
+                <AnimatePresence mode="wait" custom={swipeDirection}>
                   <motion.img
                     key={activeImageIdx}
                     src={allImages[activeImageIdx]}
                     alt={item.title}
-                    initial={{ opacity: 0, x: 30 }}
+                    custom={swipeDirection}
+                    initial={{ opacity: 0, x: swipeDirection * 60 }}
                     animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -30 }}
-                    transition={{ duration: 0.2 }}
+                    exit={{ opacity: 0, x: swipeDirection * -60 }}
+                    transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
                     className="w-full h-full object-cover block"
                     referrerPolicy="no-referrer"
                     style={{ display: 'block' }}
@@ -337,7 +344,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
                 {activeImageIdx > 0 && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); setActiveImageIdx(i => i - 1); }}
+                    onClick={(e) => { e.stopPropagation(); goToImage(activeImageIdx - 1); }}
                     className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 backdrop-blur-sm rounded-full text-white hover:bg-black/70 transition-colors z-10"
                   >
                     <ChevronLeft size={18} />
@@ -345,7 +352,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                 )}
                 {activeImageIdx < allImages.length - 1 && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); setActiveImageIdx(i => i + 1); }}
+                    onClick={(e) => { e.stopPropagation(); goToImage(activeImageIdx + 1); }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 backdrop-blur-sm rounded-full text-white hover:bg-black/70 transition-colors z-10"
                   >
                     <ChevronRight size={18} />

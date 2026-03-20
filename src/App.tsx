@@ -380,6 +380,16 @@ export default function App() {
           }
         } catch (_) {}
 
+        // Restore liked posts from Firestore (source of truth across devices/sessions)
+        try {
+          const likeSnap = await getDocs(
+            query(collection(db, 'interactions'), where('uid', '==', user.uid), where('type', '==', 'like'))
+          );
+          const fetchedLikedIds = likeSnap.docs.map(d => d.data().postId as string).filter(Boolean);
+          setLikedIds(fetchedLikedIds);
+          localStorage.setItem('velvit_likes', JSON.stringify(fetchedLikedIds));
+        } catch {}
+
         // Re-filter user posts now that uid is known
         setUserPosts(prev => {
           const all = (window as any).__allFetchedPosts__ as ContentItem[] | undefined;
