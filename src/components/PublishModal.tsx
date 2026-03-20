@@ -699,7 +699,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 </button>
                 {(thumbnailSlow || thumbnailFailed) && (
                   <div className="absolute top-3 left-3 px-3 py-1.5 bg-black/60 rounded-xl text-[10px] text-white/50">
-                    {thumbnailFailed ? 'Sem thumbnail' : 'Gerando thumbnail...'}
+                    {thumbnailFailed ? 'Preview não disponível. O vídeo será publicado normalmente.' : 'Gerando preview...'}
                   </div>
                 )}
                 {videoDraft.duration && videoDraft.duration > 0 && (
