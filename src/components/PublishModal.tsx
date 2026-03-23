@@ -30,7 +30,8 @@ interface ImageItem {
   preview: string;
 }
 
-const MAX_VIDEO_DURATION = 120;
+const MAX_VIDEO_DURATION = 900; // 15 minutes
+const LONG_VIDEO_THRESHOLD = 120; // 2 minutes — use URL instead of upload
 const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
@@ -131,6 +132,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [activeIdx, setActiveIdx] = useState(0);
 
   const [videoDraft, setVideoDraft] = useState<VideoDraft | null>(null);
+  const [isLongVideo, setIsLongVideo] = useState(false);
+  const [videoLinkUrl, setVideoLinkUrl] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [thumbnailSlow, setThumbnailSlow] = useState(false);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
@@ -176,6 +179,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setImages([]);
     setActiveIdx(0);
     setVideoDraft(null);
+    setIsLongVideo(false);
+    setVideoLinkUrl('');
     setThumbnailUrl(null);
     setThumbnailSlow(false);
     setThumbnailFailed(false);
@@ -271,11 +276,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       objectUrlRef.current = blobUrl;
       setIsValidating(false);
       setThumbnailUrl(null);
+      const roundedDur = Math.round(dur);
+      setIsLongVideo(roundedDur > LONG_VIDEO_THRESHOLD);
+      setVideoLinkUrl('');
       setVideoDraft({
         file,
         mediaUrl: blobUrl,
         aspectRatio: 'portrait',
-        duration: Math.round(dur),
+        duration: roundedDur,
         title: title || file.name.split('.')[0],
         description,
       });
@@ -443,7 +451,16 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
         await addDoc(collection(db, 'posts'), postData);
       } else if (videoDraft) {
-        const finalUrl = await uploadVideo(videoDraft.file);
+        if (isLongVideo && !videoLinkUrl.trim()) {
+          setError('Cole o link direto do vídeo para publicar.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        const finalUrl = isLongVideo
+          ? videoLinkUrl.trim()
+          : await uploadVideo(videoDraft.file);
+
         let hostedThumbnailUrl: string | null = null;
         if (thumbnailUrl) {
           try {
@@ -683,7 +700,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
             /* ── Video preview ── */
             <div className="space-y-4">
               <div className="relative rounded-3xl overflow-hidden bg-black/40">
-                <div className="relative w-full" style={{ height: '55vh' }}>
+                <div className="relative w-full" style={{ height: isLongVideo ? '22vh' : '55vh' }}>
                   <video
                     src={videoDraft.mediaUrl}
                     poster={thumbnailUrl || undefined}
@@ -692,12 +709,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   />
                 </div>
                 <button
-                  onClick={() => { setVideoDraft(null); setThumbnailUrl(null); if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; } }}
+                  onClick={() => { setVideoDraft(null); setIsLongVideo(false); setVideoLinkUrl(''); setThumbnailUrl(null); if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; } }}
                   className="absolute top-3 right-3 p-2.5 bg-black/60 backdrop-blur-sm rounded-2xl text-white hover:bg-red-500 transition-colors"
                 >
                   <X size={16} />
                 </button>
-                {(thumbnailSlow || thumbnailFailed) && (
+                {(thumbnailSlow || thumbnailFailed) && !isLongVideo && (
                   <div className="absolute top-3 left-3 px-3 py-1.5 bg-black/60 rounded-xl text-[10px] text-white/50">
                     {thumbnailFailed ? 'Preview não disponível. O vídeo será publicado normalmente.' : 'Gerando preview...'}
                   </div>
@@ -708,6 +725,25 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   </div>
                 )}
               </div>
+
+              {/* Long video: URL input */}
+              {isLongVideo && (
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <Film size={15} className="text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-[12px] text-amber-300/80 leading-snug">
+                      Vídeo com mais de 2 minutos. Para economizar espaço, cole o link direto do vídeo abaixo (YouTube, Drive, etc.)
+                    </p>
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    value={videoLinkUrl}
+                    onChange={(e) => setVideoLinkUrl(e.target.value)}
+                    className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-white/20 focus:outline-none focus:border-amber-400/50 transition-all text-sm"
+                  />
+                </div>
+              )}
             </div>
           ) : null}
 

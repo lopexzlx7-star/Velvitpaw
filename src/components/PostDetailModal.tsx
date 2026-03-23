@@ -13,6 +13,7 @@ interface PostDetailModalProps {
   isLiked: boolean;
   currentUserUid?: string;
   onHashtagClick?: (tag: string) => void;
+  onAuthorClick?: (authorUid: string) => void;
 }
 
 interface FloatingHeart {
@@ -41,6 +42,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   isLiked,
   currentUserUid,
   onHashtagClick,
+  onAuthorClick,
 }) => {
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -235,7 +237,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       >
         {/* Author row */}
         <div className="flex items-center justify-between px-4 pt-4 pb-3">
-          <div className="flex items-center gap-2.5">
+          <button
+            className="flex items-center gap-2.5 hover:opacity-70 transition-opacity active:scale-95"
+            onClick={() => item.authorUid && onAuthorClick?.(item.authorUid as string)}
+          >
             <div
               className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center shrink-0"
               style={{ border: '1.5px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)' }}
@@ -247,7 +252,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
               )}
             </div>
             <span className="text-[13px] font-semibold text-white/85 tracking-tight">@{authorName}</span>
-          </div>
+          </button>
           <button
             onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-full text-white/40 hover:text-white transition-colors"

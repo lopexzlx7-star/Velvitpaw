@@ -33,6 +33,7 @@ import GlassCard from './components/GlassCard';
 import FloatingNav from './components/FloatingNav';
 import PublishModal from './components/PublishModal';
 import PostDetailModal from './components/PostDetailModal';
+import UserProfileModal from './components/UserProfileModal';
 
 // Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
 function getCloudinaryThumb(videoUrl: string): string | null {
@@ -281,6 +282,8 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
   const [showHistory, setShowHistory] = useState(false);
+  const [userSearchResults, setUserSearchResults] = useState<{ username: string; uid: string; profilePhotoUrl?: string }[]>([]);
+  const [profileViewUid, setProfileViewUid] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isGeneratingFeed, setIsGeneratingFeed] = useState(true);
   const [followingUids, setFollowingUids] = useState<string[]>([]);
@@ -1123,12 +1126,13 @@ export default function App() {
     return 0;
   };
 
-  const runSearch = (query: string, saveHistory = false) => {
-    const q = query.trim();
+  const runSearch = (searchTerm: string, saveHistory = false) => {
+    const q = searchTerm.trim();
     setActiveHashtag(null);
     if (!q) {
       setItems(globalPosts);
       setHashtagResults([]);
+      setUserSearchResults([]);
       return;
     }
 
@@ -1151,6 +1155,26 @@ export default function App() {
       tag.includes(qLower)
     );
     setHashtagResults(matchingHashtags.slice(0, 8));
+
+    // Search users — first check posts' authorName (already loaded), then Firestore
+    const seenUids = new Set<string>();
+    const usersFromPosts = globalPosts
+      .filter(p => fuzzyScore(p.authorName || '', q) > 0 && p.authorUid)
+      .map(p => ({ username: p.authorName || '', uid: p.authorUid as string, profilePhotoUrl: p.authorPhotoUrl }))
+      .filter(u => { if (seenUids.has(u.uid)) return false; seenUids.add(u.uid); return true; })
+      .slice(0, 5);
+    setUserSearchResults(usersFromPosts);
+
+    // Also query Firestore for users not yet in feed results
+    getDocs(query(collection(db, 'users'), where('username', '>=', qLower), where('username', '<=', qLower + '\uf8ff'), limit(8)))
+      .then(snap => {
+        const firestoreUsers = snap.docs
+          .map(d => ({ username: d.data().username || '', uid: d.data().uid || '', profilePhotoUrl: d.data().profilePhotoUrl }))
+          .filter(u => u.uid && !seenUids.has(u.uid));
+        firestoreUsers.forEach(u => seenUids.add(u.uid));
+        setUserSearchResults(prev => [...prev, ...firestoreUsers].slice(0, 6));
+      })
+      .catch(() => {});
 
     const scored = globalPosts
       .map(post => {
@@ -1451,7 +1475,7 @@ export default function App() {
                     <div className="relative">
                         <input
                           type="text"
-                          placeholder="Pesquisar posts ou #hashtags..."
+                          placeholder="Pesquisar posts, @usuários ou #hashtags..."
                           value={searchQuery}
                           onChange={(e) => {
                             setSearchQuery(e.target.value);
@@ -1554,22 +1578,45 @@ export default function App() {
                     </AnimatePresence>
 
                     <AnimatePresence>
-                      {hashtagResults.length > 0 && !showHistory && (
+                      {(hashtagResults.length > 0 || userSearchResults.length > 0) && !showHistory && (
                         <motion.div
                           initial={{ opacity: 0, y: -6 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -6 }}
-                          className="flex flex-wrap gap-2 mt-3"
+                          className="mt-3 space-y-3"
                         >
-                          {hashtagResults.map(tag => (
-                            <button
-                              key={tag}
-                              onClick={() => handleHashtagClick(tag)}
-                              className="px-3 py-1.5 bg-white/5 hover:bg-white/15 border border-white/10 rounded-full text-[11px] text-white/60 hover:text-white font-bold transition-all"
-                            >
-                              #{tag}
-                            </button>
-                          ))}
+                          {userSearchResults.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {userSearchResults.map(u => (
+                                <button
+                                  key={u.uid}
+                                  onClick={() => { setProfileViewUid(u.uid); setShowHistory(false); }}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/12 border border-white/10 rounded-full transition-all"
+                                >
+                                  <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/10">
+                                    {u.profilePhotoUrl
+                                      ? <img src={u.profilePhotoUrl} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                      : <User size={10} className="text-white/40" />
+                                    }
+                                  </div>
+                                  <span className="text-[11px] text-white/70 font-semibold">@{u.username}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {hashtagResults.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {hashtagResults.map(tag => (
+                                <button
+                                  key={tag}
+                                  onClick={() => handleHashtagClick(tag)}
+                                  className="px-3 py-1.5 bg-white/5 hover:bg-white/15 border border-white/10 rounded-full text-[11px] text-white/60 hover:text-white font-bold transition-all"
+                                >
+                                  #{tag}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -1888,6 +1935,26 @@ export default function App() {
             onHashtagClick={(tag) => {
               setSelectedPost(null);
               handleHashtagClick(tag);
+            }}
+            onAuthorClick={(uid) => {
+              setSelectedPost(null);
+              setProfileViewUid(uid);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {profileViewUid && (
+          <UserProfileModal
+            targetUid={profileViewUid}
+            currentUserUid={auth.currentUser?.uid}
+            isFollowing={followingUids.includes(profileViewUid)}
+            onFollow={handleFollow}
+            onClose={() => setProfileViewUid(null)}
+            onPostClick={(post) => {
+              setProfileViewUid(null);
+              setSelectedPost(post);
             }}
           />
         )}
