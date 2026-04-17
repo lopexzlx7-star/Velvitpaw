@@ -140,6 +140,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [thumbnailSlow, setThumbnailSlow] = useState(false);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
 
+  const [urlPreviewState, setUrlPreviewState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -156,7 +158,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const isMultiImage = images.length > 0;
   const isVideo = !!videoDraft;
-  const hasMedia = isMultiImage || isVideo || videoUrlOnlyMode;
+  const hasMedia = isMultiImage || isVideo || (videoUrlOnlyMode && pastedVideoUrl.trim().length > 0);
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -185,6 +187,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setVideoLinkUrl('');
     setVideoUrlOnlyMode(false);
     setPastedVideoUrl('');
+    setUrlPreviewState('idle');
     setThumbnailUrl(null);
     setThumbnailSlow(false);
     setThumbnailFailed(false);
@@ -611,7 +614,93 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           )}
 
           {/* Media area */}
-          {!hasMedia && !videoUrlOnlyMode ? (
+          {videoUrlOnlyMode && !isVideo && !isMultiImage ? (
+            /* ── URL-only video mode ── */
+            <div className="space-y-4">
+              {/* URL input — always visible */}
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-white/60">
+                    <Link size={14} />
+                    <span className="text-sm font-medium">URL do Vídeo</span>
+                  </div>
+                  <button onClick={() => { setVideoUrlOnlyMode(false); setPastedVideoUrl(''); setUrlPreviewState('idle'); }} className="text-white/30 hover:text-white/60 transition-colors">
+                    <X size={14} />
+                  </button>
+                </div>
+                <input
+                  type="url"
+                  placeholder="https://exemplo.com/video.mp4"
+                  value={pastedVideoUrl}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPastedVideoUrl(val);
+                    setUrlPreviewState(val.trim() ? 'loading' : 'idle');
+                  }}
+                  className="w-full h-12 bg-black/20 border border-white/10 rounded-xl px-4 text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-all text-sm"
+                  autoFocus
+                />
+                <p className="text-[11px] text-white/30 flex items-center gap-1.5">
+                  <Film size={11} />
+                  Cole um link direto de vídeo (.mp4, .webm, etc.) para o preview carregar.
+                </p>
+              </div>
+
+              {/* Video preview — appears when URL is entered */}
+              {pastedVideoUrl.trim() && (
+                <div className="relative rounded-3xl overflow-hidden bg-black/50">
+                  <div
+                    className="relative w-full"
+                    style={{ height: (aspectRatio === 'wide' || aspectRatio === 'landscape') ? '35vh' : aspectRatio === 'square' ? '45vh' : '55vh' }}
+                  >
+                    {urlPreviewState === 'loading' && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10">
+                        <Loader2 className="animate-spin text-white/40" size={24} />
+                        <span className="text-white/30 text-xs">Carregando preview...</span>
+                      </div>
+                    )}
+                    {urlPreviewState === 'failed' && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 px-6">
+                        <Film size={36} className="text-white/15" />
+                        <p className="text-white/30 text-xs text-center leading-relaxed">
+                          Preview não disponível para esta URL.<br />
+                          O vídeo será publicado e reproduzido normalmente.
+                        </p>
+                      </div>
+                    )}
+                    <video
+                      key={pastedVideoUrl}
+                      src={pastedVideoUrl}
+                      className={`w-full h-full object-cover transition-opacity duration-300 ${urlPreviewState === 'ready' ? 'opacity-100' : 'opacity-0'}`}
+                      muted
+                      playsInline
+                      loop
+                      autoPlay
+                      onCanPlay={() => setUrlPreviewState('ready')}
+                      onError={() => setUrlPreviewState('failed')}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Aspect ratio for URL videos */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] uppercase tracking-widest text-white/30 mr-1">Formato</span>
+                {([
+                  { ar: 'portrait' as AspectRatio, icon: <Smartphone size={14} />, label: '9:16' },
+                  { ar: 'square' as AspectRatio, icon: <Square size={14} />, label: '1:1' },
+                  { ar: 'landscape' as AspectRatio, icon: <Film size={14} />, label: '4:3' },
+                  { ar: 'wide' as AspectRatio, icon: <Maximize2 size={14} />, label: '16:9' },
+                ]).map(({ ar, icon, label }) => (
+                  <button key={ar} onClick={() => setAspectRatio(ar)}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${aspectRatio === ar ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}>
+                    {icon}
+                    <span className="text-[8px] font-bold">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : !hasMedia ? (
             <div className="space-y-3">
               <label className="block cursor-pointer">
                 <div className="border-2 border-dashed border-white/10 rounded-3xl p-10 text-center hover:border-white/20 transition-all group">
@@ -638,49 +727,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 <Link size={13} />
                 Colar URL de vídeo
               </button>
-            </div>
-          ) : !hasMedia && videoUrlOnlyMode ? (
-            /* ── URL-only video mode ── */
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-white/60">
-                    <Link size={14} />
-                    <span className="text-sm font-medium">URL do Vídeo</span>
-                  </div>
-                  <button onClick={() => { setVideoUrlOnlyMode(false); setPastedVideoUrl(''); }} className="text-white/30 hover:text-white/60 transition-colors">
-                    <X size={14} />
-                  </button>
-                </div>
-                <input
-                  type="url"
-                  placeholder="https://... (YouTube, Drive, .mp4, etc.)"
-                  value={pastedVideoUrl}
-                  onChange={(e) => setPastedVideoUrl(e.target.value)}
-                  className="w-full h-12 bg-black/20 border border-white/10 rounded-xl px-4 text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-all text-sm"
-                  autoFocus
-                />
-                <p className="text-[11px] text-amber-400/60 flex items-center gap-1.5">
-                  <Film size={11} />
-                  Vídeos com mais de 2 minutos devem ser publicados via URL para economizar armazenamento.
-                </p>
-              </div>
-              {/* Aspect ratio for URL videos */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] uppercase tracking-widest text-white/30 mr-1">Formato</span>
-                {([
-                  { ar: 'portrait' as AspectRatio, icon: <Smartphone size={14} />, label: '9:16' },
-                  { ar: 'square' as AspectRatio, icon: <Square size={14} />, label: '1:1' },
-                  { ar: 'landscape' as AspectRatio, icon: <Film size={14} />, label: '4:3' },
-                  { ar: 'wide' as AspectRatio, icon: <Maximize2 size={14} />, label: '16:9' },
-                ]).map(({ ar, icon, label }) => (
-                  <button key={ar} onClick={() => setAspectRatio(ar)}
-                    className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${aspectRatio === ar ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}>
-                    {icon}
-                    <span className="text-[8px] font-bold">{label}</span>
-                  </button>
-                ))}
-              </div>
             </div>
           ) : isValidating ? (
             <div className="flex items-center justify-center gap-3 py-16 text-white/50">
@@ -940,18 +986,25 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   >
                     <RotateCcw size={14} /> Escolher novamente
                   </button>
+                ) : videoUrlOnlyMode && !pastedVideoUrl.trim() ? (
+                  <button
+                    disabled
+                    className="flex-1 py-4 bg-white/10 text-white/20 rounded-2xl font-black uppercase tracking-widest text-xs cursor-not-allowed"
+                  >
+                    Cole a URL para publicar
+                  </button>
                 ) : !hasMedia ? (
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/90 active:scale-95 transition-all"
+                    className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:opacity-90 active:scale-95 transition-all accent-primary-btn"
                   >
-                    Publicar
+                    Selecionar Mídia
                   </button>
                 ) : (
                   <button
                     onClick={submitPost}
                     disabled={wordCount > MAX_DESCRIPTION_WORDS}
-                    className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-white/90 active:scale-95 transition-all disabled:opacity-40"
+                    className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 accent-primary-btn"
                   >
                     {isMultiImage ? `Publicar ${images.length} ${images.length === 1 ? 'Imagem' : 'Imagens'}` : 'Publicar'}
                   </button>

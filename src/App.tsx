@@ -1347,7 +1347,7 @@ export default function App() {
                 authMode === 'register' ? handleLogin() : handleSignIn();
               }}
               disabled={loginLoading}
-              className="w-full py-5 bg-white text-black font-black rounded-2xl hover:bg-white/90 transition-all active:scale-95 disabled:opacity-50 mt-4 uppercase tracking-widest text-xs"
+              className="w-full py-5 bg-white text-black font-black rounded-2xl hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 mt-4 uppercase tracking-widest text-xs accent-primary-btn"
             >
               {authMode === 'register' ? 'Começar Jornada' : 'Entrar no App'}
             </button>
@@ -1729,14 +1729,14 @@ export default function App() {
                       className={`pb-4 text-sm font-bold uppercase tracking-widest transition-all relative ${activeTab === 'home' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
                     >
                       Explorar
-                      {activeTab === 'home' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+                      {activeTab === 'home' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 accent-line" />}
                     </button>
                     <button 
                       onClick={() => setActiveTab('foryou')}
                       className={`pb-4 text-sm font-bold uppercase tracking-widest transition-all relative ${activeTab === 'foryou' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
                     >
                       Para Você
-                      {activeTab === 'foryou' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+                      {activeTab === 'foryou' && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 accent-line" />}
                     </button>
                   </div>
                 </div>
@@ -2112,7 +2112,7 @@ export default function App() {
                 <button
                   onClick={handleAddEmail}
                   disabled={emailPopupLoading}
-                  className="w-full py-4 bg-white text-black font-black rounded-2xl uppercase tracking-widest text-xs hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-white text-black font-black rounded-2xl uppercase tracking-widest text-xs hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-2 accent-primary-btn"
                 >
                   {emailPopupLoading ? <Loader2 size={16} className="animate-spin" /> : null}
                   Salvar e-mail

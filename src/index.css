@@ -230,54 +230,118 @@
    SECONDARY / ACCENT COLOR SYSTEM
    Applied via data-accent="green|red|blue|orange" on the root wrapper.
    Default (no attribute or "default") keeps the app's original colors.
+   CSS variable --accent cascades down so every accent-aware element
+   (blobs, borders, tabs, buttons, nav, inputs focus) updates at once.
 ───────────────────────────────────────────────────────────────────── */
 
+/* Default accent (dark mode) */
+:root, [data-accent="default"] {
+  --accent: #ffffff;
+  --accent-rgb: 255,255,255;
+  --accent-dim: rgba(255,255,255,0.12);
+  --accent-text: #000000;
+}
+
+/* Default accent (light mode) */
+.light-mode {
+  --accent: #0066ff;
+  --accent-rgb: 0,102,255;
+  --accent-dim: rgba(0,102,255,0.12);
+  --accent-text: #ffffff;
+}
+
 /* Green */
+[data-accent="green"] {
+  --accent: #22c55e;
+  --accent-rgb: 34,197,94;
+  --accent-dim: rgba(34,197,94,0.14);
+  --accent-text: #000000;
+}
 [data-accent="green"] .liquid-blob {
   background: rgba(34,197,94,0.20) !important;
   opacity: 0.28 !important;
 }
 [data-accent="green"] .glass-panel {
-  border-color: rgba(34,197,94,0.13) !important;
-}
-[data-accent="green"] .accent-line {
-  background: #22c55e !important;
+  border-color: rgba(34,197,94,0.18) !important;
 }
 
 /* Red */
+[data-accent="red"] {
+  --accent: #ef4444;
+  --accent-rgb: 239,68,68;
+  --accent-dim: rgba(239,68,68,0.14);
+  --accent-text: #ffffff;
+}
 [data-accent="red"] .liquid-blob {
   background: rgba(239,68,68,0.20) !important;
   opacity: 0.24 !important;
 }
 [data-accent="red"] .glass-panel {
-  border-color: rgba(239,68,68,0.13) !important;
-}
-[data-accent="red"] .accent-line {
-  background: #ef4444 !important;
+  border-color: rgba(239,68,68,0.18) !important;
 }
 
 /* Blue */
+[data-accent="blue"] {
+  --accent: #3b82f6;
+  --accent-rgb: 59,130,246;
+  --accent-dim: rgba(59,130,246,0.14);
+  --accent-text: #ffffff;
+}
 [data-accent="blue"] .liquid-blob {
   background: rgba(59,130,246,0.22) !important;
   opacity: 0.28 !important;
 }
 [data-accent="blue"] .glass-panel {
-  border-color: rgba(59,130,246,0.15) !important;
-}
-[data-accent="blue"] .accent-line {
-  background: #3b82f6 !important;
+  border-color: rgba(59,130,246,0.20) !important;
 }
 
 /* Orange */
+[data-accent="orange"] {
+  --accent: #f97316;
+  --accent-rgb: 249,115,22;
+  --accent-dim: rgba(249,115,22,0.14);
+  --accent-text: #000000;
+}
 [data-accent="orange"] .liquid-blob {
   background: rgba(249,115,22,0.20) !important;
   opacity: 0.24 !important;
 }
 [data-accent="orange"] .glass-panel {
-  border-color: rgba(249,115,22,0.13) !important;
+  border-color: rgba(249,115,22,0.18) !important;
 }
-[data-accent="orange"] .accent-line {
-  background: #f97316 !important;
+
+/* ── Accent-aware utility classes ───────────────────────────────────── */
+
+/* Tab / section underlines */
+.accent-line {
+  background: var(--accent) !important;
+}
+
+/* Primary action buttons (home nav button, CTA buttons) */
+.accent-primary-btn {
+  background: var(--accent) !important;
+  color: var(--accent-text) !important;
+}
+.accent-primary-btn svg {
+  color: var(--accent-text) !important;
+}
+
+/* Active nav icon tint */
+.accent-icon {
+  color: var(--accent) !important;
+}
+
+/* Focused input ring */
+input:focus.accent-focus,
+textarea:focus.accent-focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.18) !important;
+}
+
+/* Selected/active item highlight pill */
+.accent-selected {
+  background: var(--accent) !important;
+  color: var(--accent-text) !important;
 }
 
 /* In light mode, accent colors override the blue blob override */

@@ -31,7 +31,7 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
           whileHover={{ scale: 1.1, y: -5 }}
           whileTap={{ scale: 0.9 }}
           onClick={onHomeClick}
-          className="w-14 h-14 bg-white dark:bg-white rounded-full flex items-center justify-center text-black shadow-lg dark:shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-shadow hover:shadow-xl dark:hover:shadow-[0_0_30px_rgba(255,255,255,0.5)]"
+          className="w-14 h-14 bg-white dark:bg-white rounded-full flex items-center justify-center text-black shadow-lg dark:shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-shadow hover:shadow-xl dark:hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] accent-primary-btn"
         >
           <Home size={28} />
         </motion.button>
