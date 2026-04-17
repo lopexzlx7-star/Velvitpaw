@@ -1252,13 +1252,16 @@ export default function App() {
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-space-gray-900 relative overflow-hidden">
+      <div
+        className={`min-h-screen flex items-center justify-center p-6 bg-space-gray-900 relative overflow-hidden${isDarkMode ? '' : ' light-mode'}`}
+        data-accent={accentColor === 'default' ? undefined : accentColor}
+      >
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="glass-panel max-w-md w-full p-10 rounded-[40px] text-center relative z-10"
         >
-          <h1 className="text-5xl font-black tracking-tighter text-white mb-10">VELVIT</h1>
+          <h1 className="text-5xl font-black tracking-tighter text-white mb-10 accent-logo">VELVIT</h1>
 
           <div className="space-y-6 text-left">
             <div>
@@ -1487,7 +1490,7 @@ export default function App() {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={handleHomeClick}
-            className="text-3xl md:text-4xl font-black tracking-tighter text-white cursor-pointer"
+            className="text-3xl md:text-4xl font-black tracking-tighter text-white cursor-pointer accent-logo"
           >
             VELVIT
           </motion.h1>

@@ -160,12 +160,13 @@
   border-color: rgba(0,100,255,0.08) !important;
 }
 
-/* VELVIT branding gets neon blue in light mode */
+/* VELVIT branding — accent color in light mode (overridden by .accent-logo globally) */
 .light-mode h1.text-white {
-  background: linear-gradient(135deg, var(--lm-accent), var(--lm-neon));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--accent) !important;
+  -webkit-text-fill-color: var(--accent) !important;
+  background: none !important;
+  -webkit-background-clip: unset !important;
+  background-clip: unset !important;
 }
 
 /* Input fields */
@@ -180,10 +181,10 @@
   color: rgba(6,6,15,0.30) !important;
 }
 
-/* Tab underlines → neon blue */
+/* Tab underlines → accent color */
 .light-mode .bg-white.h-0\.5,
 .light-mode [class*="bg-white"][class*="h-0"] {
-  background: var(--lm-accent) !important;
+  background: var(--accent) !important;
 }
 
 /* Active tabs text */
@@ -191,10 +192,10 @@
   color: var(--lm-text) !important;
 }
 
-/* Primary action buttons (white bg, black text) keep contrast in light mode */
+/* Primary action buttons (white bg, black text) — use accent color */
 .light-mode .bg-white.text-black {
-  background: var(--lm-accent) !important;
-  color: #ffffff !important;
+  background: var(--accent) !important;
+  color: var(--accent-text) !important;
 }
 
 /* Liquid blobs become neon blue */
@@ -311,6 +312,15 @@
 }
 
 /* ── Accent-aware utility classes ───────────────────────────────────── */
+
+/* App logo — follows accent in both dark and light modes */
+.accent-logo {
+  color: var(--accent) !important;
+  -webkit-text-fill-color: var(--accent) !important;
+  background: none !important;
+  -webkit-background-clip: unset !important;
+  background-clip: unset !important;
+}
 
 /* Tab / section underlines */
 .accent-line {
