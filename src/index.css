@@ -69,3 +69,180 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #4d4d4d;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   LIGHT MODE (white + neon blue)
+   Applied when the root wrapper has class "light-mode"
+───────────────────────────────────────────────────────────────────── */
+.light-mode {
+  --lm-bg: #eef4ff;
+  --lm-surface: rgba(255,255,255,0.96);
+  --lm-border: rgba(0,140,255,0.18);
+  --lm-text: #06060f;
+  --lm-muted: rgba(6,6,15,0.45);
+  --lm-accent: #0066ff;
+  --lm-neon: #00ccff;
+  --lm-neon-glow: rgba(0,204,255,0.35);
+}
+
+/* Body / fixed background */
+.light-mode body,
+.light-mode .bg-space-gray-900,
+.light-mode [class*="bg-space-gray-"] {
+  background: var(--lm-bg) !important;
+}
+
+/* Fixed backdrop layer */
+.light-mode .fixed.inset-0.z-\[-2\] {
+  background: var(--lm-bg) !important;
+}
+
+/* Glass panels become white + blue-tinted border */
+.light-mode .glass-panel {
+  background: var(--lm-surface) !important;
+  border-color: var(--lm-border) !important;
+  box-shadow: 0 8px 32px rgba(0,100,255,0.08) !important;
+}
+
+/* Text colors — map whites → darks */
+.light-mode .text-white {
+  color: var(--lm-text) !important;
+}
+.light-mode .text-white\/80,
+.light-mode .text-white\/85,
+.light-mode .text-white\/90 {
+  color: rgba(6,6,15,0.85) !important;
+}
+.light-mode .text-white\/70 {
+  color: rgba(6,6,15,0.70) !important;
+}
+.light-mode .text-white\/60,
+.light-mode .text-white\/55 {
+  color: rgba(6,6,15,0.60) !important;
+}
+.light-mode .text-white\/50 {
+  color: rgba(6,6,15,0.50) !important;
+}
+.light-mode .text-white\/40,
+.light-mode .text-white\/35 {
+  color: rgba(6,6,15,0.40) !important;
+}
+.light-mode .text-white\/30,
+.light-mode .text-white\/25 {
+  color: rgba(6,6,15,0.30) !important;
+}
+.light-mode .text-white\/20 {
+  color: rgba(6,6,15,0.20) !important;
+}
+.light-mode .text-white\/10 {
+  color: rgba(6,6,15,0.10) !important;
+}
+
+/* Backgrounds — map dark surfaces → light */
+.light-mode .bg-white\/5 {
+  background: rgba(0,100,255,0.06) !important;
+}
+.light-mode .bg-white\/10 {
+  background: rgba(0,100,255,0.10) !important;
+}
+.light-mode .bg-white\/20 {
+  background: rgba(0,100,255,0.16) !important;
+}
+
+/* Borders */
+.light-mode .border-white\/10 {
+  border-color: rgba(0,100,255,0.14) !important;
+}
+.light-mode .border-white\/20 {
+  border-color: rgba(0,100,255,0.22) !important;
+}
+.light-mode .border-white\/5 {
+  border-color: rgba(0,100,255,0.08) !important;
+}
+
+/* VELVIT branding gets neon blue in light mode */
+.light-mode h1.text-white {
+  background: linear-gradient(135deg, var(--lm-accent), var(--lm-neon));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Input fields */
+.light-mode input,
+.light-mode textarea {
+  background: rgba(0,100,255,0.05) !important;
+  border-color: rgba(0,100,255,0.14) !important;
+  color: var(--lm-text) !important;
+}
+.light-mode input::placeholder,
+.light-mode textarea::placeholder {
+  color: rgba(6,6,15,0.30) !important;
+}
+
+/* Tab underlines → neon blue */
+.light-mode .bg-white.h-0\.5,
+.light-mode [class*="bg-white"][class*="h-0"] {
+  background: var(--lm-accent) !important;
+}
+
+/* Active tabs text */
+.light-mode button.text-white {
+  color: var(--lm-text) !important;
+}
+
+/* Primary action buttons (white bg, black text) keep contrast in light mode */
+.light-mode .bg-white.text-black {
+  background: var(--lm-accent) !important;
+  color: #ffffff !important;
+}
+
+/* Liquid blobs become neon blue */
+.light-mode .liquid-blob {
+  background: rgba(0,150,255,0.15) !important;
+  opacity: 0.25 !important;
+}
+
+/* Card backgrounds */
+.light-mode .bg-black\/40,
+.light-mode .bg-black\/60,
+.light-mode .bg-black\/80 {
+  background: rgba(6,6,15,0.4) !important;
+}
+
+/* Red hearts and other colored elements stay as-is */
+.light-mode .text-red-500 {
+  color: #ef4444 !important;
+}
+
+/* Scrollbar in light mode */
+.light-mode ::-webkit-scrollbar-track {
+  background: #e8f0fe;
+}
+.light-mode ::-webkit-scrollbar-thumb {
+  background: #93c5fd;
+}
+.light-mode ::-webkit-scrollbar-thumb:hover {
+  background: #60a5fa;
+}
+
+/* ─── Mobile perf optimizations ──────────────────────────────────────
+   On mobile, heavy backdrop-blur and animations are expensive.
+   Reduce them on small screens. */
+@media (max-width: 768px) {
+  .glass-panel {
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+  }
+
+  /* Reduce liquid blob animations */
+  .liquid-blob {
+    animation-duration: 40s !important;
+    filter: blur(60px) !important;
+  }
+
+  /* Prevent content from causing unnecessary repaints */
+  .group-hover\:shadow-white\/5:hover {
+    box-shadow: none !important;
+  }
+}

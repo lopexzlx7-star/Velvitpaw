@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { 
   doc, 
@@ -260,14 +260,15 @@ export default function App() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('velvit_dark_mode');
+    return saved === null ? true : saved === 'true';
+  });
   const [likedIds, setLikedIds] = useState<string[]>(() => {
     const saved = localStorage.getItem('velvit_likes');
     return saved ? JSON.parse(saved) : [];
   });
-  const [likedItems, setLikedItems] = useState<ContentItem[]>(() => {
-    const saved = localStorage.getItem('velvit_liked_items');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [likedItems, setLikedItems] = useState<ContentItem[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>(() => {
     const saved = localStorage.getItem('velvit_saves');
     return saved ? JSON.parse(saved) : [];
@@ -474,21 +475,22 @@ export default function App() {
   }, []);
 
 
+  // Rebuild likedItems from globalPosts + likedIds every time either changes.
+  // This ensures likes are shown correctly across devices (Firestore is source of truth).
   useEffect(() => {
-    const existingPostIds = new Set(globalPosts.map(p => p.id));
-    
-    const updatedLikedItems = likedItems.filter(item => existingPostIds.has(item.id));
-    if (updatedLikedItems.length !== likedItems.length) {
-      setLikedItems(updatedLikedItems);
-      localStorage.setItem('velvit_liked_items', JSON.stringify(updatedLikedItems));
-    }
+    if (globalPosts.length === 0) return;
+    const likedSet = new Set(likedIds);
+    const rebuilt = globalPosts.filter(p => likedSet.has(p.id));
+    setLikedItems(rebuilt);
 
-    const updatedLikedIds = likedIds.filter(id => existingPostIds.has(id));
-    if (updatedLikedIds.length !== likedIds.length) {
-      setLikedIds(updatedLikedIds);
-      localStorage.setItem('velvit_likes', JSON.stringify(updatedLikedIds));
+    // Also prune likedIds that no longer exist in the feed
+    const existingIds = new Set(globalPosts.map(p => p.id));
+    const validIds = likedIds.filter(id => existingIds.has(id));
+    if (validIds.length !== likedIds.length) {
+      setLikedIds(validIds);
+      localStorage.setItem('velvit_likes', JSON.stringify(validIds));
     }
-  }, [globalPosts]);
+  }, [globalPosts, likedIds]);
 
   useEffect(() => {
     if (globalPosts.length === 0) return;
@@ -836,10 +838,7 @@ export default function App() {
     const newLikedIds = isLiked ? likedIds.filter(i => i !== id) : [...likedIds, id];
     setLikedIds(newLikedIds);
     localStorage.setItem('velvit_likes', JSON.stringify(newLikedIds));
-
-    const newLikedItems = isLiked ? likedItems.filter(i => i.id !== id) : [...likedItems, { ...itemToLike, likesCount: Math.max(0, (itemToLike.likesCount || 0) + 1) }];
-    setLikedItems(newLikedItems);
-    localStorage.setItem('velvit_liked_items', JSON.stringify(newLikedItems));
+    // likedItems is derived from globalPosts + likedIds via useEffect
 
     if (auth.currentUser) {
       const interactionId = `${auth.currentUser.uid}_${id}_like`;
@@ -952,13 +951,10 @@ export default function App() {
       setGlobalPosts(prev => prev.filter(item => item.id !== id));
       setUserPosts(prev => prev.filter(item => item.id !== id));
 
-      const newLikedItems = likedItems.filter(item => item.id !== id);
-      setLikedItems(newLikedItems);
-      localStorage.setItem('velvit_liked_items', JSON.stringify(newLikedItems));
-
       const newLikedIds = likedIds.filter(likedId => likedId !== id);
       setLikedIds(newLikedIds);
       localStorage.setItem('velvit_likes', JSON.stringify(newLikedIds));
+      // likedItems is derived from globalPosts + likedIds via useEffect
 
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `posts/${id}`);
@@ -1105,24 +1101,31 @@ export default function App() {
     const q = query.toLowerCase().trim();
     if (!q || !t) return 0;
 
+    // Exact match
     if (t === q) return 100;
+    // Starts with query
     if (t.startsWith(q)) return 90;
+    // Contains the full query
     if (t.includes(q)) return 80;
 
+    // Multi-word: ALL tokens must be present for a match
     const tokens = q.split(/\s+/).filter(Boolean);
     if (tokens.length > 1) {
       const matched = tokens.filter(tok => t.includes(tok));
+      // Only match if at least half the tokens are present
       if (matched.length === tokens.length) return 70;
-      if (matched.length > 0) return 40 + Math.round((matched.length / tokens.length) * 25);
+      if (matched.length >= Math.ceil(tokens.length / 2)) return 45;
     }
 
-    const chars = q.replace(/\s/g, '');
-    let ci = 0;
-    for (let i = 0; i < t.length && ci < chars.length; i++) {
-      if (t[i] === chars[ci]) ci++;
+    // Single word — at least the first 3 chars must match as a prefix of any word in text
+    if (q.length >= 3) {
+      const textWords = t.split(/\s+/);
+      for (const word of textWords) {
+        if (word.startsWith(q.slice(0, 3))) return 35;
+      }
     }
-    if (ci === chars.length) return 15;
 
+    // No fuzzy char-by-char matching — too imprecise
     return 0;
   };
 
@@ -1179,12 +1182,19 @@ export default function App() {
     const scored = globalPosts
       .map(post => {
         const titleScore = fuzzyScore(post.title, q);
-        const authorScore = fuzzyScore(post.authorName || '', q);
-        const descScore = post.description ? fuzzyScore(post.description, q) * 0.6 : 0;
-        const hashtagScore = (post.hashtags || []).some(tag => tag.includes(qLower)) ? 85 : 0;
+        const authorScore = fuzzyScore(post.authorName || '', q) * 0.6;
+        const descScore = post.description ? fuzzyScore(post.description, q) * 0.5 : 0;
+        // Hashtag matching: exact or starts-with gets 90, contains gets 70
+        const hashtagScore = (() => {
+          const tags = post.hashtags || [];
+          if (tags.some(tag => tag.toLowerCase() === qLower)) return 90;
+          if (tags.some(tag => tag.toLowerCase().startsWith(qLower))) return 75;
+          if (qLower.length >= 3 && tags.some(tag => tag.toLowerCase().includes(qLower))) return 60;
+          return 0;
+        })();
         return { post, score: Math.max(titleScore, authorScore, descScore, hashtagScore) };
       })
-      .filter(({ score }) => score > 0)
+      .filter(({ score }) => score >= 35)
       .sort((a, b) => b.score - a.score)
       .map(({ post }) => post);
 
@@ -1409,7 +1419,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen relative pb-32">
+      <div className={`min-h-screen relative pb-32${isDarkMode ? '' : ' light-mode'}`}>
       <div className="fixed inset-0 z-[-2] bg-space-gray-900" />
       
       <AnimatePresence>
@@ -1446,7 +1456,8 @@ export default function App() {
         }}
         className="sticky top-0 z-50 px-6 py-8"
       >
-        <div className="max-w-7xl mx-auto flex items-center justify-center">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="w-10" />
           <motion.h1 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -1455,6 +1466,21 @@ export default function App() {
           >
             VELVIT
           </motion.h1>
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            onClick={() => {
+              setIsDarkMode(prev => {
+                const next = !prev;
+                localStorage.setItem('velvit_dark_mode', String(next));
+                return next;
+              });
+            }}
+            className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white/10 hover:bg-white/20 transition-colors text-white"
+            title={isDarkMode ? 'Modo Claro' : 'Modo Escuro'}
+          >
+            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </motion.button>
         </div>
       </motion.header>
 

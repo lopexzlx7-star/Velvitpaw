@@ -271,7 +271,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
     const cleanup = () => { if (metaEl.parentNode) metaEl.parentNode.removeChild(metaEl); };
 
-    const commitDraft = (dur: number) => {
+    const commitDraft = (dur: number, vw?: number, vh?: number) => {
       cleanup();
       objectUrlRef.current = blobUrl;
       setIsValidating(false);
@@ -279,6 +279,18 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       const roundedDur = Math.round(dur);
       setIsLongVideo(roundedDur > LONG_VIDEO_THRESHOLD);
       setVideoLinkUrl('');
+
+      // Auto-detect orientation from video dimensions
+      if (vw && vh) {
+        if (vw > vh * 1.2) {
+          setAspectRatio('wide');
+        } else if (vw > vh * 0.85) {
+          setAspectRatio('square');
+        } else {
+          setAspectRatio('portrait');
+        }
+      }
+
       setVideoDraft({
         file,
         mediaUrl: blobUrl,
@@ -319,7 +331,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         setIsValidating(false);
         setError(`Resolução muito alta (${w}×${h}). Use vídeos até ${MAX_VIDEO_SHORT_SIDE}p.`); return;
       }
-      commitDraft(dur);
+      commitDraft(dur, w, h);
     };
     metaEl.onerror = () => { clearTimeout(safetyTimer); commitDraft(0); };
     metaEl.src = blobUrl;
@@ -477,7 +489,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           url: finalUrl,
           type: 'video',
           height: 600,
-          aspectRatio: videoDraft.aspectRatio,
+          aspectRatio,
           authorUid: auth.currentUser.uid,
           authorName: localStorage.getItem('velvit_username') || 'User',
           authorPhotoUrl: localStorage.getItem('velvit_profile_pic') || null,
@@ -700,11 +712,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
             /* ── Video preview ── */
             <div className="space-y-4">
               <div className="relative rounded-3xl overflow-hidden bg-black/40">
-                <div className="relative w-full" style={{ height: isLongVideo ? '22vh' : '55vh' }}>
+                <div className="relative w-full" style={{ height: isLongVideo ? '22vh' : (aspectRatio === 'wide' || aspectRatio === 'landscape') ? '35vh' : aspectRatio === 'square' ? '45vh' : '55vh' }}>
                   <video
                     src={videoDraft.mediaUrl}
                     poster={thumbnailUrl || undefined}
                     className="w-full h-full object-cover"
+                    style={{ objectFit: 'cover' }}
                     muted playsInline loop autoPlay
                   />
                 </div>
@@ -732,7 +745,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   <div className="flex items-start gap-2.5">
                     <Film size={15} className="text-amber-400 shrink-0 mt-0.5" />
                     <p className="text-[12px] text-amber-300/80 leading-snug">
-                      Vídeo com mais de 2 minutos. Para economizar espaço, cole o link direto do vídeo abaixo (YouTube, Drive, etc.)
+                      Vídeo com mais de 2 minutos. Cole o link direto do vídeo (YouTube, Drive, link .mp4, etc.) para publicar sem usar armazenamento em nuvem.
                     </p>
                   </div>
                   <input
@@ -744,6 +757,26 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   />
                 </div>
               )}
+
+              {/* Video aspect ratio selector */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] uppercase tracking-widest text-white/30 mr-1">Formato do Vídeo</span>
+                {([
+                  { ar: 'portrait' as AspectRatio, icon: <Smartphone size={14} />, label: '9:16' },
+                  { ar: 'square' as AspectRatio, icon: <Square size={14} />, label: '1:1' },
+                  { ar: 'landscape' as AspectRatio, icon: <Film size={14} />, label: '4:3' },
+                  { ar: 'wide' as AspectRatio, icon: <Maximize2 size={14} />, label: '16:9' },
+                ]).map(({ ar, icon, label }) => (
+                  <button
+                    key={ar}
+                    onClick={() => setAspectRatio(ar)}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${aspectRatio === ar ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                  >
+                    {icon}
+                    <span className="text-[8px] font-bold">{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
 

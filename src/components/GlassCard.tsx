@@ -2,11 +2,12 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Heart, Bookmark, UserPlus, Trash2, 
   Volume2, VolumeX, Share2,
-  UserCheck, Images
+  UserCheck, Images, ExternalLink
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
 import { ContentItem } from '../types';
+import { deleteDoc, doc } from 'firebase/firestore';
 
 function getCloudinaryThumb(videoUrl: string): string | null {
   if (!videoUrl.includes('res.cloudinary.com')) return null;
@@ -23,6 +24,39 @@ function getImageKitThumb(videoUrl: string): string | null {
 function getVideoThumb(url: string, thumbnailUrl?: string): string | null {
   if (thumbnailUrl) return thumbnailUrl;
   return getCloudinaryThumb(url) || getImageKitThumb(url);
+}
+
+// Detect if a URL is a playable video (direct file link)
+function isDirectVideoUrl(url: string): boolean {
+  const lower = url.toLowerCase().split('?')[0];
+  return (
+    /\.(mp4|webm|mov|avi|mkv|ogg|ogv|m4v|3gp)$/.test(lower) ||
+    lower.includes('res.cloudinary.com') ||
+    lower.includes('ik.imagekit.io') ||
+    lower.includes('storjshare.io') ||
+    lower.includes('link.storjshare.io')
+  );
+}
+
+// Detect if a URL is an external embed (YouTube, Drive, etc.)
+function isExternalEmbedUrl(url: string): boolean {
+  return (
+    url.includes('youtube.com') ||
+    url.includes('youtu.be') ||
+    url.includes('drive.google.com') ||
+    url.includes('vimeo.com') ||
+    url.includes('dailymotion.com')
+  );
+}
+
+function getAspectRatioStyle(aspectRatio?: string): React.CSSProperties {
+  switch (aspectRatio) {
+    case 'landscape': return { aspectRatio: '4/3' };
+    case 'wide': return { aspectRatio: '16/9' };
+    case 'square': return { aspectRatio: '1/1' };
+    case 'portrait':
+    default: return { aspectRatio: '9/16' };
+  }
 }
 
 interface GlassCardProps {
@@ -82,19 +116,6 @@ function highlightText(text: string, query: string): React.ReactNode {
     if (parts.length > 0) return <>{parts}</>;
   }
 
-  const chars = qLower.replace(/\s/g, '');
-  const result: React.ReactNode[] = [];
-  let ci = 0;
-  for (let i = 0; i < text.length; i++) {
-    if (ci < chars.length && text[i].toLowerCase() === chars[ci]) {
-      result.push(<span key={i} className="text-green-400 font-black">{text[i]}</span>);
-      ci++;
-    } else {
-      result.push(text[i]);
-    }
-  }
-  if (ci === chars.length) return <>{result}</>;
-
   return text;
 }
 
@@ -113,8 +134,6 @@ function registerVideo(id: string, el: HTMLVideoElement) {
   if (!registry.find(v => v.id === id)) {
     registry.push({ id, el });
   }
-  // Do NOT auto-play on register — only IntersectionObserver triggers playback,
-  // ensuring the topmost visible video always plays first.
 }
 
 function unregisterVideo(id: string) {
@@ -167,7 +186,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const handleTap = (e: React.MouseEvent | React.TouchEvent) => {
+  const handleTap = () => {
     onClick?.(item);
   };
 
@@ -178,6 +197,19 @@ const GlassCard: React.FC<GlassCardProps> = ({
     } else {
       setIsConfirmingDelete(true);
       setTimeout(() => setIsConfirmingDelete(false), 3000);
+    }
+  };
+
+  // Auto-delete post if it's an external URL video that fails to load
+  const handleVideoError = () => {
+    setVideoError(true);
+    setIsLoaded(true);
+    unregisterVideo(item.id);
+
+    // Auto-delete posts with broken external URLs from Firestore
+    if (item.type === 'video' && !isDirectVideoUrl(item.url)) {
+      deleteDoc(doc(db, 'posts', item.id)).catch(() => {});
+      onDelete?.(item.id);
     }
   };
 
@@ -209,6 +241,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
     };
   }, [item.id, item.type]);
 
+  const aspectStyle = getAspectRatioStyle(item.aspectRatio);
+
   return (
     <motion.div
       layout
@@ -224,7 +258,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
       >
         {/* Media Container */}
         <div className="relative overflow-hidden">
-          {/* Skeleton Placeholder — only shown when there is no thumbnail to display */}
           {!isLoaded && !getVideoThumb(item.url, item.thumbnailUrl) && (
             <div 
               className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center"
@@ -235,37 +268,56 @@ const GlassCard: React.FC<GlassCardProps> = ({
           )}
 
           {item.type === 'video' || item.type === 'gif' ? (
-            <div className="relative w-full overflow-hidden" style={{ aspectRatio: '9/16', minHeight: '200px' }}>
+            <div className="relative w-full overflow-hidden" style={{ ...aspectStyle, minHeight: '150px' }}>
               {item.type === 'video' ? (
                 videoError ? (
-                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black/60">
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black/60" style={aspectStyle}>
                     <span className="text-white/20 text-[9px] uppercase tracking-widest font-bold">Vídeo indisponível</span>
                   </div>
+                ) : isExternalEmbedUrl(item.url) ? (
+                  // External embed URL — show thumbnail with external link
+                  <div className="relative w-full h-full" style={aspectStyle}>
+                    {item.thumbnailUrl ? (
+                      <img
+                        src={item.thumbnailUrl}
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                        onError={() => setVideoError(true)}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-black/40 flex flex-col items-center justify-center gap-2">
+                        <ExternalLink size={24} className="text-white/30" />
+                        <span className="text-white/20 text-[9px] uppercase tracking-widest">Link Externo</span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                        <ExternalLink size={18} className="text-white/80" />
+                      </div>
+                    </div>
+                  </div>
                 ) : (
-                <>
-                  {/* Thumbnail shown immediately as a static layer — visible before the
-                      video element loads. The poster attribute on <video> is invisible
-                      while the video has opacity-0, so we use a separate <img> layer. */}
-                  {!isLoaded && getVideoThumb(item.url, item.thumbnailUrl) && (
-                    <img
-                      src={getVideoThumb(item.url, item.thumbnailUrl)!}
-                      alt=""
-                      className="absolute inset-0 w-full h-full object-cover"
+                  <>
+                    {!isLoaded && getVideoThumb(item.url, item.thumbnailUrl) && (
+                      <img
+                        src={getVideoThumb(item.url, item.thumbnailUrl)!}
+                        alt=""
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    )}
+                    <video
+                      ref={videoRef}
+                      src={item.url}
+                      muted={isMuted}
+                      playsInline
+                      loop
+                      preload="none"
+                      onLoadedData={() => setIsLoaded(true)}
+                      onEnded={() => advanceToNext(item.id)}
+                      onError={handleVideoError}
+                      className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                     />
-                  )}
-                  <video
-                    ref={videoRef}
-                    src={item.url}
-                    muted={isMuted}
-                    playsInline
-                    loop
-                    preload="auto"
-                    onLoadedData={() => setIsLoaded(true)}
-                    onEnded={() => advanceToNext(item.id)}
-                    onError={() => { setVideoError(true); setIsLoaded(true); unregisterVideo(item.id); }}
-                    className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-                  />
-                </>
+                  </>
                 )
               ) : (
                 <img
@@ -285,7 +337,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   <Trash2 size={16} />
                 </button>
               )}
-              {isHovered && item.type === 'video' && (
+              {isHovered && item.type === 'video' && !isExternalEmbedUrl(item.url) && (
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();

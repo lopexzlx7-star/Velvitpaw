@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, Maximize2, ExternalLink } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -23,7 +23,6 @@ interface FloatingHeart {
 
 const isVideoType = (type: string) => type === 'video' || type === 'gif';
 
-// Throttle helper — calls fn at most once per intervalMs
 function throttle<T extends (...args: any[]) => void>(fn: T, intervalMs: number): T {
   let last = 0;
   return ((...args: any[]) => {
@@ -33,6 +32,34 @@ function throttle<T extends (...args: any[]) => void>(fn: T, intervalMs: number)
       fn(...args);
     }
   }) as T;
+}
+
+function isDirectVideoUrl(url: string): boolean {
+  const lower = url.toLowerCase().split('?')[0];
+  return (
+    /\.(mp4|webm|mov|avi|mkv|ogg|ogv|m4v|3gp)$/.test(lower) ||
+    lower.includes('res.cloudinary.com') ||
+    lower.includes('ik.imagekit.io') ||
+    lower.includes('storjshare.io') ||
+    lower.includes('link.storjshare.io')
+  );
+}
+
+function isExternalEmbedUrl(url: string): boolean {
+  return (
+    url.includes('youtube.com') ||
+    url.includes('youtu.be') ||
+    url.includes('drive.google.com') ||
+    url.includes('vimeo.com') ||
+    url.includes('dailymotion.com')
+  );
+}
+
+// Convert YouTube watch URL to embed URL
+function getYouTubeEmbedUrl(url: string): string | null {
+  const watchMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  if (watchMatch) return `https://www.youtube.com/embed/${watchMatch[1]}?autoplay=1`;
+  return null;
 }
 
 const PostDetailModal: React.FC<PostDetailModalProps> = ({
@@ -82,21 +109,25 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   };
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaContainerRef = useRef<HTMLDivElement>(null);
   const playPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isVideo = isVideoType(item.type);
+  const externalEmbed = isVideo && isExternalEmbedUrl(item.url);
+  const directVideo = isVideo && isDirectVideoUrl(item.url);
+  const youtubeEmbed = externalEmbed ? getYouTubeEmbedUrl(item.url) : null;
 
   const getModalWidth = () => {
     const ar = item.aspectRatio;
-    if (ar === 'portrait' || isVideo) return 'min(380px, calc(100vw - 32px))';
-    if (ar === 'wide' || ar === 'landscape') return 'min(560px, calc(100vw - 32px))';
+    if (ar === 'wide') return 'min(640px, calc(100vw - 32px))';
+    if (ar === 'landscape') return 'min(560px, calc(100vw - 32px))';
     if (ar === 'square') return 'min(420px, calc(100vw - 32px))';
     return 'min(380px, calc(100vw - 32px))';
   };
 
   const getMediaStyle = (): React.CSSProperties => {
     const ar = item.aspectRatio;
-    if (isVideo || ar === 'portrait') return { aspectRatio: '9/16', maxHeight: '65vh' };
+    if (isVideo || ar === 'portrait' || !ar) return { aspectRatio: '9/16', maxHeight: '65vh' };
     if (ar === 'wide') return { aspectRatio: '16/9' };
     if (ar === 'landscape') return { aspectRatio: '4/3' };
     if (ar === 'square') return { aspectRatio: '1/1' };
@@ -110,7 +141,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
   useEffect(() => { setLocalIsLiked(isLiked); }, [isLiked]);
 
-  // Fetch author info after modal is open (non-blocking)
   useEffect(() => {
     if (!item.authorUid) return;
     const fetchAuthor = async () => {
@@ -123,16 +153,14 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         }
       } catch {}
     };
-    // Defer fetch so it doesn't compete with the opening animation
     const timer = setTimeout(fetchAuthor, 300);
     return () => clearTimeout(timer);
   }, [item.authorUid, item.authorName]);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !isVideo) return;
+    if (!video || !isVideo || !directVideo) return;
 
-    // Throttled to 4fps — enough for a smooth seek bar without constant re-renders
     const onTime = throttle(() => {
       if (!isSeeking) setCurrentTime(video.currentTime);
     }, 250);
@@ -151,7 +179,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
     };
-  }, [isVideo, isSeeking, item.duration]);
+  }, [isVideo, directVideo, isSeeking, item.duration]);
 
   const flashPlayPause = () => {
     setShowPlayPause(true);
@@ -177,6 +205,22 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   };
 
   const handleSeekEnd = () => setIsSeeking(false);
+
+  const handleFullscreen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const container = mediaContainerRef.current;
+    if (!container) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      container.requestFullscreen().catch(() => {
+        // Fallback: try video element
+        if (videoRef.current) {
+          (videoRef.current as any).webkitEnterFullscreen?.();
+        }
+      });
+    }
+  };
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -212,19 +256,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
       className="fixed inset-0 z-[100] flex items-center justify-center px-4"
-      // Solid overlay — no backdrop blur on the full screen (very expensive during animation)
       style={{ background: 'rgba(0,0,0,0.88)' }}
       onClick={onClose}
     >
       <motion.div
-        // Simplified animation: only y + opacity, no scale
-        // Tween is cheaper than spring — fewer intermediate frames
         initial={{ y: 32, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 32, opacity: 0 }}
         transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
         onClick={(e) => e.stopPropagation()}
-        // will-change promotes to GPU layer so transforms are composited off the main thread
         style={{
           width: getModalWidth(),
           borderRadius: '2.2rem',
@@ -265,6 +305,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         {/* Media */}
         <div className="px-3">
           <div
+            ref={mediaContainerRef}
             className="relative overflow-hidden w-full"
             style={{
               borderRadius: '1.6rem',
@@ -273,57 +314,101 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
             }}
           >
             {isVideo ? (
-              <>
-                <video
-                  ref={videoRef}
-                  src={item.url}
-                  poster={item.thumbnailUrl || undefined}
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  loop
-                  muted={isMuted}
-                  playsInline
-                  onClick={togglePlay}
-                  style={{ cursor: 'pointer', display: 'block' }}
-                />
-
-                <AnimatePresence>
-                  {showPlayPause && (
-                    <motion.div
-                      initial={{ opacity: 0.9, scale: 0.85 }}
-                      animate={{ opacity: 0.9, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.15 }}
-                      transition={{ duration: 0.2 }}
-                      className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                    >
-                      <div className="w-16 h-16 flex items-center justify-center rounded-full" style={{ background: 'rgba(0,0,0,0.55)' }}>
-                        {isPlaying ? <Pause size={26} className="text-white/90" fill="currentColor" /> : <Play size={26} className="text-white/90" fill="currentColor" />}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}>
-                  <div className="relative w-full mb-2" style={{ height: '18px', display: 'flex', alignItems: 'center' }}>
-                    <div className="absolute left-0 right-0 h-[3px] rounded-full bg-white/20 overflow-hidden">
-                      <div className="h-full rounded-full bg-white" style={{ width: `${progress}%`, transition: 'width 0.25s linear' }} />
-                    </div>
-                    <input
-                      type="range" min={0} max={duration || 1} step={0.01} value={currentTime}
-                      onMouseDown={handleSeekStart} onTouchStart={handleSeekStart}
-                      onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
+              externalEmbed ? (
+                // External video URL — YouTube embed or link
+                youtubeEmbed ? (
+                  <iframe
+                    src={youtubeEmbed}
+                    className="w-full h-full"
+                    allowFullScreen
+                    allow="autoplay; encrypted-media; fullscreen"
+                    style={{ border: 'none', display: 'block' }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-black/50">
+                    <ExternalLink size={32} className="text-white/30" />
+                    <span className="text-white/40 text-xs text-center px-4">
+                      Vídeo externo — abrir no site original
+                    </span>
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute left-0 right-0 w-full opacity-0 cursor-pointer" style={{ height: '18px' }}
-                    />
+                      className="px-4 py-2 bg-white/10 rounded-full text-white/70 text-xs hover:bg-white/20 transition-colors flex items-center gap-2"
+                    >
+                      <ExternalLink size={12} /> Abrir link
+                    </a>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-white/50 font-mono tabular-nums">{formatTime(currentTime)} / {formatTime(duration)}</span>
-                    <button onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }} className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors" style={{ background: 'rgba(0,0,0,0.3)' }}>
-                      {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-                    </button>
+                )
+              ) : (
+                // Direct playable video URL
+                <>
+                  <video
+                    ref={videoRef}
+                    src={item.url}
+                    poster={item.thumbnailUrl || undefined}
+                    className="w-full h-full object-cover"
+                    autoPlay
+                    loop
+                    muted={isMuted}
+                    playsInline
+                    onClick={togglePlay}
+                    style={{ cursor: 'pointer', display: 'block' }}
+                  />
+
+                  <AnimatePresence>
+                    {showPlayPause && (
+                      <motion.div
+                        initial={{ opacity: 0.9, scale: 0.85 }}
+                        animate={{ opacity: 0.9, scale: 1 }}
+                        exit={{ opacity: 0, scale: 1.15 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                      >
+                        <div className="w-16 h-16 flex items-center justify-center rounded-full" style={{ background: 'rgba(0,0,0,0.55)' }}>
+                          {isPlaying ? <Pause size={26} className="text-white/90" fill="currentColor" /> : <Play size={26} className="text-white/90" fill="currentColor" />}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}>
+                    <div className="relative w-full mb-2" style={{ height: '18px', display: 'flex', alignItems: 'center' }}>
+                      <div className="absolute left-0 right-0 h-[3px] rounded-full bg-white/20 overflow-hidden">
+                        <div className="h-full rounded-full bg-white" style={{ width: `${progress}%`, transition: 'width 0.25s linear' }} />
+                      </div>
+                      <input
+                        type="range" min={0} max={duration || 1} step={0.01} value={currentTime}
+                        onMouseDown={handleSeekStart} onTouchStart={handleSeekStart}
+                        onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute left-0 right-0 w-full opacity-0 cursor-pointer" style={{ height: '18px' }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-white/50 font-mono tabular-nums">{formatTime(currentTime)} / {formatTime(duration)}</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }}
+                          className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors"
+                          style={{ background: 'rgba(0,0,0,0.3)' }}
+                        >
+                          {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                        </button>
+                        <button
+                          onClick={handleFullscreen}
+                          className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors"
+                          style={{ background: 'rgba(0,0,0,0.3)' }}
+                          title="Tela cheia"
+                        >
+                          <Maximize2 size={13} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </>
+                </>
+              )
             ) : isMultiImage ? (
               /* ── Multi-image carousel ── */
               <div
@@ -388,15 +473,34 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                 <div className="absolute top-3 right-3 px-2.5 py-1 bg-black/60 backdrop-blur-sm rounded-full text-[10px] font-bold text-white z-10">
                   {activeImageIdx + 1}/{allImages.length}
                 </div>
+
+                {/* Fullscreen button for images */}
+                <button
+                  onClick={handleFullscreen}
+                  className="absolute top-3 left-3 p-2 bg-black/50 backdrop-blur-sm rounded-full text-white/60 hover:text-white transition-colors z-10"
+                  title="Tela cheia"
+                >
+                  <Maximize2 size={14} />
+                </button>
               </div>
             ) : (
-              <img
-                src={item.url}
-                alt={item.title}
-                className="w-full h-full object-cover block"
-                referrerPolicy="no-referrer"
-                style={{ display: 'block' }}
-              />
+              <>
+                <img
+                  src={item.url}
+                  alt={item.title}
+                  className="w-full h-full object-cover block"
+                  referrerPolicy="no-referrer"
+                  style={{ display: 'block' }}
+                />
+                {/* Fullscreen button for single image */}
+                <button
+                  onClick={handleFullscreen}
+                  className="absolute top-3 right-3 p-2 bg-black/50 backdrop-blur-sm rounded-full text-white/60 hover:text-white transition-colors z-10"
+                  title="Tela cheia"
+                >
+                  <Maximize2 size={14} />
+                </button>
+              </>
             )}
           </div>
         </div>
