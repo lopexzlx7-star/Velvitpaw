@@ -84,6 +84,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [isSeeking, setIsSeeking] = useState(false);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState(1);
+  const [seekFlash, setSeekFlash] = useState<'left' | 'right' | null>(null);
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -111,6 +112,42 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaContainerRef = useRef<HTMLDivElement>(null);
   const playPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number } | null>(null);
+  const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerSeek = (side: 'left' | 'right') => {
+    const video = videoRef.current;
+    if (!video) return;
+    const delta = side === 'right' ? 10 : -10;
+    video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + delta));
+    // Show flash feedback
+    if (seekFlashTimer.current) clearTimeout(seekFlashTimer.current);
+    setSeekFlash(side);
+    seekFlashTimer.current = setTimeout(() => setSeekFlash(null), 700);
+  };
+
+  const handleVideoDoubleClick = (e: React.MouseEvent<HTMLVideoElement>) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const side = (e.clientX - rect.left) < rect.width / 2 ? 'left' : 'right';
+    triggerSeek(side);
+  };
+
+  const handleVideoTouchEnd = (e: React.TouchEvent<HTMLVideoElement>) => {
+    const touch = e.changedTouches[0];
+    const now = Date.now();
+    const last = lastTapRef.current;
+    if (last && now - last.time < 300 && Math.abs(touch.clientX - last.x) < 60) {
+      // Double tap detected
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const side = (touch.clientX - rect.left) < rect.width / 2 ? 'left' : 'right';
+      triggerSeek(side);
+      lastTapRef.current = null;
+    } else {
+      lastTapRef.current = { time: now, x: touch.clientX };
+    }
+  };
 
   const isVideo = isVideoType(item.type);
   const externalEmbed = isVideo && isExternalEmbedUrl(item.url);
@@ -394,6 +431,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     muted={isMuted}
                     playsInline
                     onClick={togglePlay}
+                    onDoubleClick={handleVideoDoubleClick}
+                    onTouchEnd={handleVideoTouchEnd}
                     style={{ cursor: 'pointer', display: 'block' }}
                   />
 
@@ -408,6 +447,26 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       >
                         <div className="w-16 h-16 flex items-center justify-center rounded-full" style={{ background: 'rgba(0,0,0,0.55)' }}>
                           {isPlaying ? <Pause size={26} className="text-white/90" fill="currentColor" /> : <Play size={26} className="text-white/90" fill="currentColor" />}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Double-tap seek flash overlay */}
+                  <AnimatePresence>
+                    {seekFlash && (
+                      <motion.div
+                        key={seekFlash}
+                        initial={{ opacity: 0.85 }}
+                        animate={{ opacity: 0.85 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.5 }}
+                        className={`absolute inset-y-0 pointer-events-none flex items-center justify-center ${seekFlash === 'left' ? 'left-0 w-2/5 rounded-l-[1.5rem]' : 'right-0 w-2/5 rounded-r-[1.5rem]'}`}
+                        style={{ background: 'rgba(0,0,0,0.35)' }}
+                      >
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-white text-2xl">{seekFlash === 'left' ? '⏪' : '⏩'}</span>
+                          <span className="text-white text-[11px] font-semibold">{seekFlash === 'left' ? '-10s' : '+10s'}</span>
                         </div>
                       </motion.div>
                     )}
