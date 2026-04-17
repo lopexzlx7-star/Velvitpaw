@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
   Maximize2, Square, Smartphone, Plus, Film, RotateCcw,
-  ChevronLeft, ChevronRight, Trash2
+  ChevronLeft, ChevronRight, Trash2, Link
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
@@ -134,6 +134,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [videoDraft, setVideoDraft] = useState<VideoDraft | null>(null);
   const [isLongVideo, setIsLongVideo] = useState(false);
   const [videoLinkUrl, setVideoLinkUrl] = useState('');
+  const [videoUrlOnlyMode, setVideoUrlOnlyMode] = useState(false);
+  const [pastedVideoUrl, setPastedVideoUrl] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [thumbnailSlow, setThumbnailSlow] = useState(false);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
@@ -154,7 +156,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const isMultiImage = images.length > 0;
   const isVideo = !!videoDraft;
-  const hasMedia = isMultiImage || isVideo;
+  const hasMedia = isMultiImage || isVideo || videoUrlOnlyMode;
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -181,6 +183,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setVideoDraft(null);
     setIsLongVideo(false);
     setVideoLinkUrl('');
+    setVideoUrlOnlyMode(false);
+    setPastedVideoUrl('');
     setThumbnailUrl(null);
     setThumbnailSlow(false);
     setThumbnailFailed(false);
@@ -462,15 +466,53 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         };
 
         await addDoc(collection(db, 'posts'), postData);
-      } else if (videoDraft) {
-        if (isLongVideo && !videoLinkUrl.trim()) {
+      } else if (videoUrlOnlyMode || videoDraft) {
+        // URL-only mode: user pasted a URL without uploading a file
+        if (videoUrlOnlyMode) {
+          if (!pastedVideoUrl.trim()) {
+            setError('Cole o link do vídeo para publicar.');
+            setIsSubmitting(false);
+            return;
+          }
+          const finalUrl = pastedVideoUrl.trim();
+          let hostedThumbnailUrl: string | null = null;
+          const postData: Record<string, unknown> = {
+            title: title.trim() || 'Sem título',
+            url: finalUrl,
+            type: 'video',
+            height: 600,
+            aspectRatio,
+            authorUid: auth.currentUser.uid,
+            authorName: localStorage.getItem('velvit_username') || 'User',
+            authorPhotoUrl: localStorage.getItem('velvit_profile_pic') || null,
+            createdAt: new Date().toISOString(),
+            likesCount: 0,
+            savesCount: 0,
+            viewsCount: 0,
+            duration: 0,
+            description: description.trim() || '',
+            hashtags: extractedHashtags,
+            thumbnailUrl: hostedThumbnailUrl,
+          };
+          await addDoc(collection(db, 'posts'), postData);
+          setIsSubmitting(false);
+          onSuccess?.();
+          handleClose();
+          return;
+        }
+
+        if (!videoDraft) { setIsSubmitting(false); return; }
+
+        // Use pasted link or upload the file
+        const useLink = videoLinkUrl.trim();
+        if (isLongVideo && !useLink) {
           setError('Cole o link direto do vídeo para publicar.');
           setIsSubmitting(false);
           return;
         }
 
-        const finalUrl = isLongVideo
-          ? videoLinkUrl.trim()
+        const finalUrl = useLink
+          ? useLink
           : await uploadVideo(videoDraft.file);
 
         let hostedThumbnailUrl: string | null = null;
@@ -569,24 +611,77 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           )}
 
           {/* Media area */}
-          {!hasMedia ? (
-            <label className="block cursor-pointer">
-              <div className="border-2 border-dashed border-white/10 rounded-3xl p-10 text-center hover:border-white/20 transition-all group">
-                <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4 group-hover:bg-white/10 transition-colors">
-                  <ImageIcon size={28} className="text-white/30" />
+          {!hasMedia && !videoUrlOnlyMode ? (
+            <div className="space-y-3">
+              <label className="block cursor-pointer">
+                <div className="border-2 border-dashed border-white/10 rounded-3xl p-10 text-center hover:border-white/20 transition-all group">
+                  <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4 group-hover:bg-white/10 transition-colors">
+                    <ImageIcon size={28} className="text-white/30" />
+                  </div>
+                  <p className="text-white/40 text-sm font-medium mb-1">Clique para selecionar</p>
+                  <p className="text-white/20 text-xs">Imagens ou Vídeos</p>
                 </div>
-                <p className="text-white/40 text-sm font-medium mb-1">Clique para selecionar</p>
-                <p className="text-white/20 text-xs">Imagens ou Vídeos</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+              </label>
+              {/* Alternative: paste a video URL */}
+              <button
+                onClick={() => setVideoUrlOnlyMode(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all text-white/40 hover:text-white/70 text-xs"
+              >
+                <Link size={13} />
+                Colar URL de vídeo
+              </button>
+            </div>
+          ) : !hasMedia && videoUrlOnlyMode ? (
+            /* ── URL-only video mode ── */
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-white/60">
+                    <Link size={14} />
+                    <span className="text-sm font-medium">URL do Vídeo</span>
+                  </div>
+                  <button onClick={() => { setVideoUrlOnlyMode(false); setPastedVideoUrl(''); }} className="text-white/30 hover:text-white/60 transition-colors">
+                    <X size={14} />
+                  </button>
+                </div>
+                <input
+                  type="url"
+                  placeholder="https://... (YouTube, Drive, .mp4, etc.)"
+                  value={pastedVideoUrl}
+                  onChange={(e) => setPastedVideoUrl(e.target.value)}
+                  className="w-full h-12 bg-black/20 border border-white/10 rounded-xl px-4 text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-all text-sm"
+                  autoFocus
+                />
+                <p className="text-[11px] text-amber-400/60 flex items-center gap-1.5">
+                  <Film size={11} />
+                  Vídeos com mais de 2 minutos devem ser publicados via URL para economizar armazenamento.
+                </p>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                multiple
-                className="hidden"
-                onChange={handleFileChange}
-              />
-            </label>
+              {/* Aspect ratio for URL videos */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] uppercase tracking-widest text-white/30 mr-1">Formato</span>
+                {([
+                  { ar: 'portrait' as AspectRatio, icon: <Smartphone size={14} />, label: '9:16' },
+                  { ar: 'square' as AspectRatio, icon: <Square size={14} />, label: '1:1' },
+                  { ar: 'landscape' as AspectRatio, icon: <Film size={14} />, label: '4:3' },
+                  { ar: 'wide' as AspectRatio, icon: <Maximize2 size={14} />, label: '16:9' },
+                ]).map(({ ar, icon, label }) => (
+                  <button key={ar} onClick={() => setAspectRatio(ar)}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${aspectRatio === ar ? 'bg-white text-black' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}>
+                    {icon}
+                    <span className="text-[8px] font-bold">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : isValidating ? (
             <div className="flex items-center justify-center gap-3 py-16 text-white/50">
               <Loader2 className="animate-spin" size={20} />
@@ -739,24 +834,24 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                 )}
               </div>
 
-              {/* Long video: URL input */}
-              {isLongVideo && (
-                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
-                  <div className="flex items-start gap-2.5">
-                    <Film size={15} className="text-amber-400 shrink-0 mt-0.5" />
-                    <p className="text-[12px] text-amber-300/80 leading-snug">
-                      Vídeo com mais de 2 minutos. Cole o link direto do vídeo (YouTube, Drive, link .mp4, etc.) para publicar sem usar armazenamento em nuvem.
-                    </p>
-                  </div>
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    value={videoLinkUrl}
-                    onChange={(e) => setVideoLinkUrl(e.target.value)}
-                    className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-white/20 focus:outline-none focus:border-amber-400/50 transition-all text-sm"
-                  />
+              {/* Video URL input — always visible, required for long videos */}
+              <div className={`rounded-2xl p-4 space-y-2.5 ${isLongVideo ? 'border border-amber-500/30 bg-amber-500/5' : 'border border-white/8 bg-white/3'}`}>
+                <div className="flex items-start gap-2">
+                  <Link size={13} className={`shrink-0 mt-0.5 ${isLongVideo ? 'text-amber-400' : 'text-white/30'}`} />
+                  <p className={`text-[11px] leading-snug ${isLongVideo ? 'text-amber-300/80' : 'text-white/30'}`}>
+                    {isLongVideo
+                      ? 'Vídeo com mais de 2 minutos — cole o link abaixo (YouTube, Drive, .mp4) para publicar sem usar armazenamento.'
+                      : 'Opcional: cole uma URL direta para usar em vez do upload do arquivo.'}
+                  </p>
                 </div>
-              )}
+                <input
+                  type="url"
+                  placeholder="https://... (YouTube, Drive, link .mp4, etc.)"
+                  value={videoLinkUrl}
+                  onChange={(e) => setVideoLinkUrl(e.target.value)}
+                  className={`w-full h-11 bg-white/5 border rounded-xl px-4 text-white placeholder-white/20 focus:outline-none transition-all text-sm ${isLongVideo ? 'border-amber-400/30 focus:border-amber-400/60' : 'border-white/10 focus:border-white/25'}`}
+                />
+              </div>
 
               {/* Video aspect ratio selector */}
               <div className="flex items-center gap-2 flex-wrap">

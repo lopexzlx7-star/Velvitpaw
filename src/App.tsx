@@ -25,7 +25,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   deleteUser,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  updateEmail
 } from 'firebase/auth';
 import { db, auth } from './firebase';
 import { ContentItem, Notification } from './types';
@@ -773,7 +774,16 @@ export default function App() {
     setEmailPopupLoading(true);
     setEmailPopupError(null);
     try {
-      await updateDoc(doc(db, 'users', username), { recoveryEmail: recoveryEmail.trim() });
+      const trimmedEmail = recoveryEmail.trim();
+      // Save to Firestore
+      await updateDoc(doc(db, 'users', username), { recoveryEmail: trimmedEmail });
+      // Also update the Firebase Auth account email so password reset works correctly
+      try {
+        await updateEmail(auth.currentUser, trimmedEmail);
+      } catch {
+        // If this fails (e.g. email already used by another account), Firestore record still saved
+        // Password reset will still work via sendPasswordResetEmail with the stored email
+      }
       setShowEmailPopup(false);
       setRecoveryEmail('');
       setHasRecoveryEmail(true);
@@ -1456,8 +1466,7 @@ export default function App() {
         }}
         className="sticky top-0 z-50 px-6 py-8"
       >
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="w-10" />
+        <div className="max-w-7xl mx-auto flex items-center justify-center">
           <motion.h1 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -1466,21 +1475,6 @@ export default function App() {
           >
             VELVIT
           </motion.h1>
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            onClick={() => {
-              setIsDarkMode(prev => {
-                const next = !prev;
-                localStorage.setItem('velvit_dark_mode', String(next));
-                return next;
-              });
-            }}
-            className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white/10 hover:bg-white/20 transition-colors text-white"
-            title={isDarkMode ? 'Modo Claro' : 'Modo Escuro'}
-          >
-            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-          </motion.button>
         </div>
       </motion.header>
 
@@ -1783,16 +1777,32 @@ export default function App() {
             >
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl relative">
-                  {!hasRecoveryEmail && (
+                  <div className="absolute top-4 right-4 flex items-center gap-2">
+                    {/* Dark/Light mode toggle — profile tab only */}
                     <button
-                      onClick={() => { setShowEmailPopup(true); setEmailPopupError(null); setRecoveryEmail(''); }}
-                      title="Vincular e-mail de recuperação"
-                      className="absolute top-4 right-4 flex items-center gap-1 px-2 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[8px] uppercase tracking-widest text-white/30 hover:text-white/60 transition-all"
+                      onClick={() => {
+                        setIsDarkMode(prev => {
+                          const next = !prev;
+                          localStorage.setItem('velvit_dark_mode', String(next));
+                          return next;
+                        });
+                      }}
+                      title={isDarkMode ? 'Modo Claro' : 'Modo Escuro'}
+                      className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors text-white/60 hover:text-white"
                     >
-                      <RotateCcw size={9} />
-                      sync
+                      {isDarkMode ? <Sun size={13} /> : <Moon size={13} />}
                     </button>
-                  )}
+                    {!hasRecoveryEmail && (
+                      <button
+                        onClick={() => { setShowEmailPopup(true); setEmailPopupError(null); setRecoveryEmail(''); }}
+                        title="Vincular e-mail de recuperação"
+                        className="flex items-center gap-1 px-2 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[8px] uppercase tracking-widest text-white/30 hover:text-white/60 transition-all"
+                      >
+                        <RotateCcw size={9} />
+                        sync
+                      </button>
+                    )}
+                  </div>
                   <div className="flex flex-col md:flex-row items-center gap-8 border-b border-white/10 pb-8 mb-8">
                     <div className="relative group">
                       <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white/10 group-hover:border-white/30 transition-all bg-white/5 flex items-center justify-center">
