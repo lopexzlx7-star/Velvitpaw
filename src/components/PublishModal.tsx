@@ -156,6 +156,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const isMultiImage = images.length > 0;
   const isVideo = !!videoDraft;
   const hasMedia = isMultiImage || isVideo;
+  const isUrlOnlyMode = !hasMedia && videoLinkUrl.trim() !== '';
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -281,6 +282,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       const roundedDur = Math.round(dur);
       setIsLongVideo(roundedDur > LONG_VIDEO_THRESHOLD);
       setVideoLinkUrl('');
+      setVideoLinkPreview('idle');
 
       // Auto-detect orientation from video dimensions
       if (vw && vh) {
@@ -421,7 +423,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const submitPost = async () => {
     if (!auth.currentUser) return;
-    if (!hasMedia) { setError('Selecione uma imagem ou vídeo.'); return; }
+    if (!hasMedia && !isUrlOnlyMode) { setError('Selecione uma imagem, vídeo ou cole uma URL.'); return; }
     cancelledRef.current = false;
     setIsSubmitting(true);
     setUploadProgress(0);
@@ -433,7 +435,27 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         new Set((description.match(/\B#(\w+)/g) || []).map(t => t.slice(1).toLowerCase()))
       );
 
-      if (isMultiImage) {
+      if (isUrlOnlyMode) {
+        /* ── URL-only video post ── */
+        const postData: Record<string, unknown> = {
+          title: title.trim() || 'Sem título',
+          url: videoLinkUrl.trim(),
+          type: 'video',
+          height: 600,
+          aspectRatio,
+          authorUid: auth.currentUser.uid,
+          authorName: localStorage.getItem('velvit_username') || 'User',
+          authorPhotoUrl: localStorage.getItem('velvit_profile_pic') || null,
+          createdAt: new Date().toISOString(),
+          likesCount: 0,
+          savesCount: 0,
+          viewsCount: 0,
+          duration: 0,
+          description: description.trim() || '',
+          hashtags: extractedHashtags,
+        };
+        await addDoc(collection(db, 'posts'), postData);
+      } else if (isMultiImage) {
         const imageUrls: string[] = [];
         for (let i = 0; i < images.length; i++) {
           if (cancelledRef.current) throw new Error('upload_aborted');
@@ -575,24 +597,92 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
           {/* Media area */}
           {!hasMedia ? (
-            /* ── File picker ── */
-            <label className="block cursor-pointer">
-              <div className="border-2 border-dashed border-white/10 rounded-3xl p-10 text-center hover:border-white/20 transition-all group">
-                <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4 group-hover:bg-white/10 transition-colors">
-                  <ImageIcon size={28} className="text-white/30" />
+            /* ── File picker + URL input ── */
+            <div className="space-y-3">
+              {/* URL video preview — shown when URL is typed */}
+              {isUrlOnlyMode && (
+                <div className="relative rounded-3xl overflow-hidden bg-black/50">
+                  <div className="relative w-full" style={{ height: '52vh' }}>
+                    {videoLinkPreview === 'loading' && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10">
+                        <Loader2 className="animate-spin text-white/50" size={22} />
+                        <span className="text-white/40 text-xs">Carregando preview...</span>
+                      </div>
+                    )}
+                    {videoLinkPreview === 'failed' && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 px-6">
+                        <Film size={36} className="text-white/20" />
+                        <p className="text-white/40 text-xs text-center leading-relaxed">
+                          Preview indisponível para esta URL.<br />O vídeo será publicado normalmente.
+                        </p>
+                      </div>
+                    )}
+                    <video
+                      key={videoLinkUrl}
+                      src={videoLinkUrl.trim()}
+                      className={`w-full h-full object-cover transition-opacity duration-300 ${videoLinkPreview === 'ready' ? 'opacity-100' : 'opacity-0'}`}
+                      muted playsInline loop autoPlay
+                      onCanPlay={() => setVideoLinkPreview('ready')}
+                      onError={() => setVideoLinkPreview('failed')}
+                    />
+                    <button
+                      onClick={() => { setVideoLinkUrl(''); setVideoLinkPreview('idle'); }}
+                      className="absolute top-3 right-3 p-2 bg-black/60 backdrop-blur-sm rounded-xl text-white/60 hover:text-white transition-colors z-10"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
-                <p className="text-white/40 text-sm font-medium mb-1">Clique para selecionar</p>
-                <p className="text-white/20 text-xs">Imagens ou Vídeos</p>
+              )}
+
+              {/* File picker — hidden when URL is entered */}
+              {!isUrlOnlyMode && (
+                <label className="block cursor-pointer">
+                  <div
+                    className="border-2 border-dashed rounded-3xl p-10 text-center hover:opacity-80 transition-all group"
+                    style={{ borderColor: 'rgba(var(--accent-rgb), 0.3)' }}
+                  >
+                    <div
+                      className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 transition-colors"
+                      style={{ background: 'rgba(var(--accent-rgb), 0.08)' }}
+                    >
+                      <ImageIcon size={28} style={{ color: 'rgba(var(--accent-rgb), 0.55)' }} />
+                    </div>
+                    <p className="text-white/60 text-sm font-medium mb-1">Clique para selecionar</p>
+                    <p className="text-white/35 text-xs">Imagens ou Vídeos</p>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                </label>
+              )}
+
+              {/* URL paste field — always visible */}
+              <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 hover:border-white/20 transition-colors">
+                <Link size={14} className="text-white/30 shrink-0" />
+                <input
+                  type="url"
+                  placeholder="Ou cole a URL de um vídeo (.mp4, YouTube, etc.)"
+                  value={videoLinkUrl}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setVideoLinkUrl(val);
+                    setVideoLinkPreview(val.trim() ? 'loading' : 'idle');
+                  }}
+                  className="flex-1 bg-transparent text-white placeholder-white/25 text-sm focus:outline-none"
+                />
+                {videoLinkUrl.trim() && (
+                  <button onClick={() => { setVideoLinkUrl(''); setVideoLinkPreview('idle'); }}>
+                    <X size={13} className="text-white/30 hover:text-white/60 transition-colors" />
+                  </button>
+                )}
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                multiple
-                className="hidden"
-                onChange={handleFileChange}
-              />
-            </label>
+            </div>
           ) : isValidating ? (
             <div className="flex items-center justify-center gap-3 py-16 text-white/50">
               <Loader2 className="animate-spin" size={20} />
@@ -828,7 +918,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           ) : null}
 
           {/* Title */}
-          {hasMedia && !isValidating && (
+          {(hasMedia || isUrlOnlyMode) && !isValidating && (
             <>
               <div>
                 <span className="text-[10px] uppercase tracking-widest text-white/30 mb-2 block">Título</span>
@@ -892,7 +982,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   >
                     <RotateCcw size={14} /> Escolher novamente
                   </button>
-                ) : !hasMedia ? (
+                ) : !hasMedia && !isUrlOnlyMode ? (
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:opacity-90 active:scale-95 transition-all accent-primary-btn"

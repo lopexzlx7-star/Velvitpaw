@@ -369,6 +369,19 @@ textarea:focus.accent-focus {
 }
 /* Blue accent in light mode keeps the existing blue — no override needed */
 
+/* ─── Accent-based text adaptation in dark mode ──────────────────────
+   When a non-white accent is active in dark mode, key muted texts gain
+   a subtle tint of the accent color so they feel more visible/themed.
+   We override the lowest-opacity white texts to use the accent color at
+   a similar opacity instead of near-invisible white.                  */
+
+[data-accent]:not([data-accent="default"]):not(.light-mode) .accent-muted-text {
+  color: rgba(var(--accent-rgb), 0.55) !important;
+}
+[data-accent]:not([data-accent="default"]):not(.light-mode) .accent-hint-text {
+  color: rgba(var(--accent-rgb), 0.35) !important;
+}
+
 /* ─── Mobile perf optimizations ──────────────────────────────────────
    On mobile, heavy backdrop-blur and animations are expensive.
    Reduce them on small screens. */
