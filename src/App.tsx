@@ -265,6 +265,19 @@ export default function App() {
     const saved = localStorage.getItem('velvit_dark_mode');
     return saved === null ? true : saved === 'true';
   });
+
+  type AccentColor = 'default' | 'green' | 'red' | 'blue' | 'orange';
+  const ACCENTS: { id: AccentColor; label: string; hex: string }[] = [
+    { id: 'default', label: 'Padrão',   hex: '#ffffff' },
+    { id: 'green',   label: 'Verde',    hex: '#22c55e' },
+    { id: 'red',     label: 'Vermelho', hex: '#ef4444' },
+    { id: 'blue',    label: 'Azul',     hex: '#3b82f6' },
+    { id: 'orange',  label: 'Laranja',  hex: '#f97316' },
+  ];
+  const [accentColor, setAccentColor] = useState<AccentColor>(() => {
+    return (localStorage.getItem('velvit_accent') as AccentColor) || 'default';
+  });
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const [likedIds, setLikedIds] = useState<string[]>(() => {
     const saved = localStorage.getItem('velvit_likes');
     return saved ? JSON.parse(saved) : [];
@@ -1429,7 +1442,10 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className={`min-h-screen relative pb-32${isDarkMode ? '' : ' light-mode'}`}>
+      <div
+        className={`min-h-screen relative pb-32${isDarkMode ? '' : ' light-mode'}`}
+        data-accent={accentColor === 'default' ? undefined : accentColor}
+      >
       <div className="fixed inset-0 z-[-2] bg-space-gray-900" />
       
       <AnimatePresence>
@@ -1778,7 +1794,7 @@ export default function App() {
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl relative">
                   <div className="absolute top-4 right-4 flex items-center gap-2">
-                    {/* Dark/Light mode toggle — profile tab only */}
+                    {/* Dark/Light mode toggle */}
                     <button
                       onClick={() => {
                         setIsDarkMode(prev => {
@@ -1792,16 +1808,56 @@ export default function App() {
                     >
                       {isDarkMode ? <Sun size={13} /> : <Moon size={13} />}
                     </button>
-                    {!hasRecoveryEmail && (
+
+                    {/* Accent color picker */}
+                    <div className="relative">
                       <button
-                        onClick={() => { setShowEmailPopup(true); setEmailPopupError(null); setRecoveryEmail(''); }}
-                        title="Vincular e-mail de recuperação"
-                        className="flex items-center gap-1 px-2 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[8px] uppercase tracking-widest text-white/30 hover:text-white/60 transition-all"
+                        onClick={() => setShowColorPicker(p => !p)}
+                        title="Cor do app"
+                        className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+                        style={{ outline: showColorPicker ? '2px solid rgba(255,255,255,0.3)' : 'none' }}
                       >
-                        <RotateCcw size={9} />
-                        sync
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-white/20"
+                          style={{
+                            background: accentColor === 'default'
+                              ? (isDarkMode ? '#ffffff' : '#0066ff')
+                              : ACCENTS.find(a => a.id === accentColor)?.hex
+                          }}
+                        />
                       </button>
-                    )}
+
+                      {/* Color swatches dropdown */}
+                      {showColorPicker && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setShowColorPicker(false)} />
+                          <div className="absolute right-0 top-9 z-50 flex flex-col gap-1.5 p-2.5 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/10 shadow-2xl">
+                          {ACCENTS.map(a => (
+                            <button
+                              key={a.id}
+                              onClick={() => {
+                                setAccentColor(a.id);
+                                localStorage.setItem('velvit_accent', a.id);
+                                setShowColorPicker(false);
+                              }}
+                              className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-white/10 transition-colors text-left"
+                            >
+                              <span
+                                className="w-4 h-4 rounded-full shrink-0 border border-white/20"
+                                style={{ background: a.id === 'default' ? (isDarkMode ? '#ffffff' : '#0066ff') : a.hex }}
+                              />
+                              <span className={`text-[11px] font-medium ${accentColor === a.id ? 'text-white' : 'text-white/50'}`}>
+                                {a.label}
+                              </span>
+                              {accentColor === a.id && (
+                                <CheckCircle2 size={11} className="text-white/60 ml-auto" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-col md:flex-row items-center gap-8 border-b border-white/10 pb-8 mb-8">
                     <div className="relative group">
@@ -1913,20 +1969,20 @@ export default function App() {
                       className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${profileTab === 'posts' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
                     >
                       Meus Posts ({userPosts.length})
-                      {profileTab === 'posts' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+                      {profileTab === 'posts' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white accent-line" />}
                     </button>
                     <button 
                       onClick={() => setProfileTab('liked')}
                       className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${profileTab === 'liked' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
                     >
                       Curtidos ({likedItems.length})
-                      {profileTab === 'liked' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />}
+                      {profileTab === 'liked' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white accent-line" />}
                     </button>
                   </div>
 
                   <div className="columns-2 sm:columns-3 gap-4">
                     {(profileTab === 'posts' ? userPosts : likedItems).map(post => (
-                      <GlassCard 
+                      <GlassCard
                         key={`profile-${post.id}`}
                         item={post}
                         isLiked={likedIds.includes(post.id)}
@@ -1938,6 +1994,19 @@ export default function App() {
                       />
                     ))}
                   </div>
+
+                  {/* Sync / recovery email — bottom of profile */}
+                  {!hasRecoveryEmail && (
+                    <div className="mt-8 pt-6 border-t border-white/5 flex justify-center">
+                      <button
+                        onClick={() => { setShowEmailPopup(true); setEmailPopupError(null); setRecoveryEmail(''); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[9px] uppercase tracking-widest text-white/30 hover:text-white/60 transition-all"
+                      >
+                        <RotateCcw size={9} />
+                        Vincular e-mail de recuperação
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>

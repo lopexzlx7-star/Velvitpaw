@@ -226,6 +226,75 @@
   background: #60a5fa;
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+   SECONDARY / ACCENT COLOR SYSTEM
+   Applied via data-accent="green|red|blue|orange" on the root wrapper.
+   Default (no attribute or "default") keeps the app's original colors.
+───────────────────────────────────────────────────────────────────── */
+
+/* Green */
+[data-accent="green"] .liquid-blob {
+  background: rgba(34,197,94,0.20) !important;
+  opacity: 0.28 !important;
+}
+[data-accent="green"] .glass-panel {
+  border-color: rgba(34,197,94,0.13) !important;
+}
+[data-accent="green"] .accent-line {
+  background: #22c55e !important;
+}
+
+/* Red */
+[data-accent="red"] .liquid-blob {
+  background: rgba(239,68,68,0.20) !important;
+  opacity: 0.24 !important;
+}
+[data-accent="red"] .glass-panel {
+  border-color: rgba(239,68,68,0.13) !important;
+}
+[data-accent="red"] .accent-line {
+  background: #ef4444 !important;
+}
+
+/* Blue */
+[data-accent="blue"] .liquid-blob {
+  background: rgba(59,130,246,0.22) !important;
+  opacity: 0.28 !important;
+}
+[data-accent="blue"] .glass-panel {
+  border-color: rgba(59,130,246,0.15) !important;
+}
+[data-accent="blue"] .accent-line {
+  background: #3b82f6 !important;
+}
+
+/* Orange */
+[data-accent="orange"] .liquid-blob {
+  background: rgba(249,115,22,0.20) !important;
+  opacity: 0.24 !important;
+}
+[data-accent="orange"] .glass-panel {
+  border-color: rgba(249,115,22,0.13) !important;
+}
+[data-accent="orange"] .accent-line {
+  background: #f97316 !important;
+}
+
+/* In light mode, accent colors override the blue blob override */
+.light-mode[data-accent="green"] .liquid-blob,
+.light-mode [data-accent="green"] .liquid-blob {
+  background: rgba(34,197,94,0.18) !important;
+}
+.light-mode[data-accent="red"] .liquid-blob,
+.light-mode [data-accent="red"] .liquid-blob {
+  background: rgba(239,68,68,0.18) !important;
+}
+.light-mode[data-accent="orange"] .liquid-blob,
+.light-mode [data-accent="orange"] .liquid-blob {
+  background: rgba(249,115,22,0.18) !important;
+}
+/* Blue accent in light mode keeps the existing blue — no override needed */
+
 /* ─── Mobile perf optimizations ──────────────────────────────────────
    On mobile, heavy backdrop-blur and animations are expensive.
    Reduce them on small screens. */
