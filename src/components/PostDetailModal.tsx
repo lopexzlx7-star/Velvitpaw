@@ -206,15 +206,55 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
   const handleSeekEnd = () => setIsSeeking(false);
 
+  // True if this is a landscape-format video (wide/landscape aspect ratio)
+  const isLandscapeVideo =
+    item.type === 'video' &&
+    (item.aspectRatio === 'wide' || item.aspectRatio === 'landscape');
+
+  // True when running on a mobile/touch device
+  const isMobile = () =>
+    /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    ('ontouchstart' in window && window.innerWidth < 1024);
+
+  // Unlock orientation whenever fullscreen is exited
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement) {
+        try { screen.orientation?.unlock?.(); } catch {}
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+    };
+  }, []);
+
   const handleFullscreen = (e: React.MouseEvent) => {
     e.stopPropagation();
     const container = mediaContainerRef.current;
     if (!container) return;
+
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
+      try { screen.orientation?.unlock?.(); } catch {}
     } else {
-      container.requestFullscreen().catch(() => {
-        // Fallback: try video element
+      // On iOS, use native video fullscreen (auto-rotates to landscape)
+      if (videoRef.current && (videoRef.current as any).webkitSupportsFullscreen) {
+        (videoRef.current as any).webkitEnterFullscreen();
+        return;
+      }
+
+      container.requestFullscreen().then(() => {
+        // On mobile + landscape video: rotate screen to landscape
+        if (isMobile() && isLandscapeVideo) {
+          try {
+            (screen.orientation as any)?.lock?.('landscape').catch?.(() => {});
+          } catch {}
+        }
+      }).catch(() => {
+        // Last-resort fallback for browsers without Fullscreen API
         if (videoRef.current) {
           (videoRef.current as any).webkitEnterFullscreen?.();
         }
