@@ -572,7 +572,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
-        className="bg-black/80 backdrop-blur-xl w-full max-w-xl overflow-hidden flex flex-col rounded-[2.5rem] border border-white/10 shadow-2xl max-h-[90vh]"
+        className="modal-dark bg-black/80 backdrop-blur-xl w-full max-w-xl overflow-hidden flex flex-col rounded-[2.5rem] border border-white/10 shadow-2xl max-h-[90vh]"
       >
         <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
           <div className="flex items-center gap-3">

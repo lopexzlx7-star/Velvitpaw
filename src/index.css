@@ -85,6 +85,11 @@
   --lm-neon-glow: rgba(0,204,255,0.35);
 }
 
+/* Global inherited text color in light mode */
+.light-mode {
+  color: var(--lm-text);
+}
+
 /* Body / fixed background */
 .light-mode body,
 .light-mode .bg-space-gray-900,
@@ -368,6 +373,60 @@ textarea:focus.accent-focus {
   background: rgba(249,115,22,0.18) !important;
 }
 /* Blue accent in light mode keeps the existing blue — no override needed */
+
+/* ─────────────────────────────────────────────────────────────────────
+   DARK-SURFACE MODAL — keep white text/bg inside PublishModal and any
+   other panel that has a dark background even in light mode.
+   Apply class "modal-dark" to the panel's outermost element.
+───────────────────────────────────────────────────────────────────── */
+.light-mode .modal-dark {
+  color: #ffffff;
+}
+
+/* Text utilities */
+.light-mode .modal-dark .text-white { color: #ffffff !important; }
+.light-mode .modal-dark .text-white\/90,
+.light-mode .modal-dark .text-white\/85,
+.light-mode .modal-dark .text-white\/80 { color: rgba(255,255,255,0.80) !important; }
+.light-mode .modal-dark .text-white\/70 { color: rgba(255,255,255,0.70) !important; }
+.light-mode .modal-dark .text-white\/60,
+.light-mode .modal-dark .text-white\/55 { color: rgba(255,255,255,0.60) !important; }
+.light-mode .modal-dark .text-white\/50 { color: rgba(255,255,255,0.50) !important; }
+.light-mode .modal-dark .text-white\/40,
+.light-mode .modal-dark .text-white\/35 { color: rgba(255,255,255,0.40) !important; }
+.light-mode .modal-dark .text-white\/30,
+.light-mode .modal-dark .text-white\/25 { color: rgba(255,255,255,0.30) !important; }
+.light-mode .modal-dark .text-white\/20 { color: rgba(255,255,255,0.20) !important; }
+.light-mode .modal-dark .text-white\/10 { color: rgba(255,255,255,0.10) !important; }
+
+/* Backgrounds */
+.light-mode .modal-dark .bg-white\/5  { background: rgba(255,255,255,0.05)  !important; }
+.light-mode .modal-dark .bg-white\/10 { background: rgba(255,255,255,0.10)  !important; }
+.light-mode .modal-dark .bg-white\/20 { background: rgba(255,255,255,0.15)  !important; }
+
+/* Borders */
+.light-mode .modal-dark .border-white\/5  { border-color: rgba(255,255,255,0.05)  !important; }
+.light-mode .modal-dark .border-white\/8  { border-color: rgba(255,255,255,0.08)  !important; }
+.light-mode .modal-dark .border-white\/10 { border-color: rgba(255,255,255,0.10)  !important; }
+.light-mode .modal-dark .border-white\/20 { border-color: rgba(255,255,255,0.18)  !important; }
+
+/* Inputs & textareas */
+.light-mode .modal-dark input,
+.light-mode .modal-dark textarea {
+  background:    rgba(255,255,255,0.05) !important;
+  border-color:  rgba(255,255,255,0.10) !important;
+  color:         #ffffff !important;
+}
+.light-mode .modal-dark input::placeholder,
+.light-mode .modal-dark textarea::placeholder {
+  color: rgba(255,255,255,0.25) !important;
+}
+
+/* Tab underlines in modal stay as accent */
+.light-mode .modal-dark .bg-white.h-0\.5,
+.light-mode .modal-dark [class*="bg-white"][class*="h-0"] {
+  background: var(--accent) !important;
+}
 
 /* ─── Accent-based text adaptation in dark mode ──────────────────────
    When a non-white accent is active in dark mode, key muted texts gain

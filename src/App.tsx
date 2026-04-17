@@ -1834,7 +1834,7 @@ export default function App() {
                       {showColorPicker && (
                         <>
                           <div className="fixed inset-0 z-40" onClick={() => setShowColorPicker(false)} />
-                          <div className="absolute right-0 top-9 z-50 flex flex-col gap-1.5 p-2.5 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/10 shadow-2xl">
+                          <div className="modal-dark absolute right-0 top-9 z-50 flex flex-col gap-1.5 p-2.5 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/10 shadow-2xl">
                           {ACCENTS.map(a => (
                             <button
                               key={a.id}
