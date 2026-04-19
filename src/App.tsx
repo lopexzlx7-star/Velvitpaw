@@ -1349,7 +1349,7 @@ export default function App() {
               disabled={loginLoading}
               className="w-full py-5 bg-white text-black font-black rounded-2xl hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 mt-4 uppercase tracking-widest text-xs accent-primary-btn"
             >
-              {authMode === 'register' ? 'Começar Jornada' : 'Entrar no App'}
+              {authMode === 'register' ? 'Cadastrar-se' : 'Entrar no App'}
             </button>
 
             <AnimatePresence>
