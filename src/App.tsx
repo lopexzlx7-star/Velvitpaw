@@ -315,6 +315,14 @@ export default function App() {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotSuccess, setForgotSuccess] = useState(false);
+  // reset flow: 'request' → user enters username | 'code' → user enters code + new pw | 'done'
+  const [resetStep, setResetStep] = useState<'request' | 'code' | 'done'>('request');
+  const [resetMaskedEmail, setResetMaskedEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [hasRecoveryEmail, setHasRecoveryEmail] = useState(false);
   
@@ -813,25 +821,64 @@ export default function App() {
     setForgotLoading(true);
     setForgotError(null);
     try {
-      const userDoc = await getDoc(doc(db, 'users', cleanName));
-      if (!userDoc.exists()) {
-        setForgotError('Usuário não encontrado.');
-        setForgotLoading(false);
+      const res = await fetch('/api/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanName }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setForgotError(data.error ?? 'Erro ao enviar e-mail. Tente novamente.');
         return;
       }
-      const data = userDoc.data();
-      const emailToReset = data.recoveryEmail || '';
-      if (!emailToReset) {
-        setForgotError('Este usuário não possui um e-mail de recuperação vinculado.');
-        setForgotLoading(false);
-        return;
-      }
-      await sendPasswordResetEmail(auth, emailToReset);
-      setForgotSuccess(true);
-    } catch (err: any) {
-      setForgotError('Erro ao enviar e-mail. Tente novamente.');
+      setResetMaskedEmail(data.maskedEmail ?? '');
+      setResetStep('code');
+      setResetCode('');
+      setResetNewPassword('');
+      setResetConfirmPassword('');
+      setResetError(null);
+    } catch {
+      setForgotError('Erro de conexão. Verifique sua internet e tente novamente.');
     } finally {
       setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetCode.trim() || resetCode.trim().length !== 6) {
+      setResetError('Digite o código de 6 dígitos recebido por e-mail.');
+      return;
+    }
+    if (!resetNewPassword || resetNewPassword.length < 6) {
+      setResetError('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setResetError('As senhas não coincidem.');
+      return;
+    }
+    setResetLoading(true);
+    setResetError(null);
+    try {
+      const res = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: forgotUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+          code: resetCode.trim(),
+          newPassword: resetNewPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResetError(data.error ?? 'Erro ao redefinir senha. Tente novamente.');
+        return;
+      }
+      setResetStep('done');
+    } catch {
+      setResetError('Erro de conexão. Verifique sua internet e tente novamente.');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -1375,16 +1422,33 @@ export default function App() {
                   className="overflow-hidden mt-2"
                 >
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+
+                    {/* Header */}
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase tracking-widest text-white/50 font-bold">Recuperar Senha</span>
-                      <button onClick={() => { setShowForgotPassword(false); setForgotError(null); setForgotSuccess(false); }} className="text-white/30 hover:text-white transition-colors"><X size={14} /></button>
+                      <span className="text-[10px] uppercase tracking-widest text-white/50 font-bold">
+                        {resetStep === 'request' && 'Recuperar Senha'}
+                        {resetStep === 'code' && 'Verificar Código'}
+                        {resetStep === 'done' && 'Senha Redefinida'}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setShowForgotPassword(false);
+                          setForgotError(null);
+                          setForgotSuccess(false);
+                          setResetStep('request');
+                          setResetCode('');
+                          setResetNewPassword('');
+                          setResetConfirmPassword('');
+                          setResetError(null);
+                        }}
+                        className="text-white/30 hover:text-white transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
-                    {forgotSuccess ? (
-                      <div className="flex items-center gap-2 text-green-400 text-xs">
-                        <CheckCircle2 size={14} />
-                        <span>E-mail enviado! Verifique sua caixa de entrada.</span>
-                      </div>
-                    ) : (
+
+                    {/* Step 1 — enter username */}
+                    {resetStep === 'request' && (
                       <>
                         <div>
                           <span className="text-[10px] uppercase tracking-widest text-white/30 mb-2 block">Seu nome de usuário</span>
@@ -1406,10 +1470,102 @@ export default function App() {
                           className="w-full py-3 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-xl text-[10px] uppercase tracking-widest font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
                         >
                           {forgotLoading ? <Loader2 size={14} className="animate-spin" /> : null}
-                          Enviar e-mail de recuperação
+                          {forgotLoading ? 'Enviando...' : 'Enviar Código por E-mail'}
                         </button>
                       </>
                     )}
+
+                    {/* Step 2 — enter code + new password */}
+                    {resetStep === 'code' && (
+                      <>
+                        <p className="text-white/50 text-xs leading-relaxed">
+                          Enviamos um código de 6 dígitos para <strong className="text-white/70">{resetMaskedEmail || 'seu e-mail de recuperação'}</strong>. Ele expira em 15 minutos.
+                        </p>
+                        <div>
+                          <span className="text-[10px] uppercase tracking-widest text-white/30 mb-2 block">Código de verificação</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            placeholder="000000"
+                            value={resetCode}
+                            onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white text-lg font-mono tracking-[0.4em] text-center focus:outline-none focus:border-white/30 transition-all"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase tracking-widest text-white/30 mb-2 block">Nova senha</span>
+                          <input
+                            type="password"
+                            placeholder="Mínimo 6 caracteres"
+                            value={resetNewPassword}
+                            onChange={(e) => setResetNewPassword(e.target.value)}
+                            className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase tracking-widest text-white/30 mb-2 block">Confirmar nova senha</span>
+                          <input
+                            type="password"
+                            placeholder="Repita a senha"
+                            value={resetConfirmPassword}
+                            onChange={(e) => setResetConfirmPassword(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleResetPassword(); }}
+                            className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all"
+                          />
+                        </div>
+                        {resetError && (
+                          <p className="text-red-400 text-xs flex items-center gap-1.5"><AlertCircle size={12} />{resetError}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => { setResetStep('request'); setResetError(null); }}
+                            className="py-3 px-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 rounded-xl text-[10px] uppercase tracking-widest font-bold transition-all"
+                          >
+                            Voltar
+                          </button>
+                          <button
+                            onClick={handleResetPassword}
+                            disabled={resetLoading}
+                            className="flex-1 py-3 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-xl text-[10px] uppercase tracking-widest font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                          >
+                            {resetLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                            {resetLoading ? 'Redefinindo...' : 'Redefinir Senha'}
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => { setResetStep('request'); setForgotError(null); }}
+                          className="w-full text-center text-[10px] text-white/25 hover:text-white/50 transition-colors"
+                        >
+                          Não recebeu o código? Solicitar novamente
+                        </button>
+                      </>
+                    )}
+
+                    {/* Step 3 — success */}
+                    {resetStep === 'done' && (
+                      <>
+                        <div className="flex items-center gap-2.5 text-green-400 text-sm py-2">
+                          <CheckCircle2 size={18} className="shrink-0" />
+                          <span>Senha redefinida com sucesso! Faça login com sua nova senha.</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowForgotPassword(false);
+                            setResetStep('request');
+                            setResetCode('');
+                            setResetNewPassword('');
+                            setResetConfirmPassword('');
+                            setResetError(null);
+                            setForgotError(null);
+                          }}
+                          className="w-full py-3 bg-white text-black rounded-xl text-[10px] uppercase tracking-widest font-black transition-all hover:opacity-90 accent-primary-btn"
+                        >
+                          Ir para Login
+                        </button>
+                      </>
+                    )}
+
                   </div>
                 </motion.div>
               )}

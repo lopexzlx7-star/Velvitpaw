@@ -7,6 +7,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import OpenAI from 'openai';
 import multer from 'multer';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { rateLimit } from 'express-rate-limit';
+import admin from 'firebase-admin';
 
 // ─── Cloudinary v2 client ─────────────────────────────────────────────────────
 import { v2 as cloudinaryV2 } from 'cloudinary';
@@ -84,6 +86,80 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   }
   next();
 });
+
+// ─── Firebase Admin ────────────────────────────────────────────────────────────
+const FIREBASE_PROJECT_ID = 'gen-lang-client-0766084456';
+const FIREBASE_FIRESTORE_DB = 'ai-studio-77ffd2cc-dfda-47fc-9d29-f9bbf07dfa46';
+const FIREBASE_CLIENT_EMAIL_ENV = process.env.FIREBASE_CLIENT_EMAIL ?? '';
+const FIREBASE_PRIVATE_KEY_ENV = (process.env.FIREBASE_PRIVATE_KEY ?? '').replace(/\\n/g, '\n');
+
+let adminDb: admin.firestore.Firestore | null = null;
+let adminAuth: admin.auth.Auth | null = null;
+
+if (FIREBASE_CLIENT_EMAIL_ENV && FIREBASE_PRIVATE_KEY_ENV) {
+  try {
+    const adminApp = admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: FIREBASE_PROJECT_ID,
+        clientEmail: FIREBASE_CLIENT_EMAIL_ENV,
+        privateKey: FIREBASE_PRIVATE_KEY_ENV,
+      }),
+      projectId: FIREBASE_PROJECT_ID,
+    });
+    adminDb = adminApp.firestore();
+    adminDb.settings({ databaseId: FIREBASE_FIRESTORE_DB });
+    adminAuth = adminApp.auth();
+    console.log('[OK] Firebase Admin pronto');
+  } catch (e: any) {
+    console.error('[ERRO] Firebase Admin:', e.message);
+  }
+} else {
+  console.warn('[AVISO] Firebase Admin não configurado — FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY ausentes.');
+}
+
+// ─── Mailgun ──────────────────────────────────────────────────────────────────
+const MAILGUN_API_KEY_ENV = process.env.MAILGUN_API_KEY ?? '';
+const MAILGUN_DOMAIN_ENV = process.env.MAILGUN_DOMAIN ?? '';
+const MAILGUN_API_BASE = process.env.MAILGUN_API_BASE ?? 'https://api.mailgun.net';
+
+async function sendMailgunEmail(to: string, subject: string, html: string): Promise<void> {
+  if (!MAILGUN_API_KEY_ENV || !MAILGUN_DOMAIN_ENV) throw new Error('Mailgun não configurado.');
+  const url = `${MAILGUN_API_BASE}/v3/${MAILGUN_DOMAIN_ENV}/messages`;
+  const body = new URLSearchParams({
+    from: `Velvit <noreply@${MAILGUN_DOMAIN_ENV}>`,
+    to,
+    subject,
+    html,
+  });
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`api:${MAILGUN_API_KEY_ENV}`).toString('base64')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Mailgun ${res.status}: ${text}`);
+  }
+}
+
+// ─── In-memory rate limiter ───────────────────────────────────────────────────
+interface RateBucket { count: number; resetAt: number; }
+const rateBuckets = new Map<string, RateBucket>();
+
+function isRateLimited(key: string, maxRequests: number, windowMs: number): boolean {
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || now > bucket.resetAt) {
+    rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  if (bucket.count >= maxRequests) return true;
+  bucket.count++;
+  return false;
+}
 
 // ─── Retry helper ─────────────────────────────────────────────────────────────
 async function withRetry<T>(
@@ -656,6 +732,172 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 // ─── Server bootstrap ─────────────────────────────────────────────────────────
 const server = app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
+});
+
+// ─── POST /api/forgot-password ────────────────────────────────────────────────
+// Rate limit: 3 requests per IP per 15 min
+app.post('/api/forgot-password', async (req: Request, res: Response) => {
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ?? req.socket?.remoteAddress ?? 'unknown';
+  if (isRateLimited(`forgot:${ip}`, 3, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.' });
+  }
+
+  const { username } = req.body as { username?: string };
+  if (!username || typeof username !== 'string') {
+    return res.status(400).json({ error: 'Nome de usuário obrigatório.' });
+  }
+  const cleanName = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  if (cleanName.length < 3) {
+    return res.status(400).json({ error: 'Nome de usuário inválido.' });
+  }
+
+  if (!adminDb || !adminAuth) {
+    return res.status(503).json({ error: 'Serviço de autenticação indisponível. Contate o suporte.' });
+  }
+
+  try {
+    const userSnap = await adminDb.collection('users').doc(cleanName).get();
+    if (!userSnap.exists) {
+      // Don't reveal whether user exists — return generic success
+      return res.json({ ok: true });
+    }
+    const userData = userSnap.data()!;
+    const recoveryEmail = (userData.recoveryEmail as string | undefined)?.trim();
+    if (!recoveryEmail) {
+      return res.status(400).json({ error: 'Este usuário não possui e-mail de recuperação vinculado. Faça login e adicione um e-mail nas configurações.' });
+    }
+
+    // Invalidate any previous unused tokens for this user
+    const oldTokens = await adminDb.collection('passwordResetTokens')
+      .where('username', '==', cleanName)
+      .where('used', '==', false)
+      .get();
+    const batch = adminDb.batch();
+    oldTokens.docs.forEach(d => batch.update(d.ref, { used: true }));
+    await batch.commit();
+
+    // Generate a 6-digit code (easy to type on mobile)
+    const code = crypto.randomInt(100000, 999999).toString();
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+
+    await adminDb.collection('passwordResetTokens').add({
+      username: cleanName,
+      uid: userData.uid as string,
+      code,
+      expiresAt,
+      attempts: 0,
+      used: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const maskedEmail = recoveryEmail.replace(/(.{2}).+(@.+)/, '$1***$2');
+
+    await sendMailgunEmail(
+      recoveryEmail,
+      'Recuperação de senha — Velvit',
+      `<!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+        <div style="max-width:480px;margin:40px auto;padding:40px 32px;background:#111;border-radius:20px;border:1px solid #222">
+          <p style="margin:0 0 4px;font-size:11px;letter-spacing:3px;color:#555;text-transform:uppercase">Velvit</p>
+          <h1 style="margin:0 0 32px;font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px">Recuperação<br>de Senha</h1>
+          <p style="margin:0 0 8px;font-size:14px;color:#888">Olá <strong style="color:#ddd">@${cleanName}</strong>, seu código de verificação é:</p>
+          <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:16px;padding:28px 24px;text-align:center;margin:20px 0 28px">
+            <span style="font-size:44px;font-weight:900;letter-spacing:10px;color:#fff;font-family:'Courier New',monospace">${code}</span>
+          </div>
+          <p style="margin:0 0 6px;font-size:13px;color:#555">⏱ Expira em <strong style="color:#888">15 minutos</strong></p>
+          <p style="margin:0;font-size:12px;color:#444">Se você não solicitou esta recuperação, ignore este e-mail. Sua senha permanece a mesma.</p>
+          <div style="margin-top:32px;padding-top:20px;border-top:1px solid #1e1e1e">
+            <p style="margin:0;font-size:11px;color:#333">Enviado para ${maskedEmail}</p>
+          </div>
+        </div>
+      </body>
+      </html>`
+    );
+
+    console.log(`[forgot-password] Código enviado para @${cleanName} (${maskedEmail})`);
+    return res.json({ ok: true, maskedEmail });
+  } catch (err: any) {
+    console.error('[forgot-password]', err.message);
+    return res.status(500).json({ error: 'Erro ao enviar e-mail. Verifique sua conexão e tente novamente.' });
+  }
+});
+
+// ─── POST /api/reset-password ─────────────────────────────────────────────────
+// Rate limit: 10 attempts per IP per 15 min (brute force protection)
+app.post('/api/reset-password', async (req: Request, res: Response) => {
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ?? req.socket?.remoteAddress ?? 'unknown';
+  if (isRateLimited(`reset:${ip}`, 10, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos.' });
+  }
+
+  const { username, code, newPassword } = req.body as {
+    username?: string;
+    code?: string;
+    newPassword?: string;
+  };
+
+  if (!username || !code || !newPassword) {
+    return res.status(400).json({ error: 'Dados incompletos.' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres.' });
+  }
+
+  if (!adminDb || !adminAuth) {
+    return res.status(503).json({ error: 'Serviço de autenticação indisponível.' });
+  }
+
+  const cleanName = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  const cleanCode = code.trim();
+
+  try {
+    const now = Date.now();
+    const tokensSnap = await adminDb.collection('passwordResetTokens')
+      .where('username', '==', cleanName)
+      .where('used', '==', false)
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .get();
+
+    if (tokensSnap.empty) {
+      return res.status(400).json({ error: 'Código inválido ou expirado. Solicite um novo.' });
+    }
+
+    const tokenDoc = tokensSnap.docs[0];
+    const tokenData = tokenDoc.data();
+
+    // Check expiry
+    if (now > tokenData.expiresAt) {
+      await tokenDoc.ref.update({ used: true });
+      return res.status(400).json({ error: 'Código expirado. Solicite um novo código.' });
+    }
+
+    // Check too many attempts on this token
+    if ((tokenData.attempts as number) >= 5) {
+      await tokenDoc.ref.update({ used: true });
+      return res.status(400).json({ error: 'Código bloqueado por muitas tentativas incorretas. Solicite um novo.' });
+    }
+
+    // Validate code
+    if (tokenData.code !== cleanCode) {
+      await tokenDoc.ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
+      const remaining = 4 - (tokenData.attempts as number);
+      return res.status(400).json({ error: `Código incorreto. ${remaining} tentativa(s) restante(s).` });
+    }
+
+    // Update password via Firebase Admin
+    await adminAuth.updateUser(tokenData.uid as string, { password: newPassword });
+
+    // Mark token as used
+    await tokenDoc.ref.update({ used: true });
+
+    console.log(`[reset-password] Senha atualizada com sucesso para @${cleanName}`);
+    return res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[reset-password]', err.message);
+    return res.status(500).json({ error: 'Erro interno ao redefinir senha. Tente novamente.' });
+  }
 });
 
 server.timeout = SERVER_TIMEOUT_MS;
