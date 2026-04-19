@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, Sun, Moon } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { 
   doc, 
@@ -261,10 +261,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem('velvit_dark_mode');
-    return saved === null ? true : saved === 'true';
-  });
+  const isDarkMode = true;
 
   type AccentColor = 'default' | 'green' | 'red' | 'blue' | 'orange';
   const ACCENTS: { id: AccentColor; label: string; hex: string }[] = [
@@ -1253,7 +1250,7 @@ export default function App() {
   if (!isLoggedIn) {
     return (
       <div
-        className={`min-h-screen flex items-center justify-center p-6 bg-space-gray-900 relative overflow-hidden${isDarkMode ? '' : ' light-mode'}`}
+        className="min-h-screen flex items-center justify-center p-6 bg-space-gray-900 relative overflow-hidden"
         data-accent={accentColor === 'default' ? undefined : accentColor}
       >
         <motion.div 
@@ -1446,7 +1443,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div
-        className={`min-h-screen relative pb-32${isDarkMode ? '' : ' light-mode'}`}
+        className="min-h-screen relative pb-32"
         data-accent={accentColor === 'default' ? undefined : accentColor}
       >
       <div className="fixed inset-0 z-[-2] bg-space-gray-900" />
@@ -1797,21 +1794,6 @@ export default function App() {
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl relative">
                   <div className="absolute top-4 right-4 flex items-center gap-2">
-                    {/* Dark/Light mode toggle */}
-                    <button
-                      onClick={() => {
-                        setIsDarkMode(prev => {
-                          const next = !prev;
-                          localStorage.setItem('velvit_dark_mode', String(next));
-                          return next;
-                        });
-                      }}
-                      title={isDarkMode ? 'Modo Claro' : 'Modo Escuro'}
-                      className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors text-white/60 hover:text-white"
-                    >
-                      {isDarkMode ? <Sun size={13} /> : <Moon size={13} />}
-                    </button>
-
                     {/* Accent color picker */}
                     <div className="relative">
                       <button
@@ -1824,7 +1806,7 @@ export default function App() {
                           className="w-3.5 h-3.5 rounded-full border border-white/20"
                           style={{
                             background: accentColor === 'default'
-                              ? (isDarkMode ? '#ffffff' : '#0066ff')
+                              ? '#ffffff'
                               : ACCENTS.find(a => a.id === accentColor)?.hex
                           }}
                         />
@@ -1847,7 +1829,7 @@ export default function App() {
                             >
                               <span
                                 className="w-4 h-4 rounded-full shrink-0 border border-white/20"
-                                style={{ background: a.id === 'default' ? (isDarkMode ? '#ffffff' : '#0066ff') : a.hex }}
+                                style={{ background: a.id === 'default' ? '#ffffff' : a.hex }}
                               />
                               <span className={`text-[11px] font-medium ${accentColor === a.id ? 'text-white' : 'text-white/50'}`}>
                                 {a.label}

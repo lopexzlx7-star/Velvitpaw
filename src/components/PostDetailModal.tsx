@@ -164,11 +164,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
   const getMediaStyle = (): React.CSSProperties => {
     const ar = item.aspectRatio;
-    if (isVideo || ar === 'portrait' || !ar) return { aspectRatio: '9/16', maxHeight: '65vh' };
-    if (ar === 'wide') return { aspectRatio: '16/9' };
-    if (ar === 'landscape') return { aspectRatio: '4/3' };
-    if (ar === 'square') return { aspectRatio: '1/1' };
-    return { maxHeight: '55vh' };
+    if (ar === 'wide') return { aspectRatio: '16/9', maxHeight: '80vh' };
+    if (ar === 'landscape') return { aspectRatio: '4/3', maxHeight: '70vh' };
+    if (ar === 'square') return { aspectRatio: '1/1', maxHeight: '70vh' };
+    return { aspectRatio: '9/16', maxHeight: '65vh' };
   };
 
   useEffect(() => {

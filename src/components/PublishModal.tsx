@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
   Maximize2, Square, Smartphone, Plus, Film, RotateCcw,
-  ChevronLeft, ChevronRight, Trash2, Link
+  ChevronLeft, ChevronRight, Trash2
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
@@ -31,7 +31,6 @@ interface ImageItem {
 }
 
 const MAX_VIDEO_DURATION = 900; // 15 minutes
-const LONG_VIDEO_THRESHOLD = 120; // 2 minutes — use URL instead of upload
 const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
@@ -132,9 +131,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const [activeIdx, setActiveIdx] = useState(0);
 
   const [videoDraft, setVideoDraft] = useState<VideoDraft | null>(null);
-  const [isLongVideo, setIsLongVideo] = useState(false);
-  const [videoLinkUrl, setVideoLinkUrl] = useState('');
-  const [videoLinkPreview, setVideoLinkPreview] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [thumbnailSlow, setThumbnailSlow] = useState(false);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
@@ -156,7 +152,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const isMultiImage = images.length > 0;
   const isVideo = !!videoDraft;
   const hasMedia = isMultiImage || isVideo;
-  const isUrlOnlyMode = !hasMedia && videoLinkUrl.trim() !== '';
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
@@ -181,9 +176,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
     setImages([]);
     setActiveIdx(0);
     setVideoDraft(null);
-    setIsLongVideo(false);
-    setVideoLinkUrl('');
-    setVideoLinkPreview('idle');
     setThumbnailUrl(null);
     setThumbnailSlow(false);
     setThumbnailFailed(false);
@@ -280,9 +272,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       setIsValidating(false);
       setThumbnailUrl(null);
       const roundedDur = Math.round(dur);
-      setIsLongVideo(roundedDur > LONG_VIDEO_THRESHOLD);
-      setVideoLinkUrl('');
-      setVideoLinkPreview('idle');
 
       // Auto-detect orientation from video dimensions
       if (vw && vh) {
@@ -423,7 +412,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
   const submitPost = async () => {
     if (!auth.currentUser) return;
-    if (!hasMedia && !isUrlOnlyMode) { setError('Selecione uma imagem, vídeo ou cole uma URL.'); return; }
+    if (!hasMedia) { setError('Selecione uma imagem ou vídeo.'); return; }
     cancelledRef.current = false;
     setIsSubmitting(true);
     setUploadProgress(0);
@@ -435,27 +424,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
         new Set((description.match(/\B#(\w+)/g) || []).map(t => t.slice(1).toLowerCase()))
       );
 
-      if (isUrlOnlyMode) {
-        /* ── URL-only video post ── */
-        const postData: Record<string, unknown> = {
-          title: title.trim() || 'Sem título',
-          url: videoLinkUrl.trim(),
-          type: 'video',
-          height: 600,
-          aspectRatio,
-          authorUid: auth.currentUser.uid,
-          authorName: localStorage.getItem('velvit_username') || 'User',
-          authorPhotoUrl: localStorage.getItem('velvit_profile_pic') || null,
-          createdAt: new Date().toISOString(),
-          likesCount: 0,
-          savesCount: 0,
-          viewsCount: 0,
-          duration: 0,
-          description: description.trim() || '',
-          hashtags: extractedHashtags,
-        };
-        await addDoc(collection(db, 'posts'), postData);
-      } else if (isMultiImage) {
+      if (isMultiImage) {
         const imageUrls: string[] = [];
         for (let i = 0; i < images.length; i++) {
           if (cancelledRef.current) throw new Error('upload_aborted');
@@ -489,16 +458,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
       } else if (videoDraft) {
         if (!videoDraft) { setIsSubmitting(false); return; }
 
-        const useLink = videoLinkUrl.trim();
-        if (isLongVideo && !useLink) {
-          setError('Cole o link direto do vídeo para publicar.');
-          setIsSubmitting(false);
-          return;
-        }
-
-        const finalUrl = useLink
-          ? useLink
-          : await uploadVideo(videoDraft.file);
+        const finalUrl = await uploadVideo(videoDraft.file);
 
         let hostedThumbnailUrl: string | null = null;
         if (thumbnailUrl) {
@@ -597,92 +557,30 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
           {/* Media area */}
           {!hasMedia ? (
-            /* ── File picker + URL input ── */
-            <div className="space-y-3">
-              {/* URL video preview — shown when URL is typed */}
-              {isUrlOnlyMode && (
-                <div className="relative rounded-3xl overflow-hidden bg-black/50">
-                  <div className="relative w-full" style={{ height: '52vh' }}>
-                    {videoLinkPreview === 'loading' && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10">
-                        <Loader2 className="animate-spin text-white/50" size={22} />
-                        <span className="text-white/40 text-xs">Carregando preview...</span>
-                      </div>
-                    )}
-                    {videoLinkPreview === 'failed' && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 px-6">
-                        <Film size={36} className="text-white/20" />
-                        <p className="text-white/40 text-xs text-center leading-relaxed">
-                          Preview indisponível para esta URL.<br />O vídeo será publicado normalmente.
-                        </p>
-                      </div>
-                    )}
-                    <video
-                      key={videoLinkUrl}
-                      src={videoLinkUrl.trim()}
-                      className={`w-full h-full object-cover transition-opacity duration-300 ${videoLinkPreview === 'ready' ? 'opacity-100' : 'opacity-0'}`}
-                      muted playsInline loop autoPlay
-                      onCanPlay={() => setVideoLinkPreview('ready')}
-                      onError={() => setVideoLinkPreview('failed')}
-                    />
-                    <button
-                      onClick={() => { setVideoLinkUrl(''); setVideoLinkPreview('idle'); }}
-                      className="absolute top-3 right-3 p-2 bg-black/60 backdrop-blur-sm rounded-xl text-white/60 hover:text-white transition-colors z-10"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
+            /* ── File picker ── */
+            <label className="block cursor-pointer">
+              <div
+                className="border-2 border-dashed rounded-3xl p-10 text-center hover:opacity-80 transition-all group"
+                style={{ borderColor: 'rgba(var(--accent-rgb), 0.3)' }}
+              >
+                <div
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 transition-colors"
+                  style={{ background: 'rgba(var(--accent-rgb), 0.08)' }}
+                >
+                  <ImageIcon size={28} style={{ color: 'rgba(var(--accent-rgb), 0.55)' }} />
                 </div>
-              )}
-
-              {/* File picker — hidden when URL is entered */}
-              {!isUrlOnlyMode && (
-                <label className="block cursor-pointer">
-                  <div
-                    className="border-2 border-dashed rounded-3xl p-10 text-center hover:opacity-80 transition-all group"
-                    style={{ borderColor: 'rgba(var(--accent-rgb), 0.3)' }}
-                  >
-                    <div
-                      className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 transition-colors"
-                      style={{ background: 'rgba(var(--accent-rgb), 0.08)' }}
-                    >
-                      <ImageIcon size={28} style={{ color: 'rgba(var(--accent-rgb), 0.55)' }} />
-                    </div>
-                    <p className="text-white/60 text-sm font-medium mb-1">Clique para selecionar</p>
-                    <p className="text-white/35 text-xs">Imagens ou Vídeos</p>
-                  </div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,video/*"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileChange}
-                  />
-                </label>
-              )}
-
-              {/* URL paste field — always visible */}
-              <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 hover:border-white/20 transition-colors">
-                <Link size={14} className="text-white/30 shrink-0" />
-                <input
-                  type="url"
-                  placeholder="Ou cole a URL de um vídeo (.mp4, YouTube, etc.)"
-                  value={videoLinkUrl}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setVideoLinkUrl(val);
-                    setVideoLinkPreview(val.trim() ? 'loading' : 'idle');
-                  }}
-                  className="flex-1 bg-transparent text-white placeholder-white/25 text-sm focus:outline-none"
-                />
-                {videoLinkUrl.trim() && (
-                  <button onClick={() => { setVideoLinkUrl(''); setVideoLinkPreview('idle'); }}>
-                    <X size={13} className="text-white/30 hover:text-white/60 transition-colors" />
-                  </button>
-                )}
+                <p className="text-white/60 text-sm font-medium mb-1">Clique para selecionar</p>
+                <p className="text-white/35 text-xs">Imagens ou Vídeos</p>
               </div>
-            </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </label>
           ) : isValidating ? (
             <div className="flex items-center justify-center gap-3 py-16 text-white/50">
               <Loader2 className="animate-spin" size={20} />
@@ -808,58 +706,26 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
             /* ── Video preview ── */
             <div className="space-y-4">
               <div className="relative rounded-3xl overflow-hidden bg-black/40">
-                {/* Height: full preview normally; reduced if long video with no URL yet */}
                 <div className="relative w-full" style={{
-                  height: (isLongVideo && !videoLinkUrl.trim())
-                    ? '22vh'
-                    : (aspectRatio === 'wide' || aspectRatio === 'landscape') ? '35vh'
+                  height: (aspectRatio === 'wide' || aspectRatio === 'landscape') ? '35vh'
                     : aspectRatio === 'square' ? '45vh'
                     : '55vh'
                 }}>
-                  {/* When URL is pasted for long video, switch to URL preview */}
-                  {isLongVideo && videoLinkUrl.trim() ? (
-                    <>
-                      {videoLinkPreview === 'loading' && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10 bg-black/60">
-                          <Loader2 className="animate-spin text-white/50" size={22} />
-                          <span className="text-white/30 text-xs">Carregando preview da URL...</span>
-                        </div>
-                      )}
-                      {videoLinkPreview === 'failed' && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10 bg-black/60 px-6">
-                          <Film size={32} className="text-white/20" />
-                          <p className="text-white/30 text-[11px] text-center leading-relaxed">
-                            Preview da URL indisponível.<br />O vídeo será publicado normalmente.
-                          </p>
-                        </div>
-                      )}
-                      <video
-                        key={videoLinkUrl}
-                        src={videoLinkUrl.trim()}
-                        poster={thumbnailUrl || undefined}
-                        className={`w-full h-full object-cover transition-opacity duration-300 ${videoLinkPreview === 'ready' ? 'opacity-100' : 'opacity-0'}`}
-                        muted playsInline loop autoPlay
-                        onCanPlay={() => setVideoLinkPreview('ready')}
-                        onError={() => setVideoLinkPreview('failed')}
-                      />
-                    </>
-                  ) : (
-                    <video
-                      src={videoDraft.mediaUrl}
-                      poster={thumbnailUrl || undefined}
-                      className="w-full h-full object-cover"
-                      style={{ objectFit: 'cover' }}
-                      muted playsInline loop autoPlay
-                    />
-                  )}
+                  <video
+                    src={videoDraft.mediaUrl}
+                    poster={thumbnailUrl || undefined}
+                    className="w-full h-full object-cover"
+                    style={{ objectFit: 'cover' }}
+                    muted playsInline loop autoPlay
+                  />
                 </div>
                 <button
-                  onClick={() => { setVideoDraft(null); setIsLongVideo(false); setVideoLinkUrl(''); setVideoLinkPreview('idle'); setThumbnailUrl(null); if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; } }}
+                  onClick={() => { setVideoDraft(null); setThumbnailUrl(null); if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; } }}
                   className="absolute top-3 right-3 p-2.5 bg-black/60 backdrop-blur-sm rounded-2xl text-white hover:bg-red-500 transition-colors"
                 >
                   <X size={16} />
                 </button>
-                {(thumbnailSlow || thumbnailFailed) && !isLongVideo && (
+                {(thumbnailSlow || thumbnailFailed) && (
                   <div className="absolute top-3 left-3 px-3 py-1.5 bg-black/60 rounded-xl text-[10px] text-white/50">
                     {thumbnailFailed ? 'Preview não disponível. O vídeo será publicado normalmente.' : 'Gerando preview...'}
                   </div>
@@ -870,30 +736,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   </div>
                 )}
               </div>
-
-              {/* URL input — ONLY for long videos (> 2 min) */}
-              {isLongVideo && (
-                <div className="rounded-2xl p-4 space-y-2.5 border border-amber-500/30 bg-amber-500/5">
-                  <div className="flex items-start gap-2">
-                    <Link size={13} className="shrink-0 mt-0.5 text-amber-400" />
-                    <p className="text-[11px] leading-snug text-amber-300/80">
-                      Vídeo com mais de 2 minutos — cole o link direto abaixo (.mp4, YouTube, Drive) para publicar sem usar armazenamento.
-                    </p>
-                  </div>
-                  <input
-                    type="url"
-                    placeholder="https://... (link .mp4, YouTube, Drive, etc.)"
-                    value={videoLinkUrl}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setVideoLinkUrl(val);
-                      if (val.trim()) setVideoLinkPreview('loading');
-                      else setVideoLinkPreview('idle');
-                    }}
-                    className="w-full h-11 bg-white/5 border border-amber-400/30 focus:border-amber-400/60 rounded-xl px-4 text-white placeholder-white/20 focus:outline-none transition-all text-sm"
-                  />
-                </div>
-              )}
 
               {/* Video aspect ratio selector */}
               <div className="flex items-center gap-2 flex-wrap">
@@ -918,7 +760,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           ) : null}
 
           {/* Title */}
-          {(hasMedia || isUrlOnlyMode) && !isValidating && (
+          {hasMedia && !isValidating && (
             <>
               <div>
                 <span className="text-[10px] uppercase tracking-widest text-white/30 mb-2 block">Título</span>
@@ -982,7 +824,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   >
                     <RotateCcw size={14} /> Escolher novamente
                   </button>
-                ) : !hasMedia && !isUrlOnlyMode ? (
+                ) : !hasMedia ? (
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:opacity-90 active:scale-95 transition-all accent-primary-btn"
