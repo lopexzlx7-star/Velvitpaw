@@ -7,7 +7,6 @@ import express, { Request, Response, NextFunction } from 'express';
 import OpenAI from 'openai';
 import multer from 'multer';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { rateLimit } from 'express-rate-limit';
 import admin from 'firebase-admin';
 
 // ─── Cloudinary v2 client ─────────────────────────────────────────────────────
@@ -87,13 +86,13 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
-// ─── Firebase Admin ────────────────────────────────────────────────────────────
+// ─── Firebase Admin (Auth only — for updateUser) ──────────────────────────────
 const FIREBASE_PROJECT_ID = 'gen-lang-client-0766084456';
 const FIREBASE_FIRESTORE_DB = 'ai-studio-77ffd2cc-dfda-47fc-9d29-f9bbf07dfa46';
+const FIREBASE_API_KEY = 'AIzaSyAtZa2ddMFWqf0RPAZ1Jq00gl7AtwjrUEo'; // public client key
 const FIREBASE_CLIENT_EMAIL_ENV = process.env.FIREBASE_CLIENT_EMAIL ?? '';
 const FIREBASE_PRIVATE_KEY_ENV = (process.env.FIREBASE_PRIVATE_KEY ?? '').replace(/\\n/g, '\n');
 
-let adminDb: admin.firestore.Firestore | null = null;
 let adminAuth: admin.auth.Auth | null = null;
 
 if (FIREBASE_CLIENT_EMAIL_ENV && FIREBASE_PRIVATE_KEY_ENV) {
@@ -106,16 +105,62 @@ if (FIREBASE_CLIENT_EMAIL_ENV && FIREBASE_PRIVATE_KEY_ENV) {
       }),
       projectId: FIREBASE_PROJECT_ID,
     });
-    adminDb = adminApp.firestore();
-    adminDb.settings({ databaseId: FIREBASE_FIRESTORE_DB });
     adminAuth = adminApp.auth();
-    console.log('[OK] Firebase Admin pronto');
+    console.log('[OK] Firebase Admin (Auth) pronto');
   } catch (e: any) {
     console.error('[ERRO] Firebase Admin:', e.message);
   }
 } else {
   console.warn('[AVISO] Firebase Admin não configurado — FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY ausentes.');
 }
+
+// ─── Firestore REST (public read via API key — same as the client SDK) ────────
+const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${FIREBASE_FIRESTORE_DB}/documents`;
+
+async function fsGetPublic(path: string): Promise<Record<string, any> | null> {
+  const res = await fetch(`${FS_BASE}/${path}?key=${FIREBASE_API_KEY}`);
+  if (res.status === 404) return null;
+  if (!res.ok) { const t = await res.text(); throw new Error(`Firestore GET ${res.status}: ${t}`); }
+  return res.json();
+}
+
+function fsFieldValue(v: any): any {
+  if (!v) return null;
+  if ('nullValue' in v) return null;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return v.doubleValue;
+  if ('stringValue' in v) return v.stringValue;
+  if ('timestampValue' in v) return new Date(v.timestampValue).getTime();
+  if ('arrayValue' in v) return (v.arrayValue?.values ?? []).map(fsFieldValue);
+  if ('mapValue' in v) return fsParseFields(v.mapValue?.fields ?? {});
+  return null;
+}
+
+function fsParseFields(fields: Record<string, any>): Record<string, any> {
+  const obj: Record<string, any> = {};
+  for (const [k, v] of Object.entries(fields)) obj[k] = fsFieldValue(v);
+  return obj;
+}
+
+// ─── In-process token store (15-min TTL, no external DB needed) ──────────────
+interface ResetToken {
+  username: string;
+  uid: string;
+  code: string;
+  expiresAt: number;
+  attempts: number;
+  createdAt: number;
+}
+const resetTokenStore = new Map<string, ResetToken>(); // key = tokenId (uuid-like)
+
+// Cleanup expired tokens every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of resetTokenStore.entries()) {
+    if (now > v.expiresAt + 60_000) resetTokenStore.delete(k);
+  }
+}, 5 * 60 * 1000);
 
 // ─── Mailgun ──────────────────────────────────────────────────────────────────
 const MAILGUN_API_KEY_ENV = process.env.MAILGUN_API_KEY ?? '';
@@ -750,44 +795,39 @@ app.post('/api/forgot-password', async (req: Request, res: Response) => {
   if (cleanName.length < 3) {
     return res.status(400).json({ error: 'Nome de usuário inválido.' });
   }
-
-  if (!adminDb || !adminAuth) {
-    return res.status(503).json({ error: 'Serviço de autenticação indisponível. Contate o suporte.' });
+  if (!adminAuth) {
+    return res.status(503).json({ error: 'Serviço de autenticação indisponível.' });
   }
 
   try {
-    const userSnap = await adminDb.collection('users').doc(cleanName).get();
-    if (!userSnap.exists) {
-      // Don't reveal whether user exists — return generic success
-      return res.json({ ok: true });
+    // Look up user doc via public Firestore REST API (same access the client SDK uses)
+    const userDoc = await fsGetPublic(`users/${cleanName}`);
+    if (!userDoc) {
+      return res.json({ ok: true }); // don't reveal user existence
     }
-    const userData = userSnap.data()!;
+    const userData = fsParseFields(userDoc.fields ?? {});
     const recoveryEmail = (userData.recoveryEmail as string | undefined)?.trim();
     if (!recoveryEmail) {
       return res.status(400).json({ error: 'Este usuário não possui e-mail de recuperação vinculado. Faça login e adicione um e-mail nas configurações.' });
     }
 
-    // Invalidate any previous unused tokens for this user
-    const oldTokens = await adminDb.collection('passwordResetTokens')
-      .where('username', '==', cleanName)
-      .where('used', '==', false)
-      .get();
-    const batch = adminDb.batch();
-    oldTokens.docs.forEach(d => batch.update(d.ref, { used: true }));
-    await batch.commit();
+    // Invalidate any previous tokens for this user
+    for (const [k, v] of resetTokenStore.entries()) {
+      if (v.username === cleanName) resetTokenStore.delete(k);
+    }
 
-    // Generate a 6-digit code (easy to type on mobile)
+    // Generate 6-digit code + unique token ID
+    const tokenId = crypto.randomBytes(16).toString('hex');
     const code = crypto.randomInt(100000, 999999).toString();
     const expiresAt = Date.now() + 15 * 60 * 1000;
 
-    await adminDb.collection('passwordResetTokens').add({
+    resetTokenStore.set(tokenId, {
       username: cleanName,
       uid: userData.uid as string,
       code,
       expiresAt,
       attempts: 0,
-      used: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: Date.now(),
     });
 
     const maskedEmail = recoveryEmail.replace(/(.{2}).+(@.+)/, '$1***$2');
@@ -824,7 +864,7 @@ app.post('/api/forgot-password', async (req: Request, res: Response) => {
 });
 
 // ─── POST /api/reset-password ─────────────────────────────────────────────────
-// Rate limit: 10 attempts per IP per 15 min (brute force protection)
+// Rate limit: 10 attempts per IP per 15 min
 app.post('/api/reset-password', async (req: Request, res: Response) => {
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ?? req.socket?.remoteAddress ?? 'unknown';
   if (isRateLimited(`reset:${ip}`, 10, 15 * 60 * 1000)) {
@@ -832,66 +872,56 @@ app.post('/api/reset-password', async (req: Request, res: Response) => {
   }
 
   const { username, code, newPassword } = req.body as {
-    username?: string;
-    code?: string;
-    newPassword?: string;
+    username?: string; code?: string; newPassword?: string;
   };
-
   if (!username || !code || !newPassword) {
     return res.status(400).json({ error: 'Dados incompletos.' });
   }
   if (newPassword.length < 6) {
     return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres.' });
   }
-
-  if (!adminDb || !adminAuth) {
+  if (!adminAuth) {
     return res.status(503).json({ error: 'Serviço de autenticação indisponível.' });
   }
 
   const cleanName = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
   const cleanCode = code.trim();
+  const now = Date.now();
+
+  // Find most recently created valid token for this user
+  let found: [string, ResetToken] | null = null;
+  for (const entry of resetTokenStore.entries()) {
+    if (entry[1].username === cleanName) {
+      if (!found || entry[1].createdAt > found[1].createdAt) found = entry;
+    }
+  }
+
+  if (!found) {
+    return res.status(400).json({ error: 'Código inválido ou expirado. Solicite um novo.' });
+  }
+
+  const [tokenId, td] = found;
+
+  if (now > td.expiresAt) {
+    resetTokenStore.delete(tokenId);
+    return res.status(400).json({ error: 'Código expirado. Solicite um novo código.' });
+  }
+
+  if (td.attempts >= 5) {
+    resetTokenStore.delete(tokenId);
+    return res.status(400).json({ error: 'Código bloqueado por muitas tentativas incorretas. Solicite um novo.' });
+  }
+
+  if (td.code !== cleanCode) {
+    td.attempts++;
+    const remaining = 5 - td.attempts;
+    return res.status(400).json({ error: `Código incorreto. ${remaining} tentativa(s) restante(s).` });
+  }
 
   try {
-    const now = Date.now();
-    const tokensSnap = await adminDb.collection('passwordResetTokens')
-      .where('username', '==', cleanName)
-      .where('used', '==', false)
-      .orderBy('createdAt', 'desc')
-      .limit(1)
-      .get();
-
-    if (tokensSnap.empty) {
-      return res.status(400).json({ error: 'Código inválido ou expirado. Solicite um novo.' });
-    }
-
-    const tokenDoc = tokensSnap.docs[0];
-    const tokenData = tokenDoc.data();
-
-    // Check expiry
-    if (now > tokenData.expiresAt) {
-      await tokenDoc.ref.update({ used: true });
-      return res.status(400).json({ error: 'Código expirado. Solicite um novo código.' });
-    }
-
-    // Check too many attempts on this token
-    if ((tokenData.attempts as number) >= 5) {
-      await tokenDoc.ref.update({ used: true });
-      return res.status(400).json({ error: 'Código bloqueado por muitas tentativas incorretas. Solicite um novo.' });
-    }
-
-    // Validate code
-    if (tokenData.code !== cleanCode) {
-      await tokenDoc.ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
-      const remaining = 4 - (tokenData.attempts as number);
-      return res.status(400).json({ error: `Código incorreto. ${remaining} tentativa(s) restante(s).` });
-    }
-
-    // Update password via Firebase Admin
-    await adminAuth.updateUser(tokenData.uid as string, { password: newPassword });
-
-    // Mark token as used
-    await tokenDoc.ref.update({ used: true });
-
+    // Update password via Firebase Admin Auth
+    await adminAuth.updateUser(td.uid, { password: newPassword });
+    resetTokenStore.delete(tokenId);
     console.log(`[reset-password] Senha atualizada com sucesso para @${cleanName}`);
     return res.json({ ok: true });
   } catch (err: any) {
