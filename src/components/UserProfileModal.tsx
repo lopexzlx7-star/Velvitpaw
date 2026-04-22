@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, User, UserPlus, UserMinus, Loader2 } from 'lucide-react';
+import { ArrowLeft, User, UserPlus, UserCheck, Loader2, Bell, Mail } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
+import GlassCard from './GlassCard';
 
 interface UserProfileModalProps {
   targetUid: string;
@@ -12,9 +13,10 @@ interface UserProfileModalProps {
   onFollow: (uid: string) => void;
   onClose: () => void;
   onPostClick?: (post: ContentItem) => void;
+  likedIds?: string[];
+  onLike?: (id: string) => void;
+  onHashtagClick?: (tag: string) => void;
 }
-
-const isVideoType = (type: string) => type === 'video' || type === 'gif';
 
 const UserProfileModal: React.FC<UserProfileModalProps> = ({
   targetUid,
@@ -23,6 +25,9 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onFollow,
   onClose,
   onPostClick,
+  likedIds = [],
+  onLike,
+  onHashtagClick,
 }) => {
   const [username, setUsername] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
@@ -66,120 +71,123 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center p-0 sm:p-6"
-      style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(24px)' }}
-      onClick={onClose}
+      className="fixed inset-0 z-[200] overflow-y-auto no-scrollbar"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)' }}
     >
-      <motion.div
-        initial={{ y: 80, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 80, opacity: 0 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-md flex flex-col rounded-t-3xl sm:rounded-3xl overflow-hidden"
-        style={{
-          maxHeight: '88vh',
-          background: 'rgba(18,18,24,0.98)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          boxShadow: '0 40px 100px rgba(0,0,0,0.9)',
-        }}
+      {/* Top bar */}
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 pt-4 pb-3"
+        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.6), transparent)' }}
       >
-        {/* Handle bar (mobile) */}
-        <div className="flex justify-center pt-3 pb-1 sm:hidden">
-          <div className="w-10 h-1 rounded-full bg-white/20" />
-        </div>
+        <button
+          onClick={onClose}
+          className="w-10 h-10 flex items-center justify-center rounded-full text-white/70 hover:text-white transition-colors"
+          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+          aria-label="Voltar"
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <span className="text-white/40 text-[10px] uppercase tracking-widest font-semibold">Perfil</span>
+        <div className="w-10 h-10" />
+      </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-4 pb-4 border-b border-white/5">
-          <span className="text-white/40 text-[10px] uppercase tracking-widest font-semibold">Perfil</span>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-full text-white/40 hover:text-white transition-colors"
-            style={{ background: 'rgba(255,255,255,0.07)' }}
-          >
-            <X size={15} />
-          </button>
-        </div>
-
-        {/* Profile info */}
-        <div className="px-5 py-5 flex items-center gap-4 border-b border-white/5">
-          <div
-            className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center shrink-0"
-            style={{ border: '2px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)' }}
-          >
-            {profilePhoto ? (
-              <img src={profilePhoto} alt={username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              <User size={24} className="text-white/40" />
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-white font-bold text-lg tracking-tight truncate">@{username || '...'}</div>
-            <div className="text-white/30 text-xs mt-0.5">
-              {followersCount} {followersCount === 1 ? 'seguidor' : 'seguidores'} · {posts.length} {posts.length === 1 ? 'post' : 'posts'}
+      <div className="px-4 pb-24 max-w-4xl mx-auto">
+        {/* Profile card */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+          className="glass-panel rounded-3xl p-6 md:p-8"
+        >
+          <div className="flex items-center gap-5">
+            <div
+              className="w-20 h-20 md:w-24 md:h-24 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/5"
+              style={{ border: '2px solid rgba(255,255,255,0.12)' }}
+            >
+              {profilePhoto ? (
+                <img src={profilePhoto} alt={username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <User size={32} className="text-white/30" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-2xl md:text-3xl font-black tracking-tighter text-white truncate">@{username || '...'}</h2>
+              <div className="flex items-center gap-3 mt-2 text-xs text-white/40">
+                <span><span className="text-white/80 font-semibold">{posts.length}</span> {posts.length === 1 ? 'post' : 'posts'}</span>
+                <span className="w-1 h-1 rounded-full bg-white/20" />
+                <span><span className="text-white/80 font-semibold">{followersCount}</span> {followersCount === 1 ? 'seguidor' : 'seguidores'}</span>
+              </div>
             </div>
           </div>
-          {!isOwnProfile && (
-            <button
-              onClick={() => onFollow(targetUid)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all shrink-0 ${
-                isFollowing
-                  ? 'bg-white/10 text-white/60 hover:bg-white/15'
-                  : 'bg-white text-black hover:bg-white/90 active:scale-95'
-              }`}
-            >
-              {isFollowing ? <><UserMinus size={13} />Seguindo</> : <><UserPlus size={13} />Seguir</>}
-            </button>
-          )}
-        </div>
 
-        {/* Posts grid */}
-        <div className="flex-1 overflow-y-auto no-scrollbar">
+          {/* Action row */}
+          {!isOwnProfile && (
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                onClick={() => onFollow(targetUid)}
+                className={`flex-1 h-12 flex items-center justify-center gap-2 rounded-full text-sm font-semibold tracking-wide transition-all active:scale-[0.98] ${
+                  isFollowing
+                    ? 'bg-white/10 text-white border border-white/15 hover:bg-white/15'
+                    : 'bg-white text-black hover:bg-white/90 accent-primary-btn'
+                }`}
+              >
+                {isFollowing ? <><UserCheck size={16} /> Seguindo</> : <><UserPlus size={16} /> Seguir</>}
+              </button>
+              <button
+                disabled
+                title="Em breve"
+                className="w-12 h-12 flex items-center justify-center rounded-full text-white/50 hover:text-white transition-colors disabled:opacity-60"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}
+              >
+                <Mail size={16} />
+              </button>
+              <button
+                disabled
+                title="Em breve"
+                className="w-12 h-12 flex items-center justify-center rounded-full text-white/50 hover:text-white transition-colors disabled:opacity-60"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}
+              >
+                <Bell size={16} />
+              </button>
+            </div>
+          )}
+        </motion.div>
+
+        {/* Posts */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-4 px-1">
+            <span className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Posts</span>
+            <span className="text-[10px] text-white/30">{posts.length}</span>
+          </div>
+
           {loading ? (
-            <div className="flex items-center justify-center py-16 gap-2 text-white/20 text-sm">
+            <div className="flex items-center justify-center py-20 gap-2 text-white/30 text-sm">
               <Loader2 size={16} className="animate-spin" />
               Carregando...
             </div>
           ) : posts.length === 0 ? (
-            <div className="flex items-center justify-center py-16 text-white/20 text-sm">
+            <div className="flex flex-col items-center justify-center py-20 text-white/30 text-sm gap-2">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center bg-white/5 border border-white/10">
+                <User size={22} className="text-white/20" />
+              </div>
               Nenhum post ainda
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-px">
-              {posts.map(post => {
-                const thumb = post.thumbnailUrl ||
-                  (isVideoType(post.type) ? post.thumbnailUrl : null) ||
-                  (post.images && post.images[0]) ||
-                  post.url;
-                return (
-                  <button
-                    key={post.id}
-                    onClick={() => onPostClick?.(post)}
-                    className="relative bg-white/5 overflow-hidden hover:opacity-75 active:opacity-60 transition-opacity"
-                    style={{ aspectRatio: '1' }}
-                  >
-                    {thumb && (
-                      <img
-                        src={thumb}
-                        alt={post.title}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    )}
-                    {isVideoType(post.type) && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-7 h-7 rounded-full bg-black/50 flex items-center justify-center">
-                          <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[9px] border-l-white ml-0.5" />
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
+            <div className="columns-2 sm:columns-3 gap-4">
+              {posts.map(post => (
+                <GlassCard
+                  key={`user-profile-${post.id}`}
+                  item={post}
+                  isLiked={likedIds.includes(post.id)}
+                  onLike={(id) => onLike?.(id)}
+                  onClick={() => onPostClick?.(post)}
+                  onHashtagClick={onHashtagClick}
+                  isUserPost={false}
+                />
+              ))}
             </div>
           )}
         </div>
-      </motion.div>
+      </div>
     </motion.div>
   );
 };

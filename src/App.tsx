@@ -2202,6 +2202,12 @@ export default function App() {
               setProfileViewUid(null);
               setSelectedPost(post);
             }}
+            likedIds={likedIds}
+            onLike={handleLike}
+            onHashtagClick={(tag) => {
+              setProfileViewUid(null);
+              handleHashtagClick(tag);
+            }}
           />
         )}
       </AnimatePresence>
