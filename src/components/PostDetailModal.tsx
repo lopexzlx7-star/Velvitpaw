@@ -85,6 +85,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState(1);
   const [seekFlash, setSeekFlash] = useState<'left' | 'right' | null>(null);
+  const [controlsVisible, setControlsVisible] = useState(true);
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -114,6 +115,22 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const playPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef<{ time: number; x: number } | null>(null);
   const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showControls = useCallback(() => {
+    setControlsVisible(true);
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    controlsTimer.current = setTimeout(() => setControlsVisible(false), 1500);
+  }, []);
+
+  useEffect(() => {
+    // Auto-hide controls 1.5s after the video starts
+    if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    controlsTimer.current = setTimeout(() => setControlsVisible(false), 1500);
+    return () => {
+      if (controlsTimer.current) clearTimeout(controlsTimer.current);
+    };
+  }, []);
 
   const triggerSeek = (side: 'left' | 'right') => {
     const video = videoRef.current;
@@ -229,7 +246,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     if (!video) return;
     if (video.paused) { video.play(); }
     else { video.pause(); }
-    flashPlayPause();
+    showControls();
+  };
+
+  const handleVideoTap = (e: React.MouseEvent<HTMLVideoElement>) => {
+    e.stopPropagation();
+    showControls();
   };
 
   const handleSeekStart = () => setIsSeeking(true);
@@ -429,82 +451,111 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     loop
                     muted={isMuted}
                     playsInline
-                    onClick={togglePlay}
+                    onClick={handleVideoTap}
                     onDoubleClick={handleVideoDoubleClick}
                     onTouchEnd={handleVideoTouchEnd}
                     style={{ cursor: 'pointer', display: 'block' }}
                   />
 
+                  {/* Centered play/pause toggle — visible only with controls */}
                   <AnimatePresence>
-                    {showPlayPause && (
-                      <motion.div
-                        initial={{ opacity: 0.9, scale: 0.85 }}
-                        animate={{ opacity: 0.9, scale: 1 }}
-                        exit={{ opacity: 0, scale: 1.15 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                    {controlsVisible && (
+                      <motion.button
+                        key="play-toggle"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.18 }}
+                        onClick={togglePlay}
+                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 flex items-center justify-center rounded-full"
+                        style={{
+                          background: 'rgba(0,0,0,0.45)',
+                          backdropFilter: 'blur(14px) saturate(160%)',
+                          WebkitBackdropFilter: 'blur(14px) saturate(160%)',
+                        }}
+                        aria-label={isPlaying ? 'Pausar' : 'Reproduzir'}
                       >
-                        <div className="w-16 h-16 flex items-center justify-center rounded-full" style={{ background: 'rgba(0,0,0,0.55)' }}>
-                          {isPlaying ? <Pause size={26} className="text-white/90" fill="currentColor" /> : <Play size={26} className="text-white/90" fill="currentColor" />}
-                        </div>
-                      </motion.div>
+                        {isPlaying
+                          ? <Pause size={26} className="text-white" fill="currentColor" />
+                          : <Play size={26} className="text-white translate-x-[2px]" fill="currentColor" />}
+                      </motion.button>
                     )}
                   </AnimatePresence>
 
-                  {/* Double-tap seek flash overlay */}
+                  {/* Double-tap seek flash — glass, no border */}
                   <AnimatePresence>
                     {seekFlash && (
                       <motion.div
                         key={seekFlash}
-                        initial={{ opacity: 0.85 }}
-                        animate={{ opacity: 0.85 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className={`absolute inset-y-0 pointer-events-none flex items-center justify-center ${seekFlash === 'left' ? 'left-0 w-2/5 rounded-l-[1.5rem]' : 'right-0 w-2/5 rounded-r-[1.5rem]'}`}
-                        style={{ background: 'rgba(0,0,0,0.35)' }}
+                        initial={{ opacity: 0, scale: 0.85 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.25 }}
+                        className={`absolute top-1/2 -translate-y-1/2 pointer-events-none flex flex-col items-center justify-center gap-1 px-5 py-4 rounded-3xl ${seekFlash === 'left' ? 'left-6' : 'right-6'}`}
+                        style={{
+                          background: 'rgba(255,255,255,0.10)',
+                          backdropFilter: 'blur(16px) saturate(160%)',
+                          WebkitBackdropFilter: 'blur(16px) saturate(160%)',
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18)',
+                        }}
                       >
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="text-white text-2xl">{seekFlash === 'left' ? '⏪' : '⏩'}</span>
-                          <span className="text-white text-[11px] font-semibold">{seekFlash === 'left' ? '-10s' : '+10s'}</span>
-                        </div>
+                        {seekFlash === 'left'
+                          ? <ChevronLeft size={28} className="text-white" strokeWidth={2.5} />
+                          : <ChevronRight size={28} className="text-white" strokeWidth={2.5} />}
+                        <span className="text-white text-[10px] font-semibold tabular-nums">
+                          {seekFlash === 'left' ? '-10s' : '+10s'}
+                        </span>
                       </motion.div>
                     )}
                   </AnimatePresence>
 
-                  <div className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}>
-                    <div className="relative w-full mb-2" style={{ height: '18px', display: 'flex', alignItems: 'center' }}>
-                      <div className="absolute left-0 right-0 h-[3px] rounded-full bg-white/20 overflow-hidden">
-                        <div className="h-full rounded-full bg-white" style={{ width: `${progress}%`, transition: 'width 0.25s linear' }} />
-                      </div>
-                      <input
-                        type="range" min={0} max={duration || 1} step={0.01} value={currentTime}
-                        onMouseDown={handleSeekStart} onTouchStart={handleSeekStart}
-                        onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute left-0 right-0 w-full opacity-0 cursor-pointer" style={{ height: '18px' }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-white/50 font-mono tabular-nums">{formatTime(currentTime)} / {formatTime(duration)}</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }}
-                          className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors"
-                          style={{ background: 'rgba(0,0,0,0.3)' }}
-                        >
-                          {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-                        </button>
-                        <button
-                          onClick={handleFullscreen}
-                          className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors"
-                          style={{ background: 'rgba(0,0,0,0.3)' }}
-                          title="Tela cheia"
-                        >
-                          <Maximize2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  {/* Bottom controls — fade with controlsVisible */}
+                  <AnimatePresence>
+                    {controlsVisible && (
+                      <motion.div
+                        key="bottom-controls"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 8 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-8"
+                        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}
+                      >
+                        <div className="relative w-full mb-2" style={{ height: '18px', display: 'flex', alignItems: 'center' }}>
+                          <div className="absolute left-0 right-0 h-[3px] rounded-full bg-white/20 overflow-hidden">
+                            <div className="h-full rounded-full bg-white" style={{ width: `${progress}%`, transition: 'width 0.25s linear' }} />
+                          </div>
+                          <input
+                            type="range" min={0} max={duration || 1} step={0.01} value={currentTime}
+                            onMouseDown={handleSeekStart} onTouchStart={handleSeekStart}
+                            onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
+                            onClick={(e) => { e.stopPropagation(); showControls(); }}
+                            className="absolute left-0 right-0 w-full opacity-0 cursor-pointer" style={{ height: '18px' }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-white/50 font-mono tabular-nums">{formatTime(currentTime)} / {formatTime(duration)}</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); showControls(); }}
+                              className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors"
+                              style={{ background: 'rgba(0,0,0,0.3)' }}
+                            >
+                              {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                            </button>
+                            <button
+                              onClick={(e) => { handleFullscreen(e); showControls(); }}
+                              className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors"
+                              style={{ background: 'rgba(0,0,0,0.3)' }}
+                              title="Tela cheia"
+                            >
+                              <Maximize2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </>
               )
             ) : isMultiImage ? (

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
   Maximize2, Square, Smartphone, Plus, Film, RotateCcw,
-  ChevronLeft, ChevronRight, Trash2
+  ChevronLeft, ChevronRight, Trash2, Camera
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
@@ -527,22 +527,37 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-black/70 backdrop-blur-lg">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-black/80 backdrop-blur-2xl">
       <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="modal-dark bg-black/80 backdrop-blur-xl w-full max-w-xl overflow-hidden flex flex-col rounded-[2.5rem] border border-white/10 shadow-2xl max-h-[90vh]"
+        initial={{ scale: 0.92, opacity: 0, y: 12 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.92, opacity: 0, y: 12 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+        className="relative w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] rounded-[2.5rem]"
+        style={{
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+          backdropFilter: 'blur(28px) saturate(140%)',
+          WebkitBackdropFilter: 'blur(28px) saturate(140%)',
+          border: '1px solid rgba(255,255,255,0.10)',
+          boxShadow: '0 30px 80px -20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08)',
+        }}
       >
-        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
-              <Plus className="text-white" size={20} />
-            </div>
-            <h2 className="text-lg font-black tracking-tighter uppercase text-white">Criar Post</h2>
-          </div>
-          <button onClick={handleClose} className="p-3 hover:bg-white/10 rounded-2xl transition-colors text-white/30 hover:text-white">
-            <X size={20} />
+        {/* Subtle accent glow */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[2.5rem] opacity-60"
+          style={{
+            background: 'radial-gradient(120% 60% at 50% 0%, rgba(var(--accent-rgb), 0.10), transparent 60%)',
+          }}
+        />
+
+        <div className="relative px-6 pt-6 pb-4 flex items-center justify-center">
+          <h2 className="text-xl font-semibold tracking-tight text-white">Novo post</h2>
+          <button
+            onClick={handleClose}
+            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full transition-colors text-white/40 hover:text-white hover:bg-white/5"
+          >
+            <X size={18} />
           </button>
         </div>
 
@@ -558,19 +573,33 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
           {/* Media area */}
           {!hasMedia ? (
             /* ── File picker ── */
-            <label className="block cursor-pointer">
-              <div
-                className="border-2 border-dashed rounded-3xl p-10 text-center hover:opacity-80 transition-all group"
-                style={{ borderColor: 'rgba(var(--accent-rgb), 0.3)' }}
-              >
-                <div
-                  className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 transition-colors"
-                  style={{ background: 'rgba(var(--accent-rgb), 0.08)' }}
+            <label className="block cursor-pointer group">
+              <div className="flex flex-col items-center justify-center py-10">
+                <motion.div
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                  className="relative w-32 h-32 rounded-full flex items-center justify-center"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%)',
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    backdropFilter: 'blur(18px) saturate(160%)',
+                    WebkitBackdropFilter: 'blur(18px) saturate(160%)',
+                    boxShadow: '0 12px 40px -12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -8px 24px -8px rgba(0,0,0,0.4)',
+                  }}
                 >
-                  <ImageIcon size={28} style={{ color: 'rgba(var(--accent-rgb), 0.55)' }} />
-                </div>
-                <p className="text-white/60 text-sm font-medium mb-1">Clique para selecionar</p>
-                <p className="text-white/35 text-xs">Imagens ou Vídeos</p>
+                  {/* Glass highlight */}
+                  <div
+                    aria-hidden
+                    className="absolute inset-0 rounded-full pointer-events-none"
+                    style={{
+                      background: 'radial-gradient(70% 50% at 30% 20%, rgba(255,255,255,0.25), transparent 60%)',
+                    }}
+                  />
+                  <Camera size={42} className="relative text-white/85" strokeWidth={1.5} />
+                </motion.div>
+                <p className="mt-6 text-white/70 text-sm font-medium">Fotos ou vídeos</p>
+                <p className="mt-1 text-white/30 text-xs">Toque para selecionar</p>
               </div>
               <input
                 ref={fileInputRef}
@@ -794,7 +823,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
 
         {/* Footer */}
         {!isValidating && (
-          <div className="p-6 border-t border-white/5 bg-white/5">
+          <div className="relative p-6 pt-2">
             {isSubmitting ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs text-white/50">
@@ -825,20 +854,48 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                     <RotateCcw size={14} /> Escolher novamente
                   </button>
                 ) : !hasMedia ? (
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:opacity-90 active:scale-95 transition-all accent-primary-btn"
+                    className="relative flex-1 py-4 rounded-full font-semibold tracking-wide text-sm text-white overflow-hidden"
+                    style={{
+                      background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)',
+                      border: '1px solid rgba(255,255,255,0.14)',
+                      backdropFilter: 'blur(14px) saturate(160%)',
+                      WebkitBackdropFilter: 'blur(14px) saturate(160%)',
+                      boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.18)',
+                    }}
                   >
-                    Selecionar Mídia
-                  </button>
+                    <span
+                      aria-hidden
+                      className="absolute inset-x-4 top-0 h-1/2 rounded-full pointer-events-none"
+                      style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.18), transparent)' }}
+                    />
+                    <span className="relative">Selecionar mídia</span>
+                  </motion.button>
                 ) : (
-                  <button
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
                     onClick={submitPost}
                     disabled={wordCount > MAX_DESCRIPTION_WORDS}
-                    className="flex-1 py-4 bg-white text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 accent-primary-btn"
+                    className="relative flex-1 py-4 rounded-full font-semibold tracking-wide text-sm text-white overflow-hidden disabled:opacity-40"
+                    style={{
+                      background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)',
+                      border: '1px solid rgba(255,255,255,0.14)',
+                      backdropFilter: 'blur(14px) saturate(160%)',
+                      WebkitBackdropFilter: 'blur(14px) saturate(160%)',
+                      boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.18)',
+                    }}
                   >
-                    {isMultiImage ? `Publicar ${images.length} ${images.length === 1 ? 'Imagem' : 'Imagens'}` : 'Publicar'}
-                  </button>
+                    <span
+                      aria-hidden
+                      className="absolute inset-x-4 top-0 h-1/2 rounded-full pointer-events-none"
+                      style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.18), transparent)' }}
+                    />
+                    <span className="relative">
+                      {isMultiImage ? `Publicar ${images.length} ${images.length === 1 ? 'imagem' : 'imagens'}` : 'Publicar'}
+                    </span>
+                  </motion.button>
                 )}
               </div>
             )}
