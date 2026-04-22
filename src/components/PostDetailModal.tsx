@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, Maximize2, ExternalLink } from 'lucide-react';
+import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, Maximize2, ExternalLink, Bookmark } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -11,6 +11,8 @@ interface PostDetailModalProps {
   onLike: (id: string) => void;
   onDelete?: (id: string) => void;
   isLiked: boolean;
+  isSaved?: boolean;
+  onSave?: (id: string) => void;
   currentUserUid?: string;
   onHashtagClick?: (tag: string) => void;
   onAuthorClick?: (authorUid: string) => void;
@@ -67,6 +69,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   onClose,
   onLike,
   isLiked,
+  isSaved = false,
+  onSave,
   currentUserUid,
   onHashtagClick,
   onAuthorClick,
@@ -665,44 +669,63 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
             </span>
           )}
 
-          {!isUserPost && (
-            <div className="relative ml-auto">
+          <div className="ml-auto flex items-center gap-3">
+            {onSave && (
               <motion.button
-                key={heartKey}
-                onClick={handleLikeClick}
-                whileTap={{ scale: 0.8 }}
+                onClick={(e) => { e.stopPropagation(); onSave(item.id); }}
+                whileTap={{ scale: 0.85 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 15 }}
                 className="flex items-center justify-center"
+                title={isSaved ? 'Salvo em pasta' : 'Salvar em pasta'}
               >
-                <motion.div
-                  animate={localIsLiked ? { scale: [1, 1.5, 0.9, 1.1, 1], rotate: [0, -8, 8, -4, 0] } : { scale: 1 }}
-                  transition={{ duration: 0.4, ease: 'easeOut' }}
-                >
-                  <Heart
-                    size={26}
-                    fill={localIsLiked ? '#ef4444' : 'none'}
-                    strokeWidth={localIsLiked ? 0 : 1.8}
-                    className={`transition-colors duration-150 ${localIsLiked ? 'text-red-500' : 'text-white/55'}`}
-                  />
-                </motion.div>
+                <Bookmark
+                  size={24}
+                  fill={isSaved ? '#facc15' : 'none'}
+                  strokeWidth={isSaved ? 0 : 1.8}
+                  className={`transition-colors duration-150 ${isSaved ? 'text-yellow-400' : 'text-white/55'}`}
+                />
               </motion.button>
+            )}
 
-              <AnimatePresence>
-                {floatingHearts.map((h) => (
+            {!isUserPost && (
+              <div className="relative">
+                <motion.button
+                  key={heartKey}
+                  onClick={handleLikeClick}
+                  whileTap={{ scale: 0.8 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+                  className="flex items-center justify-center"
+                >
                   <motion.div
-                    key={h.id}
-                    initial={{ opacity: 1, y: 0, x: h.x * 0.3, scale: 0.4 }}
-                    animate={{ opacity: 0, y: -65, x: h.x, scale: 1.1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.95, ease: [0.2, 0.8, 0.4, 1] }}
-                    className="absolute bottom-0 right-1.5 pointer-events-none"
+                    animate={localIsLiked ? { scale: [1, 1.5, 0.9, 1.1, 1], rotate: [0, -8, 8, -4, 0] } : { scale: 1 }}
+                    transition={{ duration: 0.4, ease: 'easeOut' }}
                   >
-                    <Heart size={14} fill="#ef4444" className="text-red-500" />
+                    <Heart
+                      size={26}
+                      fill={localIsLiked ? '#ef4444' : 'none'}
+                      strokeWidth={localIsLiked ? 0 : 1.8}
+                      className={`transition-colors duration-150 ${localIsLiked ? 'text-red-500' : 'text-white/55'}`}
+                    />
                   </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          )}
+                </motion.button>
+
+                <AnimatePresence>
+                  {floatingHearts.map((h) => (
+                    <motion.div
+                      key={h.id}
+                      initial={{ opacity: 1, y: 0, x: h.x * 0.3, scale: 0.4 }}
+                      animate={{ opacity: 0, y: -65, x: h.x, scale: 1.1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.95, ease: [0.2, 0.8, 0.4, 1] }}
+                      className="absolute bottom-0 right-1.5 pointer-events-none"
+                    >
+                      <Heart size={14} fill="#ef4444" className="text-red-500" />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Description */}

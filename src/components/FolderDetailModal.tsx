@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Trash2, Folder as FolderIcon } from 'lucide-react';
+import { X, Trash2, Folder as FolderIcon, Sparkles, ChevronDown } from 'lucide-react';
 import { Folder, ContentItem } from '../types';
 import GlassCard from './GlassCard';
+import FolderCover from './FolderCover';
 
 interface Props {
   open: boolean;
@@ -28,6 +29,8 @@ const FolderDetailModal: React.FC<Props> = ({
   onClose, onOpenPost, onLike, onSave, onFollow, onDelete, onHashtagClick,
   onRemoveFromFolder, onDeleteFolder,
 }) => {
+  const [showRelated, setShowRelated] = useState(false);
+
   const posts = useMemo(() => {
     if (!folder) return [];
     const map = new Map(allPosts.map(p => [p.id, p]));
@@ -35,6 +38,56 @@ const FolderDetailModal: React.FC<Props> = ({
       .map(id => map.get(id))
       .filter((p): p is ContentItem => Boolean(p));
   }, [folder, allPosts]);
+
+  // Build a tag-frequency profile from the folder's posts and the folder name,
+  // then rank other posts by overlap with that profile.
+  const relatedPosts = useMemo(() => {
+    if (!folder) return [] as ContentItem[];
+
+    const tagWeights = new Map<string, number>();
+    const bumpTag = (raw: string, weight: number) => {
+      const t = raw.toLowerCase().replace(/^#/, '').trim();
+      if (!t) return;
+      tagWeights.set(t, (tagWeights.get(t) || 0) + weight);
+    };
+
+    // Tokens from the folder name itself
+    folder.name.split(/[\s,/_-]+/).forEach(word => {
+      if (word.length >= 3) bumpTag(word, 2);
+    });
+
+    // Tags from the posts inside
+    posts.forEach(p => {
+      (p.hashtags || []).forEach(t => bumpTag(t, 3));
+      (p.title || '').split(/[\s,]+/).forEach(w => {
+        if (w.length >= 4) bumpTag(w, 1);
+      });
+    });
+
+    if (tagWeights.size === 0) return [];
+
+    const inFolder = new Set(folder.postIds);
+    const scored = allPosts
+      .filter(p => !inFolder.has(p.id) && !(p as any).archived)
+      .map(p => {
+        let score = 0;
+        (p.hashtags || []).forEach(t => {
+          const w = tagWeights.get(t.toLowerCase());
+          if (w) score += w * 3;
+        });
+        const titleLower = (p.title || '').toLowerCase();
+        tagWeights.forEach((w, t) => {
+          if (titleLower.includes(t)) score += w;
+        });
+        return { post: p, score };
+      })
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 60)
+      .map(x => x.post);
+
+    return scored;
+  }, [folder, posts, allPosts]);
 
   if (!folder) return null;
 
@@ -63,22 +116,28 @@ const FolderDetailModal: React.FC<Props> = ({
                 >
                   <X size={16} />
                 </button>
-                <button
-                  onClick={handleDeleteFolder}
-                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/40 flex items-center justify-center text-white/60 hover:text-red-400 transition-colors"
-                  title="Excluir pasta"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowRelated(true)}
+                    className="h-10 px-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center gap-2 text-white/80 hover:text-white text-xs font-bold uppercase tracking-widest transition-colors"
+                    title="Posts relacionados"
+                  >
+                    <Sparkles size={13} />
+                    Relacionados
+                  </button>
+                  <button
+                    onClick={handleDeleteFolder}
+                    className="w-10 h-10 rounded-full bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/40 flex items-center justify-center text-white/60 hover:text-red-400 transition-colors"
+                    title="Excluir pasta"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
 
-              <div className="text-center mb-10">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/5 border border-white/10 mb-4 overflow-hidden">
-                  {folder.coverImage ? (
-                    <img src={folder.coverImage} alt={folder.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <FolderIcon size={26} className="text-white/40" />
-                  )}
+              <div className="flex flex-col items-center text-center mb-10">
+                <div className="w-32 h-32 mb-4">
+                  <FolderCover folder={folder} allPosts={allPosts} rounded="rounded-2xl" />
                 </div>
                 <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white mb-2">{folder.name}</h1>
                 <div className="text-[10px] uppercase tracking-widest text-white/40">
@@ -129,6 +188,95 @@ const FolderDetailModal: React.FC<Props> = ({
               )}
             </div>
           </div>
+
+          {/* Related posts bottom sheet */}
+          <AnimatePresence>
+            {showRelated && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[160] flex items-end justify-center"
+                style={{ background: 'rgba(0,0,0,0.55)' }}
+                onClick={() => setShowRelated(false)}
+              >
+                <motion.div
+                  initial={{ y: '100%' }}
+                  animate={{ y: 0 }}
+                  exit={{ y: '100%' }}
+                  transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative w-full max-w-3xl rounded-t-[2rem] overflow-hidden"
+                  style={{
+                    maxHeight: '85vh',
+                    background: 'rgba(16,16,18,0.92)',
+                    border: '1px solid rgba(255,255,255,0.10)',
+                    backdropFilter: 'blur(28px) saturate(140%)',
+                    WebkitBackdropFilter: 'blur(28px) saturate(140%)',
+                    boxShadow: '0 -20px 60px -10px rgba(0,0,0,0.7)',
+                  }}
+                >
+                  <div className="flex flex-col h-full" style={{ maxHeight: '85vh' }}>
+                    {/* Drag handle + header */}
+                    <div className="px-5 pt-3 pb-4 border-b border-white/5">
+                      <div className="w-10 h-1 rounded-full bg-white/15 mx-auto mb-3" />
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Sparkles size={14} className="text-white/70" />
+                          <h3 className="text-sm font-bold text-white uppercase tracking-widest">
+                            Relacionados a "{folder.name}"
+                          </h3>
+                        </div>
+                        <button
+                          onClick={() => setShowRelated(false)}
+                          className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-colors"
+                        >
+                          <ChevronDown size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Body */}
+                    <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
+                      {relatedPosts.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-center text-white/40">
+                          <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
+                            <Sparkles size={20} className="text-white/20" />
+                          </div>
+                          <p className="text-xs uppercase tracking-widest">
+                            Nenhum post relacionado encontrado
+                          </p>
+                          <p className="text-[10px] text-white/30 mt-2 max-w-xs">
+                            Adicione posts com hashtags à pasta para descobrir conteúdo similar.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="columns-2 md:columns-3 lg:columns-4 gap-3">
+                          {relatedPosts.map(item => (
+                            <div key={`rel-${item.id}`} className="mb-3 break-inside-avoid">
+                              <GlassCard
+                                item={item}
+                                isLiked={likedIds.includes(item.id)}
+                                isSaved={savedIds.includes(item.id)}
+                                isFollowing={followingUids.includes((item as any).authorUid)}
+                                onLike={onLike}
+                                onSave={onSave}
+                                onFollow={onFollow}
+                                onDelete={onDelete}
+                                onClick={() => { setShowRelated(false); onOpenPost(item); }}
+                                onHashtagClick={onHashtagClick}
+                                isUserPost={(item as any).authorUid === currentUid}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>

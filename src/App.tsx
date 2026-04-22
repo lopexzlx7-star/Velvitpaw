@@ -38,6 +38,7 @@ import UserProfileModal from './components/UserProfileModal';
 import HashtagCategoryCard from './components/HashtagCategoryCard';
 import SaveToFolderModal from './components/SaveToFolderModal';
 import FolderDetailModal from './components/FolderDetailModal';
+import FolderCover from './components/FolderCover';
 
 // Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
 function getCloudinaryThumb(videoUrl: string): string | null {
@@ -2273,15 +2274,9 @@ export default function App() {
                               onClick={() => setOpenFolder(f)}
                               className="group text-left"
                             >
-                              <div className="relative aspect-square rounded-2xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-white/20 transition-colors">
-                                {f.coverImage ? (
-                                  <img src={f.coverImage} alt={f.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <Bookmark size={32} className="text-white/15" />
-                                  </div>
-                                )}
-                                <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.6) 100%)' }} />
+                              <div className="relative aspect-square group-hover:opacity-90 transition-opacity">
+                                <FolderCover folder={f} allPosts={globalPosts} rounded="rounded-2xl" />
+                                <div className="pointer-events-none absolute inset-0 rounded-2xl" style={{ background: 'linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.55) 100%)' }} />
                               </div>
                               <div className="mt-2 px-1">
                                 <div className="text-sm font-bold text-white truncate">{f.name}</div>
@@ -2354,6 +2349,8 @@ export default function App() {
             onLike={handleLike}
             onDelete={handleDeletePost}
             isLiked={likedIds.includes(selectedPost.id)}
+            isSaved={savedIds.includes(selectedPost.id)}
+            onSave={(id) => openSavePicker(id)}
             currentUserUid={auth.currentUser?.uid}
             onHashtagClick={(tag) => {
               setSelectedPost(null);
