@@ -159,32 +159,34 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
             '0 40px 100px -20px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -2px 30px -10px rgba(0,0,0,0.4)',
         }}
       >
-        {/* Specular highlights — bubble glass effect */}
+        {/* Specular highlights — bubble glass effect (accent-aware) */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 rounded-[2.5rem]"
           style={{
             background:
-              'radial-gradient(120% 50% at 50% -10%, rgba(255,255,255,0.18), transparent 55%), radial-gradient(80% 40% at 50% 110%, rgba(255,255,255,0.10), transparent 60%)',
+              'radial-gradient(120% 50% at 50% -10%, rgba(var(--accent-rgb, 255,255,255), 0.20), transparent 55%), radial-gradient(80% 40% at 50% 110%, rgba(var(--accent-rgb, 255,255,255), 0.10), transparent 60%)',
           }}
         />
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-6 top-0 h-px"
-          style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)' }}
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb, 255,255,255), 0.55), transparent)' }}
         />
 
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 z-20 w-9 h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white transition-colors"
-          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)' }}
-          aria-label="Fechar"
-        >
-          <X size={16} />
-        </button>
+        {/* Close button row — sits above the header so it never overlaps the username */}
+        <div className="relative flex items-center justify-end px-4 pt-4">
+          <button
+            onClick={onClose}
+            className="z-20 w-9 h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white transition-colors"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)' }}
+            aria-label="Fechar"
+          >
+            <X size={16} />
+          </button>
+        </div>
 
-        <div className="relative px-6 pt-7 pb-6">
+        <div className="relative px-6 pt-1 pb-6">
           {/* Header: avatar + username + counts */}
           <div className="flex items-center gap-4">
             <div

@@ -261,6 +261,7 @@ export default function App() {
   const [loginUsername, setLoginUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => !!localStorage.getItem('velvit_username'));
+  const [authedUid, setAuthedUid] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState<boolean>(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -379,6 +380,7 @@ export default function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         resolvedUid = user.uid;
+        setAuthedUid(user.uid);
         setupAuthListeners(user.uid);
 
         // Always sync username and profile pic from Firestore on session restore
@@ -793,6 +795,7 @@ export default function App() {
     ];
     keysToRemove.forEach(k => localStorage.removeItem(k));
     setIsLoggedIn(false);
+    setAuthedUid(null);
     setUsername('Usuário');
     setProfilePic(null);
     setBgImage(null);
@@ -1347,7 +1350,7 @@ export default function App() {
 
   // ─── Folders: subscribe to current user's folders ──────────────────────────
   useEffect(() => {
-    const uid = auth.currentUser?.uid;
+    const uid = authedUid || auth.currentUser?.uid;
     if (!uid) { setFolders([]); return; }
     const qFolders = query(collection(db, 'folders'), where('ownerUid', '==', uid));
     const unsub = onSnapshot(qFolders, (snap) => {
@@ -1356,7 +1359,7 @@ export default function App() {
       setFolders(list);
     }, (err) => console.warn('folders sub error', err));
     return () => unsub();
-  }, [isLoggedIn]);
+  }, [authedUid, isLoggedIn]);
 
   const handleCreateFolder = async (name: string, description?: string): Promise<Folder | null> => {
     const uid = auth.currentUser?.uid;
@@ -2250,7 +2253,8 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex gap-6 mb-8 border-b border-white/5">
+                  <div className="flex items-end justify-between mb-8 border-b border-white/5">
+                    <div className="flex gap-6">
                     <button 
                       onClick={() => setProfileTab('posts')}
                       className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${profileTab === 'posts' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
@@ -2272,103 +2276,26 @@ export default function App() {
                       Curtidos ({likedItems.length})
                       {profileTab === 'liked' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white accent-line" />}
                     </button>
+                    </div>
+                    {profileTab === 'folders' && (
+                      <button
+                        onClick={() => { setCreatingFolder(true); setNewFolderName(''); setCreateFolderError(null); }}
+                        title="Criar nova pasta"
+                        aria-label="Criar nova pasta"
+                        className="mb-2 w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all active:scale-90"
+                        style={{
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.14)',
+                          backdropFilter: 'blur(10px)',
+                        }}
+                      >
+                        <Plus size={16} />
+                      </button>
+                    )}
                   </div>
 
                   {profileTab === 'folders' ? (
                     <div>
-                      {/* Create folder UI */}
-                      <div className="mb-6">
-                        <AnimatePresence mode="wait" initial={false}>
-                          {!creatingFolder ? (
-                            <motion.button
-                              key="create-btn"
-                              initial={{ opacity: 0, y: -8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -8 }}
-                              onClick={() => setCreatingFolder(true)}
-                              className="w-full flex items-center justify-center gap-2.5 h-14 rounded-2xl text-white font-semibold text-sm transition-all hover:bg-white/10"
-                              style={{
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px dashed rgba(255,255,255,0.18)',
-                                backdropFilter: 'blur(10px)',
-                              }}
-                            >
-                              <FolderPlus size={18} className="text-white/70" />
-                              Criar nova pasta
-                            </motion.button>
-                          ) : (
-                            <motion.div
-                              key="create-form"
-                              initial={{ opacity: 0, y: -8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -8 }}
-                              className="rounded-2xl p-4"
-                              style={{
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.12)',
-                                backdropFilter: 'blur(14px)',
-                              }}
-                            >
-                              <div className="flex items-center gap-2 mb-3">
-                                <FolderPlus size={16} className="text-white/60" />
-                                <span className="text-[10px] uppercase tracking-widest text-white/50 font-bold">Nova pasta</span>
-                              </div>
-                              <input
-                                autoFocus
-                                type="text"
-                                value={newFolderName}
-                                onChange={(e) => { setNewFolderName(e.target.value); if (createFolderError) setCreateFolderError(null); }}
-                                onKeyDown={async (e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    const name = newFolderName.trim();
-                                    if (!name || creatingFolderBusy) return;
-                                    setCreatingFolderBusy(true);
-                                    setCreateFolderError(null);
-                                    const f = await handleCreateFolder(name);
-                                    setCreatingFolderBusy(false);
-                                    if (f) { setNewFolderName(''); setCreatingFolder(false); }
-                                    else setCreateFolderError('Não foi possível criar a pasta. Tente novamente.');
-                                  }
-                                  if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }
-                                }}
-                                placeholder="Nome da pasta"
-                                maxLength={50}
-                                className="w-full h-11 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-white/25 focus:outline-none focus:border-white/30 text-sm transition-colors"
-                              />
-                              {createFolderError && (
-                                <div className="mt-2 text-[11px] text-red-400/90">{createFolderError}</div>
-                              )}
-                              <div className="flex justify-end gap-2 mt-3">
-                                <button
-                                  onClick={() => { setCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }}
-                                  className="px-4 py-2 text-xs text-white/55 hover:text-white transition-colors uppercase tracking-widest font-bold"
-                                >
-                                  Cancelar
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    const name = newFolderName.trim();
-                                    if (!name || creatingFolderBusy) return;
-                                    setCreatingFolderBusy(true);
-                                    setCreateFolderError(null);
-                                    const f = await handleCreateFolder(name);
-                                    setCreatingFolderBusy(false);
-                                    if (f) { setNewFolderName(''); setCreatingFolder(false); }
-                                    else setCreateFolderError('Não foi possível criar a pasta. Tente novamente.');
-                                  }}
-                                  disabled={!newFolderName.trim() || creatingFolderBusy}
-                                  className="px-5 py-2 rounded-full bg-white text-black text-xs font-bold uppercase tracking-widest disabled:opacity-40 flex items-center gap-2 transition-opacity"
-                                >
-                                  {creatingFolderBusy && <Loader2 size={12} className="animate-spin" />}
-                                  Criar
-                                </button>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-
                       {folders.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-20 text-center">
                           <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
@@ -2376,7 +2303,7 @@ export default function App() {
                           </div>
                           <h3 className="text-lg font-bold text-white mb-2 uppercase tracking-tighter">Nenhuma pasta ainda</h3>
                           <p className="text-white/40 text-xs uppercase tracking-widest max-w-xs mx-auto">
-                            Toque em "Criar nova pasta" acima para começar
+                            Toque no botão "+" acima para criar sua primeira pasta
                           </p>
                         </div>
                       ) : (
@@ -2520,6 +2447,104 @@ export default function App() {
         onClose={() => setSaveToFolderTarget(null)}
         onAddToFolder={handleAddToFolder}
       />
+
+      <AnimatePresence>
+        {creatingFolder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[220] flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)' }}
+            onClick={() => { setCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 280 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm rounded-3xl overflow-hidden glass-panel"
+              style={{
+                background: 'rgba(20,20,22,0.85)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                backdropFilter: 'blur(28px) saturate(140%)',
+                boxShadow: '0 30px 80px -20px rgba(0,0,0,0.7)',
+              }}
+            >
+              <div className="px-6 pt-6 pb-5">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
+                    <FolderPlus size={16} className="text-white/70" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-white uppercase tracking-widest">Nova pasta</h2>
+                    <p className="text-[10px] text-white/40">Mínimo de 2 caracteres</p>
+                  </div>
+                </div>
+
+                <input
+                  autoFocus
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => { setNewFolderName(e.target.value); if (createFolderError) setCreateFolderError(null); }}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const name = newFolderName.trim();
+                      if (name.length < 2 || creatingFolderBusy) {
+                        if (name.length < 2) setCreateFolderError('Use no mínimo 2 caracteres.');
+                        return;
+                      }
+                      setCreatingFolderBusy(true);
+                      setCreateFolderError(null);
+                      const f = await handleCreateFolder(name);
+                      setCreatingFolderBusy(false);
+                      if (f) { setNewFolderName(''); setCreatingFolder(false); }
+                      else setCreateFolderError('Não foi possível criar a pasta. Tente novamente.');
+                    }
+                    if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }
+                  }}
+                  placeholder="Nome da pasta"
+                  maxLength={50}
+                  className="w-full h-12 bg-white/5 border border-white/10 rounded-2xl px-4 text-white placeholder-white/25 focus:outline-none focus:border-white/30 text-sm transition-colors"
+                />
+
+                {createFolderError && (
+                  <div className="mt-2 text-[11px] text-red-400/90">{createFolderError}</div>
+                )}
+
+                <div className="flex justify-end gap-2 mt-5">
+                  <button
+                    onClick={() => { setCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }}
+                    className="px-4 py-2.5 text-xs text-white/55 hover:text-white transition-colors uppercase tracking-widest font-bold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const name = newFolderName.trim();
+                      if (name.length < 2) { setCreateFolderError('Use no mínimo 2 caracteres.'); return; }
+                      if (creatingFolderBusy) return;
+                      setCreatingFolderBusy(true);
+                      setCreateFolderError(null);
+                      const f = await handleCreateFolder(name);
+                      setCreatingFolderBusy(false);
+                      if (f) { setNewFolderName(''); setCreatingFolder(false); }
+                      else setCreateFolderError('Não foi possível criar a pasta. Tente novamente.');
+                    }}
+                    disabled={newFolderName.trim().length < 2 || creatingFolderBusy}
+                    className="px-5 py-2.5 rounded-full bg-white text-black text-xs font-bold uppercase tracking-widest disabled:opacity-40 flex items-center gap-2 transition-opacity"
+                  >
+                    {creatingFolderBusy && <Loader2 size={12} className="animate-spin" />}
+                    Criar pasta
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <FolderDetailModal
         open={!!openFolder}
