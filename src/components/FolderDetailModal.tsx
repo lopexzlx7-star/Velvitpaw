@@ -116,23 +116,13 @@ const FolderDetailModal: React.FC<Props> = ({
                 >
                   <X size={16} />
                 </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowRelated(true)}
-                    className="h-10 px-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center gap-2 text-white/80 hover:text-white text-xs font-bold uppercase tracking-widest transition-colors"
-                    title="Posts relacionados"
-                  >
-                    <Sparkles size={13} />
-                    Relacionados
-                  </button>
-                  <button
-                    onClick={handleDeleteFolder}
-                    className="w-10 h-10 rounded-full bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/40 flex items-center justify-center text-white/60 hover:text-red-400 transition-colors"
-                    title="Excluir pasta"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                <button
+                  onClick={handleDeleteFolder}
+                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/40 flex items-center justify-center text-white/60 hover:text-red-400 transition-colors"
+                  title="Excluir pasta"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
 
               <div className="flex flex-col items-center text-center mb-10">
@@ -188,6 +178,16 @@ const FolderDetailModal: React.FC<Props> = ({
               )}
             </div>
           </div>
+
+          {/* Floating circular Relacionados button */}
+          <button
+            onClick={() => setShowRelated(true)}
+            className="fixed bottom-24 right-6 w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 backdrop-blur-xl flex items-center justify-center text-white shadow-2xl transition-all z-[155] hover:scale-105"
+            title="Posts relacionados"
+            style={{ boxShadow: '0 10px 30px -5px rgba(0,0,0,0.6)' }}
+          >
+            <Sparkles size={20} />
+          </button>
 
           {/* Related posts bottom sheet */}
           <AnimatePresence>
