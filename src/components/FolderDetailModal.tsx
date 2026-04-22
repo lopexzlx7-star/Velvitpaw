@@ -206,7 +206,7 @@ const FolderDetailModal: React.FC<Props> = ({
                   exit={{ y: '100%' }}
                   transition={{ type: 'spring', damping: 32, stiffness: 320 }}
                   onClick={(e) => e.stopPropagation()}
-                  className="relative w-full max-w-3xl rounded-t-[2rem] overflow-hidden"
+                  className="relative w-full max-w-3xl rounded-t-[2rem] overflow-hidden glass-panel"
                   style={{
                     maxHeight: '85vh',
                     background: 'rgba(16,16,18,0.92)',

@@ -149,7 +149,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
         exit={{ scale: 0.94, opacity: 0, y: 8 }}
         transition={{ type: 'spring', stiffness: 320, damping: 28 }}
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-md my-auto rounded-[2.5rem] overflow-hidden"
+        className="relative w-full max-w-md my-auto rounded-[2.5rem] overflow-hidden glass-panel"
         style={{
           background: 'linear-gradient(160deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 45%, rgba(255,255,255,0.06) 100%)',
           backdropFilter: 'blur(30px) saturate(160%)',

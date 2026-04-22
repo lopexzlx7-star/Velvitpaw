@@ -295,6 +295,7 @@ export default function App() {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolderBusy, setCreatingFolderBusy] = useState(false);
+  const [createFolderError, setCreateFolderError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'foryou'>('home');
   const [forYouItems, setForYouItems] = useState<ContentItem[]>([]);
   const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>(['Aesthetic', 'Nature', 'Art', 'Tech', 'Fashion', 'Architecture', 'Travel', 'Food']);
@@ -1359,17 +1360,33 @@ export default function App() {
 
   const handleCreateFolder = async (name: string, description?: string): Promise<Folder | null> => {
     const uid = auth.currentUser?.uid;
-    if (!uid || !name.trim()) return null;
+    if (!uid) {
+      console.error('[createFolder] No authenticated user');
+      return null;
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      console.warn('[createFolder] Empty name');
+      return null;
+    }
     const folderData = {
       ownerUid: uid,
-      name: name.trim(),
+      name: trimmed,
       description: description?.trim() || '',
       coverImage: null,
       postIds: [] as string[],
       createdAt: new Date().toISOString(),
     };
-    const ref = await addDoc(collection(db, 'folders'), folderData);
-    return { id: ref.id, ...folderData };
+    try {
+      const ref = await addDoc(collection(db, 'folders'), folderData);
+      const newFolder = { id: ref.id, ...folderData };
+      // Optimistically add (the listener will reconcile)
+      setFolders(prev => prev.some(f => f.id === ref.id) ? prev : [newFolder, ...prev]);
+      return newFolder;
+    } catch (err) {
+      console.error('[createFolder] Failed to create folder:', err);
+      return null;
+    }
   };
 
   const handleAddToFolder = async (folder: Folder, post: ContentItem) => {
@@ -2300,34 +2317,45 @@ export default function App() {
                                 autoFocus
                                 type="text"
                                 value={newFolderName}
-                                onChange={(e) => setNewFolderName(e.target.value)}
+                                onChange={(e) => { setNewFolderName(e.target.value); if (createFolderError) setCreateFolderError(null); }}
                                 onKeyDown={async (e) => {
-                                  if (e.key === 'Enter' && newFolderName.trim() && !creatingFolderBusy) {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const name = newFolderName.trim();
+                                    if (!name || creatingFolderBusy) return;
                                     setCreatingFolderBusy(true);
-                                    const f = await handleCreateFolder(newFolderName.trim());
+                                    setCreateFolderError(null);
+                                    const f = await handleCreateFolder(name);
                                     setCreatingFolderBusy(false);
                                     if (f) { setNewFolderName(''); setCreatingFolder(false); }
+                                    else setCreateFolderError('Não foi possível criar a pasta. Tente novamente.');
                                   }
-                                  if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
+                                  if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }
                                 }}
                                 placeholder="Nome da pasta"
                                 maxLength={50}
                                 className="w-full h-11 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-white/25 focus:outline-none focus:border-white/30 text-sm transition-colors"
                               />
+                              {createFolderError && (
+                                <div className="mt-2 text-[11px] text-red-400/90">{createFolderError}</div>
+                              )}
                               <div className="flex justify-end gap-2 mt-3">
                                 <button
-                                  onClick={() => { setCreatingFolder(false); setNewFolderName(''); }}
+                                  onClick={() => { setCreatingFolder(false); setNewFolderName(''); setCreateFolderError(null); }}
                                   className="px-4 py-2 text-xs text-white/55 hover:text-white transition-colors uppercase tracking-widest font-bold"
                                 >
                                   Cancelar
                                 </button>
                                 <button
                                   onClick={async () => {
-                                    if (!newFolderName.trim() || creatingFolderBusy) return;
+                                    const name = newFolderName.trim();
+                                    if (!name || creatingFolderBusy) return;
                                     setCreatingFolderBusy(true);
-                                    const f = await handleCreateFolder(newFolderName.trim());
+                                    setCreateFolderError(null);
+                                    const f = await handleCreateFolder(name);
                                     setCreatingFolderBusy(false);
                                     if (f) { setNewFolderName(''); setCreatingFolder(false); }
+                                    else setCreateFolderError('Não foi possível criar a pasta. Tente novamente.');
                                   }}
                                   disabled={!newFolderName.trim() || creatingFolderBusy}
                                   className="px-5 py-2 rounded-full bg-white text-black text-xs font-bold uppercase tracking-widest disabled:opacity-40 flex items-center gap-2 transition-opacity"
@@ -2443,7 +2471,12 @@ export default function App() {
             }}
             onAuthorClick={(uid) => {
               setSelectedPost(null);
-              setProfileViewUid(uid);
+              if (uid && uid === auth.currentUser?.uid) {
+                setCurrentTab('profile');
+                setProfileTab('posts');
+              } else {
+                setProfileViewUid(uid);
+              }
             }}
           />
         )}
@@ -2461,7 +2494,15 @@ export default function App() {
               setProfileViewUid(null);
               setSelectedPost(post);
             }}
-            onOpenUser={(uid) => setProfileViewUid(uid)}
+            onOpenUser={(uid) => {
+              if (uid && uid === auth.currentUser?.uid) {
+                setProfileViewUid(null);
+                setCurrentTab('profile');
+                setProfileTab('posts');
+              } else {
+                setProfileViewUid(uid);
+              }
+            }}
             likedIds={likedIds}
             onLike={handleLike}
             onHashtagClick={(tag) => {
