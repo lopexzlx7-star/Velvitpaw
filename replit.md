@@ -70,3 +70,21 @@ A social media app for sharing images, GIFs, and videos with a glassmorphism aes
 - Vite (frontend): port 5000
 - Express API: port 3001
 - Run: `npm run dev` (uses `concurrently`)
+
+## New Features (2026-04-22)
+
+### Recency-first ordering
+- Feed query in `App.tsx` sorts by `createdAt DESC` with `id DESC` as deterministic tie-breaker (matches `ORDER BY created_at DESC, id DESC`).
+
+### Pinterest-style folders ("Pastas")
+- New `folders` Firestore collection: `{ ownerUid, name, description, coverImage, postIds[], createdAt }`.
+- `firestore.rules` updated to allow owner CRUD on `folders/{folderId}`.
+- Bookmark icon on any post opens `SaveToFolderModal` (pick a folder or create one).
+- Profile page has a new "Pastas" tab with a folder grid; tapping a folder opens `FolderDetailModal`.
+- `savedIds` is derived from `folders.postIds` so the bookmark indicator stays accurate.
+- Files: `src/components/SaveToFolderModal.tsx`, `src/components/FolderDetailModal.tsx`, `src/types.ts` (Folder).
+
+### Hashtag categories in search
+- Search popup "Recomendações" replaced with "Categorias em alta" — horizontal carousel of `HashtagCategoryCard` (cover image + name + post count) computed from `globalPosts`.
+- Tapping a category triggers `handleHashtagClick(tag)`.
+- Files: `src/components/HashtagCategoryCard.tsx`, `src/types.ts` (HashtagCategory).

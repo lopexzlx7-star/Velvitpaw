@@ -1,0 +1,138 @@
+import React, { useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, Trash2, Folder as FolderIcon } from 'lucide-react';
+import { Folder, ContentItem } from '../types';
+import GlassCard from './GlassCard';
+
+interface Props {
+  open: boolean;
+  folder: Folder | null;
+  allPosts: ContentItem[];
+  likedIds: string[];
+  savedIds: string[];
+  followingUids: string[];
+  currentUid: string | undefined;
+  onClose: () => void;
+  onOpenPost: (post: ContentItem) => void;
+  onLike: (id: string) => void;
+  onSave: (post: ContentItem) => void;
+  onFollow: (uid: string) => void;
+  onDelete: (id: string) => void;
+  onHashtagClick: (tag: string) => void;
+  onRemoveFromFolder: (folder: Folder, postId: string) => Promise<void>;
+  onDeleteFolder: (folderId: string) => Promise<void>;
+}
+
+const FolderDetailModal: React.FC<Props> = ({
+  open, folder, allPosts, likedIds, savedIds, followingUids, currentUid,
+  onClose, onOpenPost, onLike, onSave, onFollow, onDelete, onHashtagClick,
+  onRemoveFromFolder, onDeleteFolder,
+}) => {
+  const posts = useMemo(() => {
+    if (!folder) return [];
+    const map = new Map(allPosts.map(p => [p.id, p]));
+    return folder.postIds
+      .map(id => map.get(id))
+      .filter((p): p is ContentItem => Boolean(p));
+  }, [folder, allPosts]);
+
+  if (!folder) return null;
+
+  const handleDeleteFolder = async () => {
+    if (!confirm(`Excluir a pasta "${folder.name}"? Os posts não serão removidos.`)) return;
+    await onDeleteFolder(folder.id);
+    onClose();
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[150] overflow-y-auto"
+          style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)' }}
+        >
+          <div className="min-h-screen px-4 md:px-8 py-6">
+            <div className="max-w-7xl mx-auto">
+              <div className="flex items-center justify-between mb-6">
+                <button
+                  onClick={onClose}
+                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+                >
+                  <X size={16} />
+                </button>
+                <button
+                  onClick={handleDeleteFolder}
+                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/40 flex items-center justify-center text-white/60 hover:text-red-400 transition-colors"
+                  title="Excluir pasta"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+
+              <div className="text-center mb-10">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/5 border border-white/10 mb-4 overflow-hidden">
+                  {folder.coverImage ? (
+                    <img src={folder.coverImage} alt={folder.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <FolderIcon size={26} className="text-white/40" />
+                  )}
+                </div>
+                <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white mb-2">{folder.name}</h1>
+                <div className="text-[10px] uppercase tracking-widest text-white/40">
+                  {posts.length} {posts.length === 1 ? 'pin' : 'pins'}
+                </div>
+                {folder.description && (
+                  <p className="mt-3 text-sm text-white/60 max-w-md mx-auto">{folder.description}</p>
+                )}
+              </div>
+
+              {posts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-32 text-center">
+                  <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
+                    <FolderIcon size={32} className="text-white/15" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-2 uppercase tracking-tighter">Pasta vazia</h3>
+                  <p className="text-white/40 text-xs uppercase tracking-widest">
+                    Salve posts aqui para começar
+                  </p>
+                </div>
+              ) : (
+                <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
+                  {posts.map(item => (
+                    <div key={item.id} className="relative group mb-4 break-inside-avoid">
+                      <GlassCard
+                        item={item}
+                        isLiked={likedIds.includes(item.id)}
+                        isSaved={savedIds.includes(item.id)}
+                        isFollowing={followingUids.includes((item as any).authorUid)}
+                        onLike={onLike}
+                        onSave={onSave}
+                        onFollow={onFollow}
+                        onDelete={onDelete}
+                        onClick={() => onOpenPost(item)}
+                        onHashtagClick={onHashtagClick}
+                        isUserPost={(item as any).authorUid === currentUid}
+                      />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onRemoveFromFolder(folder, item.id); }}
+                        className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 hover:bg-red-500/80 border border-white/15 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        title="Remover da pasta"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+export default FolderDetailModal;

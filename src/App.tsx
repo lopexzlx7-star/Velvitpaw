@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, ChangeEvent, ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, ChangeEvent, ReactNode } from 'react';
 import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { 
@@ -29,12 +29,15 @@ import {
   updateEmail
 } from 'firebase/auth';
 import { db, auth } from './firebase';
-import { ContentItem, Notification } from './types';
+import { ContentItem, Notification, Folder, HashtagCategory } from './types';
 import GlassCard from './components/GlassCard';
 import FloatingNav from './components/FloatingNav';
 import PublishModal from './components/PublishModal';
 import PostDetailModal from './components/PostDetailModal';
 import UserProfileModal from './components/UserProfileModal';
+import HashtagCategoryCard from './components/HashtagCategoryCard';
+import SaveToFolderModal from './components/SaveToFolderModal';
+import FolderDetailModal from './components/FolderDetailModal';
 
 // Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
 function getCloudinaryThumb(videoUrl: string): string | null {
@@ -284,7 +287,10 @@ export default function App() {
     const saved = localStorage.getItem('velvit_saves');
     return saved ? JSON.parse(saved) : [];
   });
-  const [profileTab, setProfileTab] = useState<'posts' | 'liked'>('posts');
+  const [profileTab, setProfileTab] = useState<'posts' | 'liked' | 'folders'>('posts');
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [saveToFolderTarget, setSaveToFolderTarget] = useState<ContentItem | null>(null);
+  const [openFolder, setOpenFolder] = useState<Folder | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'foryou'>('home');
   const [forYouItems, setForYouItems] = useState<ContentItem[]>([]);
   const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>(['Aesthetic', 'Nature', 'Art', 'Tech', 'Fashion', 'Architecture', 'Travel', 'Food']);
@@ -438,7 +444,9 @@ export default function App() {
       fetchedPosts.sort((a, b) => {
         const dateA = new Date(a.createdAt || 0).getTime();
         const dateB = new Date(b.createdAt || 0).getTime();
-        return dateB - dateA;
+        if (dateB !== dateA) return dateB - dateA;
+        // Tie-breaker: id desc (matches ORDER BY created_at DESC, id DESC)
+        return (b.id || '').localeCompare(a.id || '');
       });
 
       // Store all posts globally so auth callback can re-filter after uid resolves
@@ -1294,6 +1302,111 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [searchQuery, globalPosts, activeHashtag]);
 
+  // Compute trending hashtag categories from globalPosts
+  const hashtagCategories: HashtagCategory[] = useMemo(() => {
+    const map = new Map<string, HashtagCategory>();
+    for (const p of globalPosts) {
+      const ts = new Date(p.createdAt || 0).getTime();
+      const cover = (p.type === 'video' ? (getVideoThumb(p) || p.url) : p.url) || null;
+      for (const raw of (p.hashtags || [])) {
+        const tag = String(raw).toLowerCase();
+        if (!tag) continue;
+        const existing = map.get(tag);
+        if (!existing) {
+          map.set(tag, { name: tag, count: 1, coverImage: cover, latestAt: ts });
+        } else {
+          existing.count += 1;
+          if (ts > existing.latestAt) {
+            existing.latestAt = ts;
+            existing.coverImage = cover;
+          }
+        }
+      }
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.count - a.count || b.latestAt - a.latestAt)
+      .slice(0, 12);
+  }, [globalPosts]);
+
+  // ─── Folders: subscribe to current user's folders ──────────────────────────
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) { setFolders([]); return; }
+    const qFolders = query(collection(db, 'folders'), where('ownerUid', '==', uid));
+    const unsub = onSnapshot(qFolders, (snap) => {
+      const list: Folder[] = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as Folder[];
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setFolders(list);
+    }, (err) => console.warn('folders sub error', err));
+    return () => unsub();
+  }, [isLoggedIn]);
+
+  const handleCreateFolder = async (name: string, description?: string): Promise<Folder | null> => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !name.trim()) return null;
+    const folderData = {
+      ownerUid: uid,
+      name: name.trim(),
+      description: description?.trim() || '',
+      coverImage: null,
+      postIds: [] as string[],
+      createdAt: new Date().toISOString(),
+    };
+    const ref = await addDoc(collection(db, 'folders'), folderData);
+    return { id: ref.id, ...folderData };
+  };
+
+  const handleAddToFolder = async (folder: Folder, post: ContentItem) => {
+    if (folder.postIds.includes(post.id)) return;
+    const newPostIds = [post.id, ...folder.postIds];
+    const cover = folder.coverImage || (post.type === 'video' ? (getVideoThumb(post) || post.url) : post.url) || null;
+    await updateDoc(doc(db, 'folders', folder.id), { postIds: newPostIds, coverImage: cover });
+
+    // First time saving this post — increment savesCount and record interaction
+    const alreadySavedAnywhere = folders.some(f => f.postIds.includes(post.id));
+    if (!alreadySavedAnywhere && auth.currentUser) {
+      try {
+        const interactionId = `${auth.currentUser.uid}_${post.id}_save`;
+        await setDoc(doc(db, 'interactions', interactionId), {
+          uid: auth.currentUser.uid,
+          postId: post.id,
+          type: 'save',
+          createdAt: new Date().toISOString(),
+        });
+        await updateDoc(doc(db, 'posts', post.id), { savesCount: increment(1) });
+      } catch (err) {
+        console.warn('save interaction failed', err);
+      }
+    }
+  };
+
+  const handleRemoveFromFolder = async (folder: Folder, postId: string) => {
+    const newPostIds = folder.postIds.filter(id => id !== postId);
+    await updateDoc(doc(db, 'folders', folder.id), { postIds: newPostIds });
+  };
+
+  const handleDeleteFolder = async (folderId: string) => {
+    await deleteDoc(doc(db, 'folders', folderId));
+  };
+
+  // Open the save-to-folder picker for a given post id
+  const openSavePicker = (id: string) => {
+    const post =
+      globalPosts.find(p => p.id === id) ||
+      userPosts.find(p => p.id === id) ||
+      likedItems.find(p => p.id === id) ||
+      items.find(p => p.id === id) ||
+      null;
+    if (post) setSaveToFolderTarget(post);
+  };
+
+  // Derive saved ids from folders so the bookmark icon stays accurate
+  useEffect(() => {
+    const ids = Array.from(new Set(folders.flatMap(f => f.postIds)));
+    setSavedIds(ids);
+    localStorage.setItem('velvit_saves', JSON.stringify(ids));
+  }, [folders]);
+
   if (!isLoggedIn) {
     return (
       <div
@@ -1741,24 +1854,24 @@ export default function App() {
                               </div>
 
                               <div className="flex items-center gap-2 mb-3">
-                                <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendações</span>
+                                <span className="text-[10px] uppercase tracking-widest text-white/30">Categorias em alta</span>
                               </div>
                               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                                {globalPosts.length === 0 ? (
+                                {hashtagCategories.length === 0 ? (
                                   Array.from({ length: 4 }).map((_, i) => (
                                     <div
-                                      key={`rec-skel-${i}`}
-                                      className="min-w-[100px] aspect-[9/16] rounded-xl bg-white/5 animate-pulse flex-shrink-0"
+                                      key={`cat-skel-${i}`}
+                                      className="shrink-0 w-32 h-44 rounded-2xl bg-white/5 animate-pulse"
                                     />
                                   ))
                                 ) : (
-                                  globalPosts.slice(0, 6).map(item => (
-                                    <RecommendationCard
-                                      key={`search-rec-${item.id}`}
-                                      item={item}
+                                  hashtagCategories.map(cat => (
+                                    <HashtagCategoryCard
+                                      key={`search-cat-${cat.name}`}
+                                      category={cat}
                                       onClick={() => {
                                         setShowHistory(false);
-                                        setSelectedPost(item);
+                                        handleHashtagClick(cat.name);
                                       }}
                                     />
                                   ))
@@ -1911,7 +2024,7 @@ export default function App() {
                         isSaved={savedIds.includes(item.id)}
                         isFollowing={followingUids.includes((item as any).authorUid)}
                         onLike={handleLike}
-                        onSave={handleSave}
+                        onSave={openSavePicker}
                         onFollow={handleFollow}
                         onDelete={handleDeletePost}
                         onClick={() => setSelectedPost(item)}
@@ -2113,6 +2226,13 @@ export default function App() {
                       {profileTab === 'posts' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white accent-line" />}
                     </button>
                     <button 
+                      onClick={() => setProfileTab('folders')}
+                      className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${profileTab === 'folders' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
+                    >
+                      Pastas ({folders.length})
+                      {profileTab === 'folders' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white accent-line" />}
+                    </button>
+                    <button 
                       onClick={() => setProfileTab('liked')}
                       className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${profileTab === 'liked' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
                     >
@@ -2121,20 +2241,65 @@ export default function App() {
                     </button>
                   </div>
 
-                  <div className="columns-2 sm:columns-3 gap-4">
-                    {(profileTab === 'posts' ? userPosts : likedItems).map(post => (
-                      <GlassCard
-                        key={`profile-${post.id}`}
-                        item={post}
-                        isLiked={likedIds.includes(post.id)}
-                        onLike={handleLike}
-                        onDelete={handleDeletePost}
-                        onClick={() => setSelectedPost(post)}
-                        onHashtagClick={handleHashtagClick}
-                        isUserPost={(post as any).authorUid === auth.currentUser?.uid}
-                      />
-                    ))}
-                  </div>
+                  {profileTab === 'folders' ? (
+                    <div>
+                      {folders.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-32 text-center">
+                          <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
+                            <Bookmark size={28} className="text-white/15" />
+                          </div>
+                          <h3 className="text-lg font-bold text-white mb-2 uppercase tracking-tighter">Nenhuma pasta ainda</h3>
+                          <p className="text-white/40 text-xs uppercase tracking-widest max-w-xs mx-auto">
+                            Toque no marcador em qualquer post para criar sua primeira pasta
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {folders.map(f => (
+                            <button
+                              key={f.id}
+                              onClick={() => setOpenFolder(f)}
+                              className="group text-left"
+                            >
+                              <div className="relative aspect-square rounded-2xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-white/20 transition-colors">
+                                {f.coverImage ? (
+                                  <img src={f.coverImage} alt={f.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <Bookmark size={32} className="text-white/15" />
+                                  </div>
+                                )}
+                                <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.6) 100%)' }} />
+                              </div>
+                              <div className="mt-2 px-1">
+                                <div className="text-sm font-bold text-white truncate">{f.name}</div>
+                                <div className="text-[10px] text-white/40 uppercase tracking-widest">
+                                  {f.postIds.length} {f.postIds.length === 1 ? 'pin' : 'pins'}
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="columns-2 sm:columns-3 gap-4">
+                      {(profileTab === 'posts' ? userPosts : likedItems).map(post => (
+                        <GlassCard
+                          key={`profile-${post.id}`}
+                          item={post}
+                          isLiked={likedIds.includes(post.id)}
+                          isSaved={savedIds.includes(post.id)}
+                          onLike={handleLike}
+                          onSave={openSavePicker}
+                          onDelete={handleDeletePost}
+                          onClick={() => setSelectedPost(post)}
+                          onHashtagClick={handleHashtagClick}
+                          isUserPost={(post as any).authorUid === auth.currentUser?.uid}
+                        />
+                      ))}
+                    </div>
+                  )}
 
                   {/* Sync / recovery email — bottom of profile */}
                   {!hasRecoveryEmail && (
@@ -2211,6 +2376,34 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      <SaveToFolderModal
+        open={!!saveToFolderTarget}
+        post={saveToFolderTarget}
+        folders={folders}
+        onClose={() => setSaveToFolderTarget(null)}
+        onAddToFolder={handleAddToFolder}
+        onCreateFolder={handleCreateFolder}
+      />
+
+      <FolderDetailModal
+        open={!!openFolder}
+        folder={openFolder}
+        allPosts={[...globalPosts, ...userPosts, ...likedItems]}
+        likedIds={likedIds}
+        savedIds={savedIds}
+        followingUids={followingUids}
+        currentUid={auth.currentUser?.uid}
+        onClose={() => setOpenFolder(null)}
+        onOpenPost={(p) => { setOpenFolder(null); setSelectedPost(p); }}
+        onLike={handleLike}
+        onSave={openSavePicker}
+        onFollow={handleFollow}
+        onDelete={handleDeletePost}
+        onHashtagClick={(tag) => { setOpenFolder(null); handleHashtagClick(tag); }}
+        onRemoveFromFolder={handleRemoveFromFolder}
+        onDeleteFolder={handleDeleteFolder}
+      />
 
       <AnimatePresence>
         {showEmailPopup && (
