@@ -322,6 +322,7 @@ export default function App() {
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [publishHasMedia, setPublishHasMedia] = useState(false);
   const [photoViewer, setPhotoViewer] = useState<{ url: string | null; username: string } | null>(null);
   const [showEmailPopup, setShowEmailPopup] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -2326,18 +2327,21 @@ export default function App() {
           </AnimatePresence>
       </main>
 
-      <FloatingNav 
-        activeTab={currentTab}
-        onHomeClick={handleHomeClick}
-        onAddClick={() => setShowPublishModal(true)}
-        onProfileClick={() => setCurrentTab('profile')}
-      />
+      {!publishHasMedia && (
+        <FloatingNav
+          activeTab={showPublishModal ? 'publish' : currentTab}
+          onHomeClick={() => { if (showPublishModal) setShowPublishModal(false); handleHomeClick(); }}
+          onAddClick={() => setShowPublishModal(true)}
+          onProfileClick={() => { if (showPublishModal) setShowPublishModal(false); setCurrentTab('profile'); }}
+        />
+      )}
 
       <OfflineIndicator />
 
       <PublishModal 
         isOpen={showPublishModal} 
         onClose={() => setShowPublishModal(false)}
+        onHasMediaChange={setPublishHasMedia}
         onSuccess={() => {
           setShowPublishModal(false);
         }}

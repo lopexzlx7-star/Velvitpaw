@@ -12,6 +12,7 @@ interface PublishModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onHasMediaChange?: (hasMedia: boolean) => void;
 }
 
 type AspectRatio = 'portrait' | 'landscape' | 'square' | 'wide' | 'original';
@@ -122,7 +123,7 @@ async function safeFetchJson(url: string): Promise<any> {
   return data;
 }
 
-const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess }) => {
+const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess, onHasMediaChange }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('portrait');
@@ -152,6 +153,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
   const isMultiImage = images.length > 0;
   const isVideo = !!videoDraft;
   const hasMedia = isMultiImage || isVideo;
+
+  useEffect(() => {
+    onHasMediaChange?.(isOpen && hasMedia);
+    if (!isOpen) onHasMediaChange?.(false);
+  }, [hasMedia, isOpen, onHasMediaChange]);
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
