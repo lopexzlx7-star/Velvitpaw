@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0766084456",
-  "appId": "1:361156769790:web:8990c39f787e22e6f632af",
-  "apiKey": "AIzaSyAtZa2ddMFWqf0RPAZ1Jq00gl7AtwjrUEo",
-  "authDomain": "gen-lang-client-0766084456.firebaseapp.com",
+  "projectId": "velvitpaw",
+  "appId": "1:424100429498:web:796209c577a2f1033f8c83",
+  "apiKey": "AIzaSyAjos0uoFjMauJG9oudajU0EEZNEDAbscI",
+  "authDomain": "velvitpaw.firebaseapp.com",
   "firestoreDatabaseId": "Velvitapp-orig",
-  "storageBucket": "gen-lang-client-0766084456.firebasestorage.app",
-  "messagingSenderId": "361156769790",
-  "measurementId": ""
+  "storageBucket": "velvitpaw.firebasestorage.app",
+  "messagingSenderId": "424100429498",
+  "measurementId": "G-VF8HTBW3XE"
 }
