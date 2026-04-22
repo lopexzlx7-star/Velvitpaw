@@ -207,28 +207,6 @@ const ProfileEditModal: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Profile photo */}
-              <button
-                type="button"
-                onClick={() => profileInputRef.current?.click()}
-                className="w-full text-left rounded-2xl p-4 flex items-center gap-3 transition-colors hover:bg-white/[0.06]"
-                style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                }}
-              >
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ background: 'rgba(var(--accent-rgb), 0.15)', border: '1px solid rgba(var(--accent-rgb), 0.3)' }}
-                >
-                  <User size={16} style={{ color: 'rgb(var(--accent-rgb))' }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold">Foto de perfil</div>
-                  <div className="text-sm font-bold text-white truncate">Escolher nova imagem</div>
-                </div>
-                <ChevronRight size={16} className="text-white/30 shrink-0" />
-              </button>
               <input
                 ref={profileInputRef}
                 type="file"

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Trash2, Folder as FolderIcon, Sparkles, ChevronDown } from 'lucide-react';
+import { X, Trash2, Folder as FolderIcon, Sparkles, ChevronDown, Pencil, Check } from 'lucide-react';
 import { Folder, ContentItem } from '../types';
 import GlassCard from './GlassCard';
 import FolderCover from './FolderCover';
@@ -22,15 +22,27 @@ interface Props {
   onHashtagClick: (tag: string) => void;
   onRemoveFromFolder: (folder: Folder, postId: string) => Promise<void>;
   onDeleteFolder: (folderId: string) => Promise<void>;
+  onUpdateFolder?: (folderId: string, updates: { name?: string; description?: string }) => Promise<void>;
 }
 
 const FolderDetailModal: React.FC<Props> = ({
   open, folder, allPosts, likedIds, savedIds, followingUids, currentUid,
   onClose, onOpenPost, onLike, onSave, onFollow, onDelete, onHashtagClick,
-  onRemoveFromFolder, onDeleteFolder,
+  onRemoveFromFolder, onDeleteFolder, onUpdateFolder,
 }) => {
   const [showRelated, setShowRelated] = useState(false);
   const [aiRanked, setAiRanked] = useState<ContentItem[] | null>(null);
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [draftName, setDraftName] = useState('');
+  const [draftDesc, setDraftDesc] = useState('');
+
+  useEffect(() => {
+    if (folder) {
+      setDraftName(folder.name);
+      setDraftDesc(folder.description || '');
+      setEditingMeta(false);
+    }
+  }, [folder?.id]);
 
   const posts = useMemo(() => {
     if (!folder) return [];
@@ -172,12 +184,70 @@ const FolderDetailModal: React.FC<Props> = ({
                 <div className="w-32 h-32 mb-4">
                   <FolderCover folder={folder} allPosts={allPosts} rounded="rounded-2xl" />
                 </div>
-                <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white mb-2">{folder.name}</h1>
-                <div className="text-[10px] uppercase tracking-widest text-white/40">
-                  {posts.length} {posts.length === 1 ? 'item' : 'itens'}
-                </div>
-                {folder.description && (
-                  <p className="mt-3 text-sm text-white/60 max-w-md mx-auto">{folder.description}</p>
+
+                {editingMeta && onUpdateFolder ? (
+                  <div className="w-full max-w-md flex flex-col items-center gap-3">
+                    <input
+                      type="text"
+                      value={draftName}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      autoFocus
+                      maxLength={60}
+                      className="w-full text-center text-2xl md:text-3xl font-black tracking-tight bg-white/5 border border-white/15 rounded-2xl px-4 py-2.5 text-white outline-none focus:border-white/40"
+                      placeholder="Nome da pasta"
+                    />
+                    <textarea
+                      value={draftDesc}
+                      onChange={(e) => setDraftDesc(e.target.value)}
+                      rows={2}
+                      maxLength={200}
+                      className="w-full text-center text-sm bg-white/5 border border-white/10 rounded-2xl px-4 py-2 text-white/80 outline-none focus:border-white/30 resize-none"
+                      placeholder="Descrição (opcional)"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setEditingMeta(false); setDraftName(folder.name); setDraftDesc(folder.description || ''); }}
+                        className="px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-bold bg-white/5 border border-white/10 text-white/60 hover:text-white"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const name = draftName.trim();
+                          if (!name) return;
+                          await onUpdateFolder(folder.id, {
+                            name,
+                            description: draftDesc.trim(),
+                          });
+                          setEditingMeta(false);
+                        }}
+                        className="px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-bold bg-white text-black flex items-center gap-1.5"
+                      >
+                        <Check size={12} /> Salvar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-2">
+                      <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white">{folder.name}</h1>
+                      {onUpdateFolder && (
+                        <button
+                          onClick={() => setEditingMeta(true)}
+                          className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors"
+                          title="Editar pasta"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-widest text-white/40">
+                      {posts.length} {posts.length === 1 ? 'item' : 'itens'}
+                    </div>
+                    {folder.description && (
+                      <p className="mt-3 text-sm text-white/60 max-w-md mx-auto">{folder.description}</p>
+                    )}
+                  </>
                 )}
               </div>
 

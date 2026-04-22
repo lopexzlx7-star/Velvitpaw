@@ -41,6 +41,7 @@ import FolderDetailModal from './components/FolderDetailModal';
 import FolderCover from './components/FolderCover';
 import ProfileEditModal from './components/ProfileEditModal';
 import PhotoViewerModal from './components/PhotoViewerModal';
+import OfflineIndicator from './components/OfflineIndicator';
 
 // Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
 function getCloudinaryThumb(videoUrl: string): string | null {
@@ -2326,10 +2327,13 @@ export default function App() {
       </main>
 
       <FloatingNav 
+        activeTab={currentTab}
         onHomeClick={handleHomeClick}
         onAddClick={() => setShowPublishModal(true)}
         onProfileClick={() => setCurrentTab('profile')}
       />
+
+      <OfflineIndicator />
 
       <PublishModal 
         isOpen={showPublishModal} 
@@ -2524,7 +2528,7 @@ export default function App() {
 
       <FolderDetailModal
         open={!!openFolder}
-        folder={openFolder}
+        folder={openFolder ? (folders.find(f => f.id === openFolder.id) || openFolder) : null}
         allPosts={[...globalPosts, ...userPosts, ...likedItems]}
         likedIds={likedIds}
         savedIds={savedIds}
@@ -2539,6 +2543,13 @@ export default function App() {
         onHashtagClick={(tag) => { setOpenFolder(null); handleHashtagClick(tag); }}
         onRemoveFromFolder={handleRemoveFromFolder}
         onDeleteFolder={handleDeleteFolder}
+        onUpdateFolder={async (folderId, updates) => {
+          const clean: Record<string, string> = {};
+          if (typeof updates.name === 'string') clean.name = updates.name;
+          if (typeof updates.description === 'string') clean.description = updates.description;
+          if (Object.keys(clean).length === 0) return;
+          await updateDoc(doc(db, 'folders', folderId), clean);
+        }}
       />
 
       <AnimatePresence>

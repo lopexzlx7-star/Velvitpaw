@@ -3,48 +3,72 @@ import { motion } from 'framer-motion';
 import React from 'react';
 
 interface FloatingNavProps {
+  activeTab: 'feed' | 'profile';
   onHomeClick: () => void;
   onAddClick: () => void;
   onProfileClick: () => void;
 }
 
 const FloatingNav: React.FC<FloatingNavProps> = ({
+  activeTab,
   onHomeClick,
   onAddClick,
   onProfileClick,
 }) => {
+  const isHome = activeTab === 'feed';
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50">
-      <div className="dark:bg-black/20 bg-white/30 backdrop-blur-2xl px-4 py-3 rounded-full flex items-center gap-6 shadow-2xl dark:shadow-black/50 border dark:border-white/10 border-black/10">
-        {/* Add Post Button */}
+      <div
+        className="relative dark:bg-black/30 bg-white/30 backdrop-blur-2xl px-3 py-2.5 rounded-full flex items-center gap-1 shadow-2xl dark:shadow-black/50 border dark:border-white/10 border-black/10"
+      >
+        {/* Plus (action, not a tab) */}
         <motion.button
-          whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={onAddClick}
-          className="p-2 dark:text-white/50 text-black/50 dark:hover:text-white hover:text-black transition-colors"
+          className="relative z-10 w-12 h-12 flex items-center justify-center rounded-full dark:text-white/55 text-black/55 dark:hover:text-white hover:text-black transition-colors"
+          aria-label="Publicar"
         >
-          <Plus size={24} />
+          <Plus size={22} />
         </motion.button>
 
-        {/* Home Button — center focal point */}
-        <motion.button
-          whileHover={{ scale: 1.1, y: -5 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={onHomeClick}
-          className="w-14 h-14 bg-white dark:bg-white rounded-full flex items-center justify-center text-black shadow-lg dark:shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-shadow hover:shadow-xl dark:hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] accent-primary-btn"
-        >
-          <Home size={28} />
-        </motion.button>
+        {/* Tabs container with animated pill */}
+        <div className="relative flex items-center">
+          {/* Sliding pill indicator */}
+          <motion.div
+            layout
+            initial={false}
+            animate={{ x: isHome ? 0 : 56 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+            className="absolute top-1/2 -translate-y-1/2 left-0 w-14 h-14 rounded-full accent-primary-btn"
+            style={{
+              background: 'rgb(var(--accent-rgb, 255 255 255))',
+              boxShadow:
+                '0 8px 24px -6px rgba(var(--accent-rgb, 255 255 255), 0.55), inset 0 1px 0 rgba(255,255,255,0.35)',
+            }}
+          />
 
-        {/* Profile Button */}
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={onProfileClick}
-          className="p-2 dark:text-white/50 text-black/50 dark:hover:text-white hover:text-black transition-colors"
-        >
-          <User size={24} />
-        </motion.button>
+          {/* Home tab */}
+          <motion.button
+            whileTap={{ scale: 0.92 }}
+            onClick={onHomeClick}
+            className="relative z-10 w-14 h-14 flex items-center justify-center rounded-full transition-colors"
+            style={{ color: isHome ? '#000' : 'rgba(255,255,255,0.55)' }}
+            aria-label="Início"
+          >
+            <Home size={26} />
+          </motion.button>
+
+          {/* Profile tab */}
+          <motion.button
+            whileTap={{ scale: 0.92 }}
+            onClick={onProfileClick}
+            className="relative z-10 w-14 h-14 flex items-center justify-center rounded-full transition-colors"
+            style={{ color: !isHome ? '#000' : 'rgba(255,255,255,0.55)' }}
+            aria-label="Perfil"
+          >
+            <User size={24} />
+          </motion.button>
+        </div>
       </div>
     </div>
   );
