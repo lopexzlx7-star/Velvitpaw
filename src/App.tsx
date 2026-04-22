@@ -39,6 +39,8 @@ import HashtagCategoryCard from './components/HashtagCategoryCard';
 import SaveToFolderModal from './components/SaveToFolderModal';
 import FolderDetailModal from './components/FolderDetailModal';
 import FolderCover from './components/FolderCover';
+import ProfileEditModal from './components/ProfileEditModal';
+import PhotoViewerModal from './components/PhotoViewerModal';
 
 // Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
 function getCloudinaryThumb(videoUrl: string): string | null {
@@ -318,6 +320,8 @@ export default function App() {
   const [selectedPost, setSelectedPost] = useState<ContentItem | null>(null);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [photoViewer, setPhotoViewer] = useState<{ url: string | null; username: string } | null>(null);
   const [showEmailPopup, setShowEmailPopup] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [emailPopupLoading, setEmailPopupLoading] = useState(false);
@@ -1068,9 +1072,10 @@ export default function App() {
     setItems(globalPosts);
   };
 
-  const handleUpdateUsername = async () => {
-    if (!newUsername.trim() || !auth.currentUser) return;
-    const cleanName = newUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  const handleUpdateUsername = async (overrideName?: string) => {
+    const source = (overrideName ?? newUsername).trim();
+    if (!source || !auth.currentUser) return;
+    const cleanName = source.toLowerCase().replace(/[^a-z0-9_]/g, '_');
     if (cleanName.length < 3) {
       alert("O nome deve ter pelo menos 3 caracteres.");
       return;
@@ -2150,7 +2155,12 @@ export default function App() {
                     </div>
                   </div>
                   <div className="flex flex-col md:flex-row items-center gap-8 border-b border-white/10 pb-8 mb-8">
-                    <div className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => setPhotoViewer({ url: profilePic, username })}
+                      className="relative group rounded-full focus:outline-none"
+                      aria-label="Ver foto de perfil"
+                    >
                       <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white/10 group-hover:border-white/30 transition-all bg-white/5 flex items-center justify-center">
                         {profilePic ? (
                           <img src={profilePic} alt="Profile" className="w-full h-full object-cover" />
@@ -2158,45 +2168,12 @@ export default function App() {
                           <User size={48} className="text-white/20" />
                         )}
                       </div>
-                      <label className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full">
-                        <ImageIcon size={24} />
-                        <input 
-                          type="file" 
-                          accept="image/*"
-                          className="hidden" 
-                          onChange={(e) => handleFileSelect(e, 'profile')}
-                        />
-                      </label>
-                    </div>
+                    </button>
                     
                     <div className="flex-1 text-center md:text-left">
                       <div className="flex flex-col md:flex-row items-center gap-4 mb-4">
-                        {isEditingUsername ? (
-                          <div className="flex items-center gap-2">
-                            <input 
-                              type="text" 
-                              value={newUsername}
-                              onChange={(e) => setNewUsername(e.target.value)}
-                              className="bg-white/5 border border-white/10 rounded-lg px-3 py-1 text-white text-sm focus:ring-1 focus:ring-white/20 outline-none"
-                              placeholder="Novo username"
-                            />
-                            <button onClick={handleUpdateUsername} className="p-1 text-emerald-400 hover:text-emerald-300"><CheckCircle2 size={20} /></button>
-                            <button onClick={() => setIsEditingUsername(false)} className="p-1 text-red-400 hover:text-red-300"><X size={20} /></button>
-                          </div>
-                        ) : (
-                          <h2 className="text-3xl font-black tracking-tighter uppercase text-white">@{username}</h2>
-                        )}
-                        
+                        <h2 className="text-3xl font-black tracking-tighter uppercase text-white">@{username}</h2>
                         <div className="flex gap-2">
-                          <button 
-                            onClick={() => {
-                              setIsEditingUsername(true);
-                              setNewUsername(username);
-                            }}
-                            className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/50 hover:text-white transition-all"
-                          >
-                            Editar
-                          </button>
                           <button 
                             onClick={handleLogout}
                             className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/50 hover:text-white transition-all"
@@ -2206,36 +2183,16 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-4 justify-center md:justify-start mb-6">
-                        <label className="flex flex-col gap-1 cursor-pointer">
-                          <span className="text-[10px] uppercase tracking-widest text-white/30">Mudar Fundo</span>
-                          <div className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-xs hover:bg-white/10 transition-colors flex items-center gap-2">
-                            <ImageIcon size={14} /> Escolher Foto
-                          </div>
-                          <input 
-                            type="file" 
-                            accept="image/*"
-                            className="hidden" 
-                            onChange={(e) => handleFileSelect(e, 'bg')}
-                          />
-                        </label>
-                        
-                        <label className="flex flex-col gap-1 cursor-pointer">
-                          <span className="text-[10px] uppercase tracking-widest text-white/30">Mudar Perfil</span>
-                          <div className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-xs hover:bg-white/10 transition-colors flex items-center gap-2">
-                            <User size={14} /> Escolher Foto
-                          </div>
-                          <input 
-                            type="file" 
-                            accept="image/*"
-                            className="hidden" 
-                            onChange={(e) => handleFileSelect(e, 'profile')}
-                          />
-                        </label>
-
+                      <div className="flex flex-wrap items-center gap-3 justify-center md:justify-start mb-6">
+                        <button
+                          onClick={() => setShowProfileEdit(true)}
+                          className="px-5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-all flex items-center gap-2"
+                        >
+                          <User size={14} /> Editar Perfil
+                        </button>
                         <button 
                           onClick={resetBackground}
-                          className="mt-auto p-2 bg-white/5 border border-white/10 rounded-lg text-white/50 hover:text-white transition-colors"
+                          className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/50 hover:text-white transition-colors"
                           title="Resetar Fundo"
                         >
                           <RotateCcw size={16} />
@@ -2437,6 +2394,7 @@ export default function App() {
               setProfileViewUid(null);
               handleHashtagClick(tag);
             }}
+            onPhotoClick={(url, name) => setPhotoViewer({ url, username: name })}
           />
         )}
       </AnimatePresence>
@@ -2546,6 +2504,22 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ProfileEditModal
+        open={showProfileEdit}
+        currentUsername={username}
+        onClose={() => setShowProfileEdit(false)}
+        onUpdateUsername={async (n) => { await handleUpdateUsername(n); }}
+        onSelectProfilePhoto={(e) => { handleFileSelect(e, 'profile'); setShowProfileEdit(false); }}
+        onSelectBackgroundPhoto={(e) => { handleFileSelect(e, 'bg'); setShowProfileEdit(false); }}
+      />
+
+      <PhotoViewerModal
+        open={!!photoViewer}
+        photoUrl={photoViewer?.url ?? null}
+        username={photoViewer?.username}
+        onClose={() => setPhotoViewer(null)}
+      />
 
       <FolderDetailModal
         open={!!openFolder}

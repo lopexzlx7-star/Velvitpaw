@@ -17,6 +17,7 @@ interface UserProfileModalProps {
   likedIds?: string[];
   onLike?: (id: string) => void;
   onHashtagClick?: (tag: string) => void;
+  onPhotoClick?: (url: string | null, username: string) => void;
 }
 
 interface FollowedUser {
@@ -36,6 +37,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
   likedIds = [],
   onLike,
   onHashtagClick,
+  onPhotoClick,
 }) => {
   const [username, setUsername] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
@@ -189,19 +191,22 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
         <div className="relative px-6 pt-1 pb-6">
           {/* Header: avatar + username + counts */}
           <div className="flex items-center gap-4">
-            <div
-              className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/5"
+            <button
+              type="button"
+              onClick={() => onPhotoClick?.(profilePhoto, username)}
+              className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/5 focus:outline-none transition-transform active:scale-95"
               style={{
                 border: '1.5px solid rgba(255,255,255,0.18)',
                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 14px -4px rgba(0,0,0,0.5)',
               }}
+              aria-label="Ver foto de perfil"
             >
               {profilePhoto ? (
                 <img src={profilePhoto} alt={username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 <User size={28} className="text-white/40" />
               )}
-            </div>
+            </button>
             <div className="flex-1 min-w-0">
               <h2 className="text-3xl font-black tracking-tight text-white truncate leading-none">
                 @{username || '...'}

@@ -174,7 +174,7 @@ const FolderDetailModal: React.FC<Props> = ({
                 </div>
                 <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white mb-2">{folder.name}</h1>
                 <div className="text-[10px] uppercase tracking-widest text-white/40">
-                  {posts.length} {posts.length === 1 ? 'pin' : 'pins'}
+                  {posts.length} {posts.length === 1 ? 'item' : 'itens'}
                 </div>
                 {folder.description && (
                   <p className="mt-3 text-sm text-white/60 max-w-md mx-auto">{folder.description}</p>
