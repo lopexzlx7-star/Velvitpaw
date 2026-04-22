@@ -2253,8 +2253,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex items-end justify-between mb-8 border-b border-white/5">
-                    <div className="flex gap-6">
+                  <div className="flex gap-6 mb-8 border-b border-white/5">
                     <button 
                       onClick={() => setProfileTab('posts')}
                       className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${profileTab === 'posts' ? 'text-white' : 'text-white/30 hover:text-white/50'}`}
@@ -2276,26 +2275,28 @@ export default function App() {
                       Curtidos ({likedItems.length})
                       {profileTab === 'liked' && <motion.div layoutId="profile-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white accent-line" />}
                     </button>
-                    </div>
-                    {profileTab === 'folders' && (
-                      <button
-                        onClick={() => { setCreatingFolder(true); setNewFolderName(''); setCreateFolderError(null); }}
-                        title="Criar nova pasta"
-                        aria-label="Criar nova pasta"
-                        className="mb-2 w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all active:scale-90"
-                        style={{
-                          background: 'rgba(255,255,255,0.06)',
-                          border: '1px solid rgba(255,255,255,0.14)',
-                          backdropFilter: 'blur(10px)',
-                        }}
-                      >
-                        <Plus size={16} />
-                      </button>
-                    )}
                   </div>
 
                   {profileTab === 'folders' ? (
                     <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
+                          {folders.length} {folders.length === 1 ? 'pasta' : 'pastas'}
+                        </span>
+                        <button
+                          onClick={() => { setCreatingFolder(true); setNewFolderName(''); setCreateFolderError(null); }}
+                          title="Criar nova pasta"
+                          aria-label="Criar nova pasta"
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white/85 hover:text-white transition-all active:scale-90"
+                          style={{
+                            background: 'rgba(255,255,255,0.06)',
+                            border: '1px solid rgba(255,255,255,0.16)',
+                            backdropFilter: 'blur(10px)',
+                          }}
+                        >
+                          <Plus size={18} />
+                        </button>
+                      </div>
                       {folders.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-20 text-center">
                           <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
