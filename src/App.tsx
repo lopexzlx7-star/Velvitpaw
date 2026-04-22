@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, ChangeEvent, ReactNode } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { 
   doc, 
@@ -292,6 +292,9 @@ export default function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [saveToFolderTarget, setSaveToFolderTarget] = useState<ContentItem | null>(null);
   const [openFolder, setOpenFolder] = useState<Folder | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolderBusy, setCreatingFolderBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'foryou'>('home');
   const [forYouItems, setForYouItems] = useState<ContentItem[]>([]);
   const [aiSuggestedTags, setAiSuggestedTags] = useState<string[]>(['Aesthetic', 'Nature', 'Art', 'Tech', 'Fashion', 'Architecture', 'Travel', 'Food']);
@@ -2256,14 +2259,96 @@ export default function App() {
 
                   {profileTab === 'folders' ? (
                     <div>
+                      {/* Create folder UI */}
+                      <div className="mb-6">
+                        <AnimatePresence mode="wait" initial={false}>
+                          {!creatingFolder ? (
+                            <motion.button
+                              key="create-btn"
+                              initial={{ opacity: 0, y: -8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -8 }}
+                              onClick={() => setCreatingFolder(true)}
+                              className="w-full flex items-center justify-center gap-2.5 h-14 rounded-2xl text-white font-semibold text-sm transition-all hover:bg-white/10"
+                              style={{
+                                background: 'rgba(255,255,255,0.05)',
+                                border: '1px dashed rgba(255,255,255,0.18)',
+                                backdropFilter: 'blur(10px)',
+                              }}
+                            >
+                              <FolderPlus size={18} className="text-white/70" />
+                              Criar nova pasta
+                            </motion.button>
+                          ) : (
+                            <motion.div
+                              key="create-form"
+                              initial={{ opacity: 0, y: -8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -8 }}
+                              className="rounded-2xl p-4"
+                              style={{
+                                background: 'rgba(255,255,255,0.05)',
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                backdropFilter: 'blur(14px)',
+                              }}
+                            >
+                              <div className="flex items-center gap-2 mb-3">
+                                <FolderPlus size={16} className="text-white/60" />
+                                <span className="text-[10px] uppercase tracking-widest text-white/50 font-bold">Nova pasta</span>
+                              </div>
+                              <input
+                                autoFocus
+                                type="text"
+                                value={newFolderName}
+                                onChange={(e) => setNewFolderName(e.target.value)}
+                                onKeyDown={async (e) => {
+                                  if (e.key === 'Enter' && newFolderName.trim() && !creatingFolderBusy) {
+                                    setCreatingFolderBusy(true);
+                                    const f = await handleCreateFolder(newFolderName.trim());
+                                    setCreatingFolderBusy(false);
+                                    if (f) { setNewFolderName(''); setCreatingFolder(false); }
+                                  }
+                                  if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
+                                }}
+                                placeholder="Nome da pasta"
+                                maxLength={50}
+                                className="w-full h-11 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-white/25 focus:outline-none focus:border-white/30 text-sm transition-colors"
+                              />
+                              <div className="flex justify-end gap-2 mt-3">
+                                <button
+                                  onClick={() => { setCreatingFolder(false); setNewFolderName(''); }}
+                                  className="px-4 py-2 text-xs text-white/55 hover:text-white transition-colors uppercase tracking-widest font-bold"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (!newFolderName.trim() || creatingFolderBusy) return;
+                                    setCreatingFolderBusy(true);
+                                    const f = await handleCreateFolder(newFolderName.trim());
+                                    setCreatingFolderBusy(false);
+                                    if (f) { setNewFolderName(''); setCreatingFolder(false); }
+                                  }}
+                                  disabled={!newFolderName.trim() || creatingFolderBusy}
+                                  className="px-5 py-2 rounded-full bg-white text-black text-xs font-bold uppercase tracking-widest disabled:opacity-40 flex items-center gap-2 transition-opacity"
+                                >
+                                  {creatingFolderBusy && <Loader2 size={12} className="animate-spin" />}
+                                  Criar
+                                </button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
                       {folders.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-32 text-center">
+                        <div className="flex flex-col items-center justify-center py-20 text-center">
                           <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
                             <Bookmark size={28} className="text-white/15" />
                           </div>
                           <h3 className="text-lg font-bold text-white mb-2 uppercase tracking-tighter">Nenhuma pasta ainda</h3>
                           <p className="text-white/40 text-xs uppercase tracking-widest max-w-xs mx-auto">
-                            Toque no marcador em qualquer post para criar sua primeira pasta
+                            Toque em "Criar nova pasta" acima para começar
                           </p>
                         </div>
                       ) : (
@@ -2376,6 +2461,7 @@ export default function App() {
               setProfileViewUid(null);
               setSelectedPost(post);
             }}
+            onOpenUser={(uid) => setProfileViewUid(uid)}
             likedIds={likedIds}
             onLike={handleLike}
             onHashtagClick={(tag) => {
@@ -2392,7 +2478,6 @@ export default function App() {
         folders={folders}
         onClose={() => setSaveToFolderTarget(null)}
         onAddToFolder={handleAddToFolder}
-        onCreateFolder={handleCreateFolder}
       />
 
       <FolderDetailModal

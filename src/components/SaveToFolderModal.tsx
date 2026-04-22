@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Folder as FolderIcon, Check, Loader2 } from 'lucide-react';
+import { X, Folder as FolderIcon, Check, Loader2 } from 'lucide-react';
 import { Folder, ContentItem } from '../types';
 
 interface Props {
@@ -9,14 +9,11 @@ interface Props {
   folders: Folder[];
   onClose: () => void;
   onAddToFolder: (folder: Folder, post: ContentItem) => Promise<void>;
-  onCreateFolder: (name: string, description?: string) => Promise<Folder | null>;
 }
 
 const SaveToFolderModal: React.FC<Props> = ({
-  open, post, folders, onClose, onAddToFolder, onCreateFolder,
+  open, post, folders, onClose, onAddToFolder,
 }) => {
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [doneId, setDoneId] = useState<string | null>(null);
 
@@ -28,21 +25,6 @@ const SaveToFolderModal: React.FC<Props> = ({
       await onAddToFolder(folder, post);
       setDoneId(folder.id);
       setTimeout(() => { onClose(); setDoneId(null); }, 600);
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
-    setBusyId('__new__');
-    try {
-      const f = await onCreateFolder(newName.trim());
-      if (f) {
-        await onAddToFolder(f, post);
-        setDoneId(f.id);
-        setTimeout(() => { onClose(); setDoneId(null); setCreating(false); setNewName(''); }, 600);
-      }
     } finally {
       setBusyId(null);
     }
@@ -86,90 +68,56 @@ const SaveToFolderModal: React.FC<Props> = ({
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto p-3">
-              {!creating && (
-                <button
-                  onClick={() => setCreating(true)}
-                  className="w-full flex items-center gap-3 p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/8 transition-all mb-2"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-                    <Plus size={20} className="text-white/70" />
+              {folders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 px-4 text-center gap-2">
+                  <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-1">
+                    <FolderIcon size={20} className="text-white/30" />
                   </div>
-                  <span className="text-sm font-bold text-white">Criar nova pasta</span>
-                </button>
-              )}
-
-              {creating && (
-                <div className="p-3 rounded-2xl bg-white/5 border border-white/10 mb-2">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
-                    placeholder="Nome da pasta"
-                    className="w-full bg-transparent text-sm text-white placeholder-white/30 outline-none mb-3"
-                  />
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      onClick={() => { setCreating(false); setNewName(''); }}
-                      className="px-3 py-1.5 text-xs text-white/60 hover:text-white transition-colors"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={handleCreate}
-                      disabled={!newName.trim() || busyId === '__new__'}
-                      className="px-4 py-1.5 rounded-full bg-white text-black text-xs font-bold disabled:opacity-40 flex items-center gap-1.5"
-                    >
-                      {busyId === '__new__' ? <Loader2 size={12} className="animate-spin" /> : null}
-                      Criar
-                    </button>
-                  </div>
+                  <p className="text-sm text-white/70 font-medium">
+                    Você não tem nenhuma pasta
+                  </p>
+                  <p className="text-[11px] text-white/40 max-w-[240px]">
+                    Crie uma pasta na aba Pastas do seu perfil para começar a salvar posts.
+                  </p>
                 </div>
-              )}
-
-              {folders.length === 0 && !creating && (
-                <div className="text-center py-6 text-white/30 text-xs uppercase tracking-widest">
-                  Nenhuma pasta ainda
-                </div>
-              )}
-
-              {folders.map((f) => {
-                const has = f.postIds.includes(post.id);
-                const isBusy = busyId === f.id;
-                const isDone = doneId === f.id;
-                return (
-                  <button
-                    key={f.id}
-                    disabled={has || isBusy}
-                    onClick={() => handleSelect(f)}
-                    className="w-full flex items-center gap-3 p-2 rounded-2xl hover:bg-white/5 transition-all disabled:cursor-default"
-                  >
-                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                      {f.coverImage ? (
-                        <img src={f.coverImage} alt={f.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                folders.map((f) => {
+                  const has = f.postIds.includes(post.id);
+                  const isBusy = busyId === f.id;
+                  const isDone = doneId === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      disabled={has || isBusy}
+                      onClick={() => handleSelect(f)}
+                      className="w-full flex items-center gap-3 p-2 rounded-2xl hover:bg-white/5 transition-all disabled:cursor-default"
+                    >
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                        {f.coverImage ? (
+                          <img src={f.coverImage} alt={f.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <FolderIcon size={18} className="text-white/40" />
+                        )}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="text-sm font-bold text-white truncate">{f.name}</div>
+                        <div className="text-[10px] text-white/40 uppercase tracking-wider">
+                          {f.postIds.length} {f.postIds.length === 1 ? 'pin' : 'pins'}
+                        </div>
+                      </div>
+                      {(has || isDone) ? (
+                        <div className="w-7 h-7 rounded-full bg-yellow-400/20 flex items-center justify-center">
+                          <Check size={14} className="text-yellow-400" />
+                        </div>
+                      ) : isBusy ? (
+                        <Loader2 size={16} className="text-white/60 animate-spin" />
                       ) : (
-                        <FolderIcon size={18} className="text-white/40" />
+                        <span className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Salvar</span>
                       )}
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="text-sm font-bold text-white truncate">{f.name}</div>
-                      <div className="text-[10px] text-white/40 uppercase tracking-wider">
-                        {f.postIds.length} {f.postIds.length === 1 ? 'pin' : 'pins'}
-                      </div>
-                    </div>
-                    {(has || isDone) ? (
-                      <div className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center">
-                        <Check size={14} className="text-white" />
-                      </div>
-                    ) : isBusy ? (
-                      <Loader2 size={16} className="text-white/60 animate-spin" />
-                    ) : (
-                      <span className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Salvar</span>
-                    )}
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })
+              )}
             </div>
           </motion.div>
         </motion.div>
