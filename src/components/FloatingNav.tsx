@@ -17,7 +17,7 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
 }) => {
   const isHome = activeTab === 'feed';
   return (
-    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50">
+    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[120]">
       <div
         className="relative dark:bg-black/30 bg-white/30 backdrop-blur-2xl px-3 py-2.5 rounded-full flex items-center gap-1 shadow-2xl dark:shadow-black/50 border dark:border-white/10 border-black/10"
       >
