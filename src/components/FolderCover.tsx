@@ -64,11 +64,11 @@ const FolderCover: React.FC<Props> = ({
   if (covers.length === 2) {
     return (
       <div
-        className={`relative w-full h-full overflow-hidden border border-white/10 grid grid-cols-2 gap-[2px] ${rounded} ${className}`}
+        className={`relative w-full h-full overflow-hidden border border-white/10 grid grid-cols-2 grid-rows-1 gap-[2px] ${rounded} ${className}`}
         style={wrapperStyle}
       >
-        <img src={covers[0]} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-        <img src={covers[1]} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+        <img src={covers[0]} alt="" className="w-full h-full object-cover min-h-0" referrerPolicy="no-referrer" />
+        <img src={covers[1]} alt="" className="w-full h-full object-cover min-h-0" referrerPolicy="no-referrer" />
       </div>
     );
   }
@@ -76,14 +76,12 @@ const FolderCover: React.FC<Props> = ({
   // 3 covers — Pinterest-style: large left + 2 stacked right
   return (
     <div
-      className={`relative w-full h-full overflow-hidden border border-white/10 grid grid-cols-2 gap-[2px] ${rounded} ${className}`}
+      className={`relative w-full h-full overflow-hidden border border-white/10 grid grid-cols-2 grid-rows-2 gap-[2px] ${rounded} ${className}`}
       style={wrapperStyle}
     >
-      <img src={covers[0]} alt="" className="w-full h-full object-cover row-span-2" referrerPolicy="no-referrer" />
-      <div className="grid grid-rows-2 gap-[2px] h-full">
-        <img src={covers[1]} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-        <img src={covers[2]} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-      </div>
+      <img src={covers[0]} alt="" className="w-full h-full object-cover row-span-2 min-h-0" referrerPolicy="no-referrer" />
+      <img src={covers[1]} alt="" className="w-full h-full object-cover min-h-0" referrerPolicy="no-referrer" />
+      <img src={covers[2]} alt="" className="w-full h-full object-cover min-h-0" referrerPolicy="no-referrer" />
     </div>
   );
 };
