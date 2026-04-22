@@ -2279,7 +2279,7 @@ export default function App() {
                               <div className="mt-2 px-1">
                                 <div className="text-sm font-bold text-white truncate">{f.name}</div>
                                 <div className="text-[10px] text-white/40 uppercase tracking-widest">
-                                  {f.postIds.length} {f.postIds.length === 1 ? 'pin' : 'pins'}
+                                  {f.postIds.length} {f.postIds.length === 1 ? 'item' : 'itens'}
                                 </div>
                               </div>
                             </button>
@@ -2508,6 +2508,7 @@ export default function App() {
       <ProfileEditModal
         open={showProfileEdit}
         currentUsername={username}
+        currentProfilePic={profilePic}
         onClose={() => setShowProfileEdit(false)}
         onUpdateUsername={async (n) => { await handleUpdateUsername(n); }}
         onSelectProfilePhoto={(e) => { handleFileSelect(e, 'profile'); setShowProfileEdit(false); }}

@@ -102,7 +102,7 @@ const SaveToFolderModal: React.FC<Props> = ({
                       <div className="flex-1 text-left">
                         <div className="text-sm font-bold text-white truncate">{f.name}</div>
                         <div className="text-[10px] text-white/40 uppercase tracking-wider">
-                          {f.postIds.length} {f.postIds.length === 1 ? 'pin' : 'pins'}
+                          {f.postIds.length} {f.postIds.length === 1 ? 'item' : 'itens'}
                         </div>
                       </div>
                       {(has || isDone) ? (
