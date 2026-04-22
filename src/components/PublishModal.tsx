@@ -581,21 +581,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   transition={{ type: 'spring', stiffness: 400, damping: 22 }}
                   className="relative w-32 h-32 rounded-full flex items-center justify-center"
                   style={{
-                    background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%)',
-                    border: '1px solid rgba(255,255,255,0.14)',
-                    backdropFilter: 'blur(18px) saturate(160%)',
-                    WebkitBackdropFilter: 'blur(18px) saturate(160%)',
-                    boxShadow: '0 12px 40px -12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -8px 24px -8px rgba(0,0,0,0.4)',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.10)',
+                    backdropFilter: 'blur(18px)',
+                    WebkitBackdropFilter: 'blur(18px)',
                   }}
                 >
-                  {/* Glass highlight */}
-                  <div
-                    aria-hidden
-                    className="absolute inset-0 rounded-full pointer-events-none"
-                    style={{
-                      background: 'radial-gradient(70% 50% at 30% 20%, rgba(255,255,255,0.25), transparent 60%)',
-                    }}
-                  />
                   <Camera size={42} className="relative text-white/85" strokeWidth={1.5} />
                 </motion.div>
                 <p className="mt-6 text-white/70 text-sm font-medium">Fotos ou vídeos</p>
@@ -857,44 +848,30 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess 
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     onClick={() => fileInputRef.current?.click()}
-                    className="relative flex-1 py-4 rounded-full font-semibold tracking-wide text-sm text-white overflow-hidden"
+                    className="flex-1 py-4 rounded-full font-semibold tracking-wide text-sm text-white transition-colors hover:bg-white/10"
                     style={{
-                      background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)',
-                      border: '1px solid rgba(255,255,255,0.14)',
-                      backdropFilter: 'blur(14px) saturate(160%)',
-                      WebkitBackdropFilter: 'blur(14px) saturate(160%)',
-                      boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.18)',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.10)',
+                      backdropFilter: 'blur(14px)',
+                      WebkitBackdropFilter: 'blur(14px)',
                     }}
                   >
-                    <span
-                      aria-hidden
-                      className="absolute inset-x-4 top-0 h-1/2 rounded-full pointer-events-none"
-                      style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.18), transparent)' }}
-                    />
-                    <span className="relative">Selecionar mídia</span>
+                    Selecionar mídia
                   </motion.button>
                 ) : (
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     onClick={submitPost}
                     disabled={wordCount > MAX_DESCRIPTION_WORDS}
-                    className="relative flex-1 py-4 rounded-full font-semibold tracking-wide text-sm text-white overflow-hidden disabled:opacity-40"
+                    className="flex-1 py-4 rounded-full font-semibold tracking-wide text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-40"
                     style={{
-                      background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)',
-                      border: '1px solid rgba(255,255,255,0.14)',
-                      backdropFilter: 'blur(14px) saturate(160%)',
-                      WebkitBackdropFilter: 'blur(14px) saturate(160%)',
-                      boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.18)',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.10)',
+                      backdropFilter: 'blur(14px)',
+                      WebkitBackdropFilter: 'blur(14px)',
                     }}
                   >
-                    <span
-                      aria-hidden
-                      className="absolute inset-x-4 top-0 h-1/2 rounded-full pointer-events-none"
-                      style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.18), transparent)' }}
-                    />
-                    <span className="relative">
-                      {isMultiImage ? `Publicar ${images.length} ${images.length === 1 ? 'imagem' : 'imagens'}` : 'Publicar'}
-                    </span>
+                    {isMultiImage ? `Publicar ${images.length} ${images.length === 1 ? 'imagem' : 'imagens'}` : 'Publicar'}
                   </motion.button>
                 )}
               </div>

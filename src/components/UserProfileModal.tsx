@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, User, UserPlus, UserCheck, Loader2, Bell, Mail } from 'lucide-react';
+import { X, User, UserPlus, UserCheck, Loader2, Bell, Mail } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -71,123 +71,155 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] overflow-y-auto no-scrollbar"
-      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)' }}
+      className="fixed inset-0 z-[200] flex items-start sm:items-center justify-center p-4 sm:p-6 overflow-y-auto no-scrollbar"
+      style={{ background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
+      onClick={onClose}
     >
-      {/* Top bar */}
-      <div className="sticky top-0 z-10 flex items-center justify-between px-4 pt-4 pb-3"
-        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.6), transparent)' }}
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0, y: 16 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.94, opacity: 0, y: 8 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-md my-auto rounded-[2.5rem] overflow-hidden"
+        style={{
+          background: 'linear-gradient(160deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 45%, rgba(255,255,255,0.06) 100%)',
+          backdropFilter: 'blur(30px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(30px) saturate(160%)',
+          border: '1px solid rgba(255,255,255,0.14)',
+          boxShadow:
+            '0 40px 100px -20px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -2px 30px -10px rgba(0,0,0,0.4)',
+        }}
       >
+        {/* Specular highlights — bubble glass effect */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[2.5rem]"
+          style={{
+            background:
+              'radial-gradient(120% 50% at 50% -10%, rgba(255,255,255,0.18), transparent 55%), radial-gradient(80% 40% at 50% 110%, rgba(255,255,255,0.10), transparent 60%)',
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-6 top-0 h-px"
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)' }}
+        />
+
+        {/* Close button */}
         <button
           onClick={onClose}
-          className="w-10 h-10 flex items-center justify-center rounded-full text-white/70 hover:text-white transition-colors"
-          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
-          aria-label="Voltar"
+          className="absolute top-4 right-4 z-20 w-9 h-9 flex items-center justify-center rounded-full text-white/60 hover:text-white transition-colors"
+          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)' }}
+          aria-label="Fechar"
         >
-          <ArrowLeft size={18} />
+          <X size={16} />
         </button>
-        <span className="text-white/40 text-[10px] uppercase tracking-widest font-semibold">Perfil</span>
-        <div className="w-10 h-10" />
-      </div>
 
-      <div className="px-4 pb-24 max-w-4xl mx-auto">
-        {/* Profile card */}
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-          className="glass-panel rounded-3xl p-6 md:p-8"
-        >
-          <div className="flex items-center gap-5">
+        <div className="relative px-6 pt-7 pb-6">
+          {/* Header: avatar + username + counts */}
+          <div className="flex items-center gap-4">
             <div
-              className="w-20 h-20 md:w-24 md:h-24 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/5"
-              style={{ border: '2px solid rgba(255,255,255,0.12)' }}
+              className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/5"
+              style={{
+                border: '1.5px solid rgba(255,255,255,0.18)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 14px -4px rgba(0,0,0,0.5)',
+              }}
             >
               {profilePhoto ? (
                 <img src={profilePhoto} alt={username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
-                <User size={32} className="text-white/30" />
+                <User size={28} className="text-white/40" />
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-2xl md:text-3xl font-black tracking-tighter text-white truncate">@{username || '...'}</h2>
-              <div className="flex items-center gap-3 mt-2 text-xs text-white/40">
-                <span><span className="text-white/80 font-semibold">{posts.length}</span> {posts.length === 1 ? 'post' : 'posts'}</span>
-                <span className="w-1 h-1 rounded-full bg-white/20" />
-                <span><span className="text-white/80 font-semibold">{followersCount}</span> {followersCount === 1 ? 'seguidor' : 'seguidores'}</span>
+              <h2 className="text-3xl font-black tracking-tight text-white truncate leading-none">
+                @{username || '...'}
+              </h2>
+              <div className="flex items-center gap-4 mt-2.5 text-[11px] text-white/55">
+                <span><span className="text-white font-bold text-sm">{posts.length}</span> Posts</span>
+                <span><span className="text-white font-bold text-sm">{followersCount}</span> Seguidores</span>
               </div>
             </div>
           </div>
 
           {/* Action row */}
           {!isOwnProfile && (
-            <div className="mt-6 flex items-center gap-3">
+            <div className="mt-5 flex items-center gap-2.5">
               <button
                 onClick={() => onFollow(targetUid)}
-                className={`flex-1 h-12 flex items-center justify-center gap-2 rounded-full text-sm font-semibold tracking-wide transition-all active:scale-[0.98] ${
+                className={`flex-1 h-11 flex items-center justify-center gap-2 rounded-full text-sm font-semibold tracking-wide transition-all active:scale-[0.98] ${
                   isFollowing
-                    ? 'bg-white/10 text-white border border-white/15 hover:bg-white/15'
-                    : 'bg-white text-black hover:bg-white/90 accent-primary-btn'
+                    ? 'text-white border border-white/15 hover:bg-white/15'
+                    : 'text-white border border-white/20 hover:bg-white/10'
                 }`}
+                style={{
+                  background: isFollowing
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.05) 100%)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18)',
+                }}
               >
-                {isFollowing ? <><UserCheck size={16} /> Seguindo</> : <><UserPlus size={16} /> Seguir</>}
+                {isFollowing ? <><UserCheck size={15} /> Seguindo</> : <><UserPlus size={15} /> Seguir</>}
               </button>
               <button
                 disabled
                 title="Em breve"
-                className="w-12 h-12 flex items-center justify-center rounded-full text-white/50 hover:text-white transition-colors disabled:opacity-60"
+                className="w-11 h-11 flex items-center justify-center rounded-full text-white/50 transition-colors disabled:opacity-60"
                 style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}
               >
-                <Mail size={16} />
+                <Mail size={15} />
               </button>
               <button
                 disabled
                 title="Em breve"
-                className="w-12 h-12 flex items-center justify-center rounded-full text-white/50 hover:text-white transition-colors disabled:opacity-60"
+                className="w-11 h-11 flex items-center justify-center rounded-full text-white/50 transition-colors disabled:opacity-60"
                 style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}
               >
-                <Bell size={16} />
+                <Bell size={15} />
               </button>
             </div>
           )}
-        </motion.div>
 
-        {/* Posts */}
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-4 px-1">
-            <span className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Posts</span>
-            <span className="text-[10px] text-white/30">{posts.length}</span>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-20 gap-2 text-white/30 text-sm">
-              <Loader2 size={16} className="animate-spin" />
-              Carregando...
+          {/* Posts grid inside the popup */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <span className="text-[10px] uppercase tracking-widest text-white/45 font-bold">Posts</span>
+              <span className="text-[10px] text-white/30">{posts.length}</span>
             </div>
-          ) : posts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-white/30 text-sm gap-2">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center bg-white/5 border border-white/10">
-                <User size={22} className="text-white/20" />
+
+            {loading ? (
+              <div className="flex items-center justify-center py-12 gap-2 text-white/30 text-sm">
+                <Loader2 size={16} className="animate-spin" />
+                Carregando...
               </div>
-              Nenhum post ainda
-            </div>
-          ) : (
-            <div className="columns-2 sm:columns-3 gap-4">
-              {posts.map(post => (
-                <GlassCard
-                  key={`user-profile-${post.id}`}
-                  item={post}
-                  isLiked={likedIds.includes(post.id)}
-                  onLike={(id) => onLike?.(id)}
-                  onClick={() => onPostClick?.(post)}
-                  onHashtagClick={onHashtagClick}
-                  isUserPost={false}
-                />
-              ))}
-            </div>
-          )}
+            ) : posts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-white/30 text-sm gap-2">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center bg-white/5 border border-white/10">
+                  <User size={20} className="text-white/20" />
+                </div>
+                Nenhum post ainda
+              </div>
+            ) : (
+              <div className="max-h-[55vh] overflow-y-auto no-scrollbar -mx-1 px-1">
+                <div className="columns-2 gap-3">
+                  {posts.map(post => (
+                    <GlassCard
+                      key={`user-profile-${post.id}`}
+                      item={post}
+                      isLiked={likedIds.includes(post.id)}
+                      onLike={(id) => onLike?.(id)}
+                      onClick={() => onPostClick?.(post)}
+                      onHashtagClick={onHashtagClick}
+                      isUserPost={false}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   );
 };

@@ -533,25 +533,37 @@ export default function App() {
       }
     });
 
+    // Date is the dominant factor; relevance signals act as a secondary boost
+    // so newer posts always win against older ones unless the older one is
+    // strongly relevant within a similar time window.
+    const now = Date.now();
     const scored = globalPosts
       .map(post => {
-        let score = 0;
-        if (currentUid && post.authorUid === currentUid) return { post, score: -999 };
-        if (likedSet.has(post.id)) score -= 50;
-        if (followingUids.includes((post as any).authorUid)) score += 50;
+        if (currentUid && post.authorUid === currentUid) return { post, score: -1e12 };
+
+        const ts = new Date(post.createdAt || 0).getTime();
+        const ageHours = Math.max(0, (now - ts) / 3_600_000);
+
+        // Recency score: dominant. Decays slowly so date drives ordering.
+        // ~1000 points/day fresh, gently easing for older posts.
+        let score = 100000 - ageHours * 40;
+
+        // Relevance signals (smaller magnitude than recency)
+        if (likedSet.has(post.id)) score -= 200;
+        if (followingUids.includes((post as any).authorUid)) score += 300;
         const tagMatches = (post.hashtags || []).filter(t => preferredTags.has(t)).length;
-        score += tagMatches * 30;
-        score += ((post.likesCount || 0) + ((post as any).savesCount || 0)) * 0.5;
-        const ageDays = (Date.now() - new Date(post.createdAt || 0).getTime()) / 86400000;
-        if (ageDays < 7) score += Math.max(0, (7 - ageDays) * 3);
+        score += tagMatches * 80;
+        score += ((post.likesCount || 0) + ((post as any).savesCount || 0)) * 2;
+
         return { post, score };
       })
-      .filter(({ score }) => score > -500)
+      .filter(({ score }) => score > -1e11)
       .sort((a, b) => b.score - a.score)
       .map(({ post }) => post);
 
     setForYouItems(scored.length > 0 ? scored : [...globalPosts].sort(
-      (a: any, b: any) => ((b.likesCount || 0) + (b.savesCount || 0)) - ((a.likesCount || 0) + (a.savesCount || 0))
+      (a: any, b: any) =>
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
     ));
   }, [globalPosts, likedIds, savedIds, followingUids]);
 
