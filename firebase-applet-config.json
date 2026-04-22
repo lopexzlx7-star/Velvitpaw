@@ -3,7 +3,7 @@
   "appId": "1:424100429498:web:796209c577a2f1033f8c83",
   "apiKey": "AIzaSyAjos0uoFjMauJG9oudajU0EEZNEDAbscI",
   "authDomain": "velvitpaw.firebaseapp.com",
-  "firestoreDatabaseId": "Velvitapp-orig",
+  "firestoreDatabaseId": "(default)",
   "storageBucket": "velvitpaw.firebasestorage.app",
   "messagingSenderId": "424100429498",
   "measurementId": "G-VF8HTBW3XE"
