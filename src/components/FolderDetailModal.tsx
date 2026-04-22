@@ -31,7 +31,6 @@ const FolderDetailModal: React.FC<Props> = ({
 }) => {
   const [showRelated, setShowRelated] = useState(false);
   const [aiRanked, setAiRanked] = useState<ContentItem[] | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
 
   const posts = useMemo(() => {
     if (!folder) return [];
@@ -96,7 +95,6 @@ const FolderDetailModal: React.FC<Props> = ({
     if (relatedPosts.length === 0) { setAiRanked([]); return; }
 
     let cancelled = false;
-    setAiLoading(true);
     setAiRanked(null);
 
     const candidates = relatedPosts.slice(0, 80).map(p => ({
@@ -129,8 +127,7 @@ const FolderDetailModal: React.FC<Props> = ({
           setAiRanked(relatedPosts);
         }
       })
-      .catch(() => { if (!cancelled) setAiRanked(relatedPosts); })
-      .finally(() => { if (!cancelled) setAiLoading(false); });
+      .catch(() => { if (!cancelled) setAiRanked(relatedPosts); });
 
     return () => { cancelled = true; };
   }, [showRelated, folder, relatedPosts, posts]);
@@ -284,12 +281,6 @@ const FolderDetailModal: React.FC<Props> = ({
 
                     {/* Body */}
                     <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
-                      {aiLoading && (
-                        <div className="flex items-center justify-center gap-2 py-3 text-white/40 text-[10px] uppercase tracking-widest">
-                          <div className="w-3 h-3 rounded-full border border-white/20 border-t-white/60 animate-spin" />
-                          IA analisando...
-                        </div>
-                      )}
                       {relatedPosts.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-16 text-center text-white/40">
                           <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
