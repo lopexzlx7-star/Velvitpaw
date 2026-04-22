@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trash2, Folder as FolderIcon, Sparkles, ChevronDown } from 'lucide-react';
 import { Folder, ContentItem } from '../types';
@@ -30,6 +30,8 @@ const FolderDetailModal: React.FC<Props> = ({
   onRemoveFromFolder, onDeleteFolder,
 }) => {
   const [showRelated, setShowRelated] = useState(false);
+  const [aiRanked, setAiRanked] = useState<ContentItem[] | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const posts = useMemo(() => {
     if (!folder) return [];
@@ -88,6 +90,50 @@ const FolderDetailModal: React.FC<Props> = ({
 
     return scored;
   }, [folder, posts, allPosts]);
+
+  useEffect(() => {
+    if (!showRelated || !folder) return;
+    if (relatedPosts.length === 0) { setAiRanked([]); return; }
+
+    let cancelled = false;
+    setAiLoading(true);
+    setAiRanked(null);
+
+    const candidates = relatedPosts.slice(0, 80).map(p => ({
+      id: p.id,
+      title: p.title || '',
+      hashtags: p.hashtags || [],
+    }));
+    const folderPostsPayload = posts.slice(0, 20).map(p => ({
+      title: p.title || '',
+      hashtags: p.hashtags || [],
+    }));
+
+    fetch('/api/recommend-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folderName: folder.name,
+        folderPosts: folderPostsPayload,
+        candidates,
+      }),
+    })
+      .then(r => r.json())
+      .then((data: { ids?: string[] }) => {
+        if (cancelled) return;
+        if (Array.isArray(data.ids) && data.ids.length > 0) {
+          const map = new Map(relatedPosts.map(p => [p.id, p]));
+          const ordered = data.ids.map(id => map.get(id)).filter((x): x is ContentItem => Boolean(x));
+          setAiRanked(ordered);
+        } else {
+          setAiRanked(relatedPosts);
+        }
+      })
+      .catch(() => { if (!cancelled) setAiRanked(relatedPosts); })
+      .finally(() => { if (!cancelled) setAiLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [showRelated, folder, relatedPosts, posts]);
 
   if (!folder) return null;
 
@@ -238,6 +284,12 @@ const FolderDetailModal: React.FC<Props> = ({
 
                     {/* Body */}
                     <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
+                      {aiLoading && (
+                        <div className="flex items-center justify-center gap-2 py-3 text-white/40 text-[10px] uppercase tracking-widest">
+                          <div className="w-3 h-3 rounded-full border border-white/20 border-t-white/60 animate-spin" />
+                          IA analisando...
+                        </div>
+                      )}
                       {relatedPosts.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-16 text-center text-white/40">
                           <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
@@ -252,7 +304,7 @@ const FolderDetailModal: React.FC<Props> = ({
                         </div>
                       ) : (
                         <div className="columns-2 md:columns-3 lg:columns-4 gap-3">
-                          {relatedPosts.map(item => (
+                          {(aiRanked && aiRanked.length > 0 ? aiRanked : relatedPosts).map(item => (
                             <div key={`rel-${item.id}`} className="mb-3 break-inside-avoid">
                               <GlassCard
                                 item={item}

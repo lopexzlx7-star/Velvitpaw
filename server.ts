@@ -477,6 +477,75 @@ app.post('/api/generate-tags-multi', async (req: Request, res: Response) => {
   res.json(results);
 });
 
+// ─── /api/recommend-folder ────────────────────────────────────────────────────
+// Uses OpenAI to semantically rank candidate posts for a folder.
+// Body: { folderName, folderPosts: [{title, hashtags}], candidates: [{id, title, hashtags}] }
+// Returns: { ids: string[] }  ordered most-related first
+app.post('/api/recommend-folder', async (req: Request, res: Response) => {
+  const { folderName, folderPosts, candidates } = req.body as {
+    folderName?: string;
+    folderPosts?: Array<{ title?: string; hashtags?: string[] }>;
+    candidates?: Array<{ id: string; title?: string; hashtags?: string[] }>;
+  };
+
+  if (!folderName || !Array.isArray(candidates) || candidates.length === 0) {
+    return res.status(400).json({ error: 'folderName e candidates são obrigatórios.' });
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(503).json({ error: 'OPENAI_API_KEY não configurada.', ids: [] });
+  }
+
+  const trimmedCandidates = candidates.slice(0, 120).map(c => ({
+    id: c.id,
+    title: (c.title || '').slice(0, 80),
+    tags: (c.hashtags || []).slice(0, 8).join(' '),
+  }));
+
+  const folderContext = (folderPosts || []).slice(0, 20).map(p => ({
+    title: (p.title || '').slice(0, 80),
+    tags: (p.hashtags || []).slice(0, 8).join(' '),
+  }));
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'Você é um sistema de recomendação. Recebe uma pasta (com nome e posts dentro) e uma lista de posts candidatos. Analise o tema/intenção da pasta e retorne APENAS um JSON com a propriedade "ids" — array de IDs dos candidatos mais relevantes ao tema da pasta, do mais relacionado para o menos. Inclua no máximo 30 IDs. Não inclua explicações.',
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            folderName,
+            postsInFolder: folderContext,
+            candidates: trimmedCandidates,
+          }),
+        },
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: 1500,
+    });
+
+    const text = completion.choices[0]?.message?.content ?? '{"ids":[]}';
+    let ids: string[] = [];
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed.ids)) {
+        const allowed = new Set(trimmedCandidates.map(c => c.id));
+        ids = parsed.ids.filter((x: any) => typeof x === 'string' && allowed.has(x)).slice(0, 30);
+      }
+    } catch {
+      ids = [];
+    }
+    res.json({ ids });
+  } catch (err: any) {
+    console.error('[recommend-folder] OpenAI error:', err?.message);
+    res.status(500).json({ error: 'Erro ao chamar a API OpenAI.', ids: [] });
+  }
+});
+
 // ─── /api/search-tags/:query ──────────────────────────────────────────────────
 app.get('/api/search-tags/:query', (req: Request, res: Response) => {
   const query = (req.params.query ?? '').toLowerCase().replace(/^#/, '');

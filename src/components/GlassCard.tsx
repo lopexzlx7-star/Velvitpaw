@@ -255,6 +255,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
       <div 
         className="relative rounded-[2rem] overflow-hidden bg-white/5 border border-white/10 shadow-xl transition-all duration-500 group-hover:shadow-white/5 group-hover:-translate-y-1 cursor-pointer"
         onClick={handleTap}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
       >
         {/* Media Container */}
         <div className="relative overflow-hidden">
@@ -312,6 +314,9 @@ const GlassCard: React.FC<GlassCardProps> = ({
                       playsInline
                       loop
                       preload="none"
+                      controlsList="nodownload noremoteplayback"
+                      disablePictureInPicture
+                      onContextMenu={(e) => e.preventDefault()}
                       onLoadedData={() => setIsLoaded(true)}
                       onEnded={() => advanceToNext(item.id)}
                       onError={handleVideoError}

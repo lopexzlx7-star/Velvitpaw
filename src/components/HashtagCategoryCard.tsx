@@ -14,7 +14,7 @@ const HashtagCategoryCard: React.FC<Props> = ({ category, onClick }) => {
       whileHover={{ scale: 1.03 }}
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className="relative shrink-0 w-32 h-44 rounded-2xl overflow-hidden group"
+      className="relative shrink-0 w-24 h-32 rounded-xl overflow-hidden group"
       style={{
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
@@ -40,11 +40,11 @@ const HashtagCategoryCard: React.FC<Props> = ({ category, onClick }) => {
             'linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.3) 55%, rgba(0,0,0,0.85) 100%)',
         }}
       />
-      <div className="absolute bottom-0 left-0 right-0 p-2.5 flex flex-col items-start text-left">
-        <span className="text-white font-bold text-sm tracking-tight truncate w-full">
+      <div className="absolute bottom-0 left-0 right-0 p-1.5 flex flex-col items-start text-left">
+        <span className="text-white font-bold text-[11px] tracking-tight truncate w-full">
           #{category.name}
         </span>
-        <span className="text-white/70 text-[10px] mt-0.5">
+        <span className="text-white/70 text-[9px] mt-0.5">
           {category.count} {category.count === 1 ? 'post' : 'posts'}
         </span>
       </div>

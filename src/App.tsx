@@ -1859,7 +1859,7 @@ export default function App() {
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: 10 }}
-                              className="absolute top-full left-0 right-0 mt-2 p-4 glass-panel rounded-2xl z-50 border border-white/10 max-h-[70vh] overflow-y-auto no-scrollbar"
+                              className="absolute top-full left-0 right-0 mt-2 p-3 glass-panel rounded-2xl z-50 border border-white/10 max-h-[55vh] overflow-y-auto no-scrollbar"
                             >
                               <div className="flex items-center justify-between mb-3">
                                 <span className="text-[10px] uppercase tracking-widest text-white/30">Buscas Recentes</span>
@@ -1889,15 +1889,15 @@ export default function App() {
                                 ))}
                               </div>
 
-                              <div className="flex items-center gap-2 mb-3">
-                                <span className="text-[10px] uppercase tracking-widest text-white/30">Categorias em alta</span>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-[10px] uppercase tracking-widest text-white/30">Recomendados</span>
                               </div>
-                              <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                                 {hashtagCategories.length === 0 ? (
                                   Array.from({ length: 4 }).map((_, i) => (
                                     <div
                                       key={`cat-skel-${i}`}
-                                      className="shrink-0 w-32 h-44 rounded-2xl bg-white/5 animate-pulse"
+                                      className="shrink-0 w-24 h-32 rounded-xl bg-white/5 animate-pulse"
                                     />
                                   ))
                                 ) : (
