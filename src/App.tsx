@@ -403,6 +403,12 @@ export default function App() {
             }
             setHasRecoveryEmail(!!data.recoveryEmail);
 
+            // Restore accent color from user profile (cross-device sync)
+            if (data.accentColor) {
+              setAccentColor(data.accentColor as AccentColor);
+              localStorage.setItem('velvit_accent', data.accentColor);
+            }
+
             // Fallback: if no photo in users doc, look for it in the user's posts
             if (!firestorePhoto) {
               try {
@@ -2136,6 +2142,9 @@ export default function App() {
                                 setAccentColor(a.id);
                                 localStorage.setItem('velvit_accent', a.id);
                                 setShowColorPicker(false);
+                                if (username) {
+                                  updateDoc(doc(db, 'users', username), { accentColor: a.id }).catch(() => {});
+                                }
                               }}
                               className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-white/10 transition-colors text-left"
                             >
