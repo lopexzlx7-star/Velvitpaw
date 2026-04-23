@@ -271,13 +271,14 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const isDarkMode = true;
 
-  type AccentColor = 'default' | 'green' | 'red' | 'blue' | 'orange';
+  type AccentColor = 'default' | 'green' | 'red' | 'blue' | 'orange' | 'violet';
   const ACCENTS: { id: AccentColor; label: string; hex: string }[] = [
-    { id: 'default', label: 'Padrão',   hex: '#ffffff' },
-    { id: 'green',   label: 'Verde',    hex: '#22c55e' },
-    { id: 'red',     label: 'Vermelho', hex: '#ef4444' },
-    { id: 'blue',    label: 'Azul',     hex: '#3b82f6' },
-    { id: 'orange',  label: 'Laranja',  hex: '#f97316' },
+    { id: 'default', label: 'Padrão',         hex: '#ffffff' },
+    { id: 'red',     label: 'Crimson Noir',   hex: '#C50337' },
+    { id: 'violet',  label: 'Royal Violet',   hex: '#9303C5' },
+    { id: 'blue',    label: 'Midnight Blue',  hex: '#0356C5' },
+    { id: 'green',   label: 'Forest Noir',    hex: '#007D10' },
+    { id: 'orange',  label: 'Sunset Glow',    hex: '#FC210D' },
   ];
   const [accentColor, setAccentColor] = useState<AccentColor>(() => {
     return (localStorage.getItem('velvit_accent') as AccentColor) || 'default';
@@ -537,6 +538,27 @@ export default function App() {
       localStorage.setItem('velvit_likes', JSON.stringify(validIds));
     }
   }, [globalPosts, likedIds]);
+
+  // Keep visible feed (`items`) in sync with globalPosts in real-time:
+  // when another user deletes a post, prune it from the current view too.
+  useEffect(() => {
+    if (globalPosts.length === 0) return;
+    const existingIds = new Set(globalPosts.map(p => p.id));
+    setItems(prev => {
+      const filtered = prev.filter(p => existingIds.has(p.id));
+      return filtered.length === prev.length ? prev : filtered;
+    });
+    setUserPosts(prev => {
+      const filtered = prev.filter(p => existingIds.has(p.id));
+      return filtered.length === prev.length ? prev : filtered;
+    });
+    setForYouItems(prev => {
+      const filtered = prev.filter(p => existingIds.has(p.id));
+      return filtered.length === prev.length ? prev : filtered;
+    });
+    // Auto-close PostDetailModal if the open post was deleted
+    setSelectedPost(prev => (prev && !existingIds.has(prev.id) ? null : prev));
+  }, [globalPosts]);
 
   useEffect(() => {
     if (globalPosts.length === 0) return;
