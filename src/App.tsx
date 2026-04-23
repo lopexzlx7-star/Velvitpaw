@@ -2075,10 +2075,9 @@ export default function App() {
                         onLike={handleLike}
                         onSave={openSavePicker}
                         onFollow={handleFollow}
-                        onDelete={handleDeletePost}
                         onClick={() => setSelectedPost(item)}
                         onHashtagClick={handleHashtagClick}
-                        isUserPost={(item as any).authorUid === auth.currentUser?.uid}
+                        isUserPost={false}
                         searchQuery={searchQuery}
                       />
                     ))
