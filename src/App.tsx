@@ -2327,7 +2327,7 @@ export default function App() {
           </AnimatePresence>
       </main>
 
-      {!publishHasMedia && (
+      {!publishHasMedia && !selectedPost && (
         <FloatingNav
           activeTab={showPublishModal ? 'publish' : currentTab}
           onHomeClick={() => { if (showPublishModal) setShowPublishModal(false); handleHomeClick(); }}
