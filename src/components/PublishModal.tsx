@@ -732,11 +732,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
             /* ── Video preview ── */
             <div className="space-y-4">
               <div className="relative rounded-3xl overflow-hidden bg-black/40">
-                <div className="relative w-full" style={{
-                  height: (aspectRatio === 'wide' || aspectRatio === 'landscape') ? '35vh'
-                    : aspectRatio === 'square' ? '45vh'
-                    : '55vh'
-                }}>
+                <motion.div
+                  layout
+                  transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+                  className={`relative w-full ${getAspectClass()} overflow-hidden`}
+                  style={{ maxHeight: '60vh' }}
+                >
                   <video
                     src={videoDraft.mediaUrl}
                     poster={thumbnailUrl || undefined}
@@ -744,7 +745,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                     style={{ objectFit: 'cover' }}
                     muted playsInline loop autoPlay
                   />
-                </div>
+                </motion.div>
                 <button
                   onClick={() => { setVideoDraft(null); setThumbnailUrl(null); if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; } }}
                   className="absolute top-3 right-3 p-2.5 bg-black/60 backdrop-blur-sm rounded-2xl text-white hover:bg-red-500 transition-colors"

@@ -365,20 +365,34 @@ const GlassCard: React.FC<GlassCardProps> = ({
               )}
             </div>
           ) : (
-            <img
-              src={item.url}
-              alt={item.title}
-              referrerPolicy="no-referrer"
-              loading="lazy"
-              decoding="async"
-              onLoad={() => setIsLoaded(true)}
-              className={`w-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-              style={{ 
-                minHeight: '150px', 
-                height: isLoaded ? 'auto' : (item.height || 300),
-                maxHeight: item.height ? `${item.height}px` : 'none'
-              }}
-            />
+            item.aspectRatio && item.aspectRatio !== 'original' ? (
+              <div className="relative w-full overflow-hidden" style={{ ...aspectStyle, minHeight: '150px' }}>
+                <img
+                  src={item.url}
+                  alt={item.title}
+                  referrerPolicy="no-referrer"
+                  loading="lazy"
+                  decoding="async"
+                  onLoad={() => setIsLoaded(true)}
+                  className={`w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                />
+              </div>
+            ) : (
+              <img
+                src={item.url}
+                alt={item.title}
+                referrerPolicy="no-referrer"
+                loading="lazy"
+                decoding="async"
+                onLoad={() => setIsLoaded(true)}
+                className={`w-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                style={{ 
+                  minHeight: '150px', 
+                  height: isLoaded ? 'auto' : (item.height || 300),
+                  maxHeight: item.height ? `${item.height}px` : 'none'
+                }}
+              />
+            )
           )}
 
           {isUserPost && onDelete && item.type === 'image' && (
