@@ -47,6 +47,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   const [showFollowing, setShowFollowing] = useState(false);
   const [followingList, setFollowingList] = useState<FollowedUser[]>([]);
+  const [recommendedList, setRecommendedList] = useState<FollowedUser[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
 
   useEffect(() => {
@@ -78,6 +79,122 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
     load();
   }, [targetUid]);
 
+  const fetchUsersByUids = async (uids: string[]): Promise<FollowedUser[]> => {
+    if (uids.length === 0) return [];
+    const chunks: string[][] = [];
+    for (let i = 0; i < uids.length; i += 10) chunks.push(uids.slice(i, i + 10));
+    const all: FollowedUser[] = [];
+    for (const chunk of chunks) {
+      const snap = await getDocs(query(collection(db, 'users'), where('uid', 'in', chunk)));
+      snap.docs.forEach(d => {
+        const data = d.data() as any;
+        all.push({
+          uid: data.uid || d.id,
+          username: data.username || '',
+          profilePhotoUrl: data.profilePhotoUrl || null,
+        });
+      });
+      const matched = new Set(snap.docs.map(d => (d.data() as any).uid || d.id));
+      const missing = chunk.filter(u => !matched.has(u));
+      if (missing.length > 0) {
+        try {
+          const byIdSnap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', missing)));
+          byIdSnap.docs.forEach(d => {
+            const data = d.data() as any;
+            all.push({
+              uid: data.uid || d.id,
+              username: data.username || '',
+              profilePhotoUrl: data.profilePhotoUrl || null,
+            });
+          });
+        } catch {}
+      }
+    }
+    return all;
+  };
+
+  const collectHashtags = (items: ContentItem[]): string[] => {
+    const tags: string[] = [];
+    items.forEach(p => {
+      (p.hashtags || []).forEach(h => h && tags.push(String(h).toLowerCase()));
+      (p.tags || []).forEach(h => h && tags.push(String(h).toLowerCase()));
+    });
+    return tags;
+  };
+
+  const loadRecommended = async (excludeUids: Set<string>) => {
+    try {
+      // Build interest profile from target user's own posts
+      const ownTags = collectHashtags(posts);
+      const tagFreq = new Map<string, number>();
+      ownTags.forEach(t => tagFreq.set(t, (tagFreq.get(t) || 0) + 1));
+      const topTags = Array.from(tagFreq.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(e => e[0]);
+
+      const candidateScore = new Map<string, number>();
+
+      // Score by hashtag overlap
+      if (topTags.length > 0) {
+        const chunks: string[][] = [];
+        for (let i = 0; i < topTags.length; i += 10) chunks.push(topTags.slice(i, i + 10));
+        for (const chunk of chunks) {
+          try {
+            const snap = await getDocs(query(collection(db, 'posts'), where('hashtags', 'array-contains-any', chunk)));
+            snap.docs.forEach(d => {
+              const data = d.data() as any;
+              const uid = data.authorUid;
+              if (!uid || excludeUids.has(uid)) return;
+              const overlap = (data.hashtags || []).filter((h: string) =>
+                topTags.includes(String(h).toLowerCase())
+              ).length;
+              candidateScore.set(uid, (candidateScore.get(uid) || 0) + overlap * 2);
+            });
+          } catch {}
+          try {
+            const snap2 = await getDocs(query(collection(db, 'posts'), where('tags', 'array-contains-any', chunk)));
+            snap2.docs.forEach(d => {
+              const data = d.data() as any;
+              const uid = data.authorUid;
+              if (!uid || excludeUids.has(uid)) return;
+              const overlap = (data.tags || []).filter((h: string) =>
+                topTags.includes(String(h).toLowerCase())
+              ).length;
+              candidateScore.set(uid, (candidateScore.get(uid) || 0) + overlap);
+            });
+          } catch {}
+        }
+      }
+
+      // Fallback: if nothing matched, suggest popular recent authors
+      if (candidateScore.size === 0) {
+        try {
+          const recentSnap = await getDocs(collection(db, 'posts'));
+          recentSnap.docs.forEach(d => {
+            const data = d.data() as any;
+            const uid = data.authorUid;
+            if (!uid || excludeUids.has(uid)) return;
+            candidateScore.set(uid, (candidateScore.get(uid) || 0) + 1);
+          });
+        } catch {}
+      }
+
+      const topUids = Array.from(candidateScore.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(e => e[0]);
+
+      const users = await fetchUsersByUids(topUids);
+      // Preserve score ordering
+      users.sort((a, b) => (candidateScore.get(b.uid) || 0) - (candidateScore.get(a.uid) || 0));
+      setRecommendedList(users);
+    } catch (err) {
+      console.error('Error loading recommendations:', err);
+      setRecommendedList([]);
+    }
+  };
+
   const loadFollowing = async () => {
     setFollowingLoading(true);
     try {
@@ -85,45 +202,15 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
         query(collection(db, 'following'), where('followerUid', '==', targetUid))
       );
       const uids = Array.from(new Set(followSnap.docs.map(d => d.data().followingUid as string)));
-      if (uids.length === 0) { setFollowingList([]); return; }
+      const followed = await fetchUsersByUids(uids);
+      setFollowingList(followed);
 
-      // Fetch user docs in chunks of 10 (firestore "in" limit)
-      const chunks: string[][] = [];
-      for (let i = 0; i < uids.length; i += 10) chunks.push(uids.slice(i, i + 10));
-
-      const all: FollowedUser[] = [];
-      for (const chunk of chunks) {
-        // Try by `uid` field first; fall back to docId
-        const snap = await getDocs(query(collection(db, 'users'), where('uid', 'in', chunk)));
-        snap.docs.forEach(d => {
-          const data = d.data() as any;
-          all.push({
-            uid: data.uid || d.id,
-            username: data.username || '',
-            profilePhotoUrl: data.profilePhotoUrl || null,
-          });
-        });
-        // Add any uids that didn't match by `uid` field, by docId
-        const matched = new Set(snap.docs.map(d => (d.data() as any).uid || d.id));
-        const missing = chunk.filter(u => !matched.has(u));
-        if (missing.length > 0) {
-          try {
-            const byIdSnap = await getDocs(query(collection(db, 'users'), where(documentId(), 'in', missing)));
-            byIdSnap.docs.forEach(d => {
-              const data = d.data() as any;
-              all.push({
-                uid: data.uid || d.id,
-                username: data.username || '',
-                profilePhotoUrl: data.profilePhotoUrl || null,
-              });
-            });
-          } catch {}
-        }
-      }
-      setFollowingList(all);
+      const exclude = new Set<string>([targetUid, ...uids]);
+      await loadRecommended(exclude);
     } catch (err) {
       console.error('Error loading following:', err);
       setFollowingList([]);
+      setRecommendedList([]);
     } finally {
       setFollowingLoading(false);
     }
@@ -321,41 +408,86 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     <Loader2 size={16} className="animate-spin" />
                     Carregando...
                   </div>
-                ) : followingList.length === 0 ? (
+                ) : followingList.length === 0 && recommendedList.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center text-white/40 gap-2">
                     <div className="w-12 h-12 rounded-full flex items-center justify-center bg-white/5 border border-white/10">
                       <Users size={20} className="text-white/25" />
                     </div>
-                    <p className="text-xs uppercase tracking-widest">Não segue ninguém ainda</p>
+                    <p className="text-xs uppercase tracking-widest">Nenhum usuário ainda</p>
                   </div>
                 ) : (
-                  followingList.map(u => (
-                    <button
-                      key={u.uid}
-                      onClick={() => {
-                        if (u.uid === targetUid) { setShowFollowing(false); return; }
-                        if (onOpenUser) {
-                          setShowFollowing(false);
-                          onOpenUser(u.uid);
-                        }
-                      }}
-                      className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/5 transition-colors"
-                    >
-                      <div
-                        className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/5"
-                        style={{ border: '1px solid rgba(255,255,255,0.10)' }}
-                      >
-                        {u.profilePhotoUrl ? (
-                          <img src={u.profilePhotoUrl} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          <User size={18} className="text-white/30" />
-                        )}
+                  <>
+                    {followingList.length > 0 && (
+                      <div className="mb-2">
+                        <div className="px-2 pt-1 pb-2 text-[10px] uppercase tracking-widest text-white/40 font-bold">
+                          Seguindo
+                        </div>
+                        {followingList.map(u => (
+                          <button
+                            key={`f-${u.uid}`}
+                            onClick={() => {
+                              if (u.uid === targetUid) { setShowFollowing(false); return; }
+                              if (onOpenUser) {
+                                setShowFollowing(false);
+                                onOpenUser(u.uid);
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/5 transition-colors"
+                          >
+                            <div
+                              className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/5"
+                              style={{ border: '1px solid rgba(255,255,255,0.10)' }}
+                            >
+                              {u.profilePhotoUrl ? (
+                                <img src={u.profilePhotoUrl} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                <User size={18} className="text-white/30" />
+                              )}
+                            </div>
+                            <div className="flex-1 text-left min-w-0">
+                              <div className="text-sm font-bold text-white truncate">@{u.username || '...'}</div>
+                            </div>
+                          </button>
+                        ))}
                       </div>
-                      <div className="flex-1 text-left min-w-0">
-                        <div className="text-sm font-bold text-white truncate">@{u.username || '...'}</div>
+                    )}
+
+                    {recommendedList.length > 0 && (
+                      <div className="mt-3">
+                        <div className="px-2 pt-2 pb-2 text-[10px] uppercase tracking-widest text-white/40 font-bold border-t border-white/8">
+                          Recomendados para você
+                        </div>
+                        {recommendedList.map(u => (
+                          <button
+                            key={`r-${u.uid}`}
+                            onClick={() => {
+                              if (u.uid === targetUid) { setShowFollowing(false); return; }
+                              if (onOpenUser) {
+                                setShowFollowing(false);
+                                onOpenUser(u.uid);
+                              }
+                            }}
+                            className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/5 transition-colors"
+                          >
+                            <div
+                              className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/5"
+                              style={{ border: '1px solid rgba(255,255,255,0.10)' }}
+                            >
+                              {u.profilePhotoUrl ? (
+                                <img src={u.profilePhotoUrl} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                <User size={18} className="text-white/30" />
+                              )}
+                            </div>
+                            <div className="flex-1 text-left min-w-0">
+                              <div className="text-sm font-bold text-white truncate">@{u.username || '...'}</div>
+                              <div className="text-[10px] text-white/40">Posta conteúdo similar</div>
+                            </div>
+                          </button>
+                        ))}
                       </div>
-                    </button>
-                  ))
+                    )}
+                  </>
                 )}
               </div>
             </motion.div>
