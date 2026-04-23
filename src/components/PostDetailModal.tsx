@@ -449,7 +449,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     ref={videoRef}
                     src={item.url}
                     poster={item.thumbnailUrl || undefined}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full bg-black"
                     autoPlay
                     loop
                     muted={isMuted}
@@ -457,7 +457,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     onClick={handleVideoTap}
                     onDoubleClick={handleVideoDoubleClick}
                     onTouchEnd={handleVideoTouchEnd}
-                    style={{ cursor: 'pointer', display: 'block' }}
+                    style={{ cursor: 'pointer', display: 'block', objectFit: 'contain' }}
                   />
 
                   {/* Centered play/pause toggle — visible only with controls */}

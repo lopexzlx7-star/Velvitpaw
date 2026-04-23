@@ -328,7 +328,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
                       onLoadedData={() => setIsLoaded(true)}
                       onEnded={() => advanceToNext(item.id)}
                       onError={handleVideoError}
-                      className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                      className={`w-full h-full bg-black transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                      style={{ objectFit: 'contain' }}
                     />
                   </>
                 )

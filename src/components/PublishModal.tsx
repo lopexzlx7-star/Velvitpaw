@@ -31,7 +31,7 @@ interface ImageItem {
   preview: string;
 }
 
-const MAX_VIDEO_DURATION = 900; // 15 minutes
+const MAX_VIDEO_DURATION = 180; // 3 minutes
 const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
@@ -735,14 +735,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                 <motion.div
                   layout
                   transition={{ type: 'spring', stiffness: 280, damping: 28 }}
-                  className={`relative w-full ${getAspectClass()} overflow-hidden`}
+                  className={`relative w-full ${getAspectClass()} overflow-hidden bg-black`}
                   style={{ maxHeight: '60vh' }}
                 >
                   <video
                     src={videoDraft.mediaUrl}
                     poster={thumbnailUrl || undefined}
-                    className="w-full h-full object-cover"
-                    style={{ objectFit: 'cover' }}
+                    className="w-full h-full"
+                    style={{ objectFit: 'contain' }}
                     muted playsInline loop autoPlay
                   />
                 </motion.div>
