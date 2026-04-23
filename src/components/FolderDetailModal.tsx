@@ -166,17 +166,18 @@ const FolderDetailModal: React.FC<Props> = ({
             <div className="max-w-7xl mx-auto">
               <div className="flex items-center justify-between mb-6">
                 <button
-                  onClick={onClose}
-                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/70 hover:text-white transition-colors"
-                >
-                  <X size={16} />
-                </button>
-                <button
                   onClick={handleDeleteFolder}
                   className="w-10 h-10 rounded-full bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/40 flex items-center justify-center text-white/60 hover:text-red-400 transition-colors"
                   title="Excluir pasta"
                 >
                   <Trash2 size={14} />
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+                  title="Sair da pasta"
+                >
+                  <X size={16} />
                 </button>
               </div>
 

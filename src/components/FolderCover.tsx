@@ -9,14 +9,48 @@ interface Props {
   rounded?: string;
 }
 
-function pickThumb(post: ContentItem | undefined): string | null {
+interface CoverEntry {
+  url: string;
+  isVideo: boolean;
+  poster?: string;
+}
+
+function pickCover(post: ContentItem | undefined): CoverEntry | null {
   if (!post) return null;
   if (post.type === 'video') {
-    return post.thumbnailUrl || post.url || null;
+    if (post.thumbnailUrl) {
+      return { url: post.thumbnailUrl, isVideo: false };
+    }
+    if (post.url) {
+      return { url: post.url, isVideo: true };
+    }
+    return null;
   }
-  if (post.images && post.images.length > 0) return post.images[0];
-  return post.url || null;
+  if (post.images && post.images.length > 0) return { url: post.images[0], isVideo: false };
+  if (post.url) return { url: post.url, isVideo: false };
+  return null;
 }
+
+const CoverMedia: React.FC<{ entry: CoverEntry; className?: string }> = ({ entry, className = '' }) => {
+  if (entry.isVideo) {
+    return (
+      <video
+        src={`${entry.url}#t=0.1`}
+        poster={entry.poster}
+        className={className}
+        muted
+        playsInline
+        preload="metadata"
+        disablePictureInPicture
+        onLoadedMetadata={(e) => {
+          const v = e.currentTarget;
+          try { v.currentTime = 0.1; } catch {}
+        }}
+      />
+    );
+  }
+  return <img src={entry.url} alt="" className={className} referrerPolicy="no-referrer" />;
+};
 
 const FolderCover: React.FC<Props> = ({
   folder,
@@ -26,13 +60,13 @@ const FolderCover: React.FC<Props> = ({
 }) => {
   const covers = useMemo(() => {
     const map = new Map(allPosts.map(p => [p.id, p]));
-    const urls: string[] = [];
+    const list: CoverEntry[] = [];
     for (const id of folder.postIds) {
-      const u = pickThumb(map.get(id));
-      if (u) urls.push(u);
-      if (urls.length >= 3) break;
+      const c = pickCover(map.get(id));
+      if (c) list.push(c);
+      if (list.length >= 3) break;
     }
-    return urls;
+    return list;
   }, [folder.postIds, allPosts]);
 
   const wrapperStyle: React.CSSProperties = {
@@ -56,7 +90,7 @@ const FolderCover: React.FC<Props> = ({
         className={`relative w-full h-full overflow-hidden border border-white/10 ${rounded} ${className}`}
         style={wrapperStyle}
       >
-        <img src={covers[0]} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+        <CoverMedia entry={covers[0]} className="w-full h-full object-cover" />
       </div>
     );
   }
@@ -67,8 +101,8 @@ const FolderCover: React.FC<Props> = ({
         className={`relative w-full h-full overflow-hidden border border-white/10 grid grid-cols-2 grid-rows-1 gap-[2px] ${rounded} ${className}`}
         style={wrapperStyle}
       >
-        <img src={covers[0]} alt="" className="w-full h-full object-cover min-h-0" referrerPolicy="no-referrer" />
-        <img src={covers[1]} alt="" className="w-full h-full object-cover min-h-0" referrerPolicy="no-referrer" />
+        <CoverMedia entry={covers[0]} className="w-full h-full object-cover min-h-0" />
+        <CoverMedia entry={covers[1]} className="w-full h-full object-cover min-h-0" />
       </div>
     );
   }
@@ -79,9 +113,9 @@ const FolderCover: React.FC<Props> = ({
       className={`relative w-full h-full overflow-hidden border border-white/10 grid grid-cols-2 grid-rows-2 gap-[2px] ${rounded} ${className}`}
       style={wrapperStyle}
     >
-      <img src={covers[0]} alt="" className="w-full h-full object-cover row-span-2 min-h-0" referrerPolicy="no-referrer" />
-      <img src={covers[1]} alt="" className="w-full h-full object-cover min-h-0" referrerPolicy="no-referrer" />
-      <img src={covers[2]} alt="" className="w-full h-full object-cover min-h-0" referrerPolicy="no-referrer" />
+      <CoverMedia entry={covers[0]} className="w-full h-full object-cover row-span-2 min-h-0" />
+      <CoverMedia entry={covers[1]} className="w-full h-full object-cover min-h-0" />
+      <CoverMedia entry={covers[2]} className="w-full h-full object-cover min-h-0" />
     </div>
   );
 };
