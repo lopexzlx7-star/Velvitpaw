@@ -512,6 +512,25 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     )}
                   </AnimatePresence>
 
+                  {/* Mini progress bar — visible only when controls are hidden */}
+                  <AnimatePresence>
+                    {!controlsVisible && duration > 0 && (
+                      <motion.div
+                        key="mini-progress"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute bottom-0 left-0 right-0 h-[2px] bg-white/15 pointer-events-none"
+                      >
+                        <div
+                          className="h-full bg-white"
+                          style={{ width: `${progress}%`, transition: 'width 0.25s linear' }}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   {/* Bottom controls — fade with controlsVisible */}
                   <AnimatePresence>
                     {controlsVisible && (
