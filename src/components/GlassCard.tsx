@@ -245,18 +245,22 @@ const GlassCard: React.FC<GlassCardProps> = ({
 
   return (
     <motion.div
-      layout
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
       className="group mb-6 break-inside-avoid"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      style={{
+        contentVisibility: 'auto',
+        containIntrinsicSize: '300px 400px',
+      } as React.CSSProperties}
     >
       <div 
-        className="relative rounded-[2rem] overflow-hidden bg-white/5 border border-white/10 shadow-xl transition-all duration-500 group-hover:shadow-white/5 group-hover:-translate-y-1 cursor-pointer"
+        className="relative rounded-[2rem] overflow-hidden bg-white/5 border border-white/10 shadow-xl transition-transform duration-300 group-hover:-translate-y-1 cursor-pointer"
         onClick={handleTap}
         onContextMenu={(e) => e.preventDefault()}
-        style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+        style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', willChange: 'transform' }}
       >
         {/* Media Container */}
         <div className="relative overflow-hidden">
@@ -283,6 +287,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
                       <img
                         src={item.thumbnailUrl}
                         alt={item.title}
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover"
                         onError={() => setVideoError(true)}
                       />
@@ -304,6 +310,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
                       <img
                         src={getVideoThumb(item.url, item.thumbnailUrl)!}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         className="absolute inset-0 w-full h-full object-cover"
                       />
                     )}
@@ -328,6 +336,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
                 <img
                   src={item.url}
                   alt={item.title}
+                  loading="lazy"
+                  decoding="async"
                   onLoad={() => setIsLoaded(true)}
                   className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 />
@@ -359,8 +369,10 @@ const GlassCard: React.FC<GlassCardProps> = ({
               src={item.url}
               alt={item.title}
               referrerPolicy="no-referrer"
+              loading="lazy"
+              decoding="async"
               onLoad={() => setIsLoaded(true)}
-              className={`w-full object-cover transition-all duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+              className={`w-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
               style={{ 
                 minHeight: '150px', 
                 height: isLoaded ? 'auto' : (item.height || 300),
@@ -472,4 +484,17 @@ const GlassCard: React.FC<GlassCardProps> = ({
   );
 };
 
-export default GlassCard;
+export default React.memo(GlassCard, (prev, next) => {
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.url === next.item.url &&
+    prev.item.thumbnailUrl === next.item.thumbnailUrl &&
+    prev.item.title === next.item.title &&
+    prev.isLiked === next.isLiked &&
+    prev.isSaved === next.isSaved &&
+    prev.isFollowing === next.isFollowing &&
+    prev.isUserPost === next.isUserPost &&
+    prev.searchQuery === next.searchQuery &&
+    prev.item.likesCount === next.item.likesCount
+  );
+});
