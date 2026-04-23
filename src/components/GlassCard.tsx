@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  Heart, Bookmark, UserPlus, Trash2, 
-  Volume2, VolumeX, Share2,
-  UserCheck, Images, ExternalLink
+  Heart, Trash2,
+  Volume2, VolumeX,
+  Images, ExternalLink
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { auth, db } from '../firebase';
@@ -414,49 +414,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
             </div>
           )}
 
-          {/* Overlay Actions */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-300 flex flex-col justify-between p-4">
-            <div className="flex justify-end gap-2">
-              {!isUserPost && onFollow && (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onFollow(item.authorUid); }}
-                  className={`p-2.5 backdrop-blur-xl rounded-2xl transition-all ${
-                    isFollowing ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
-                >
-                  {isFollowing ? <UserCheck size={16} /> : <UserPlus size={16} />}
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                {onSave && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onSave(item.id); }}
-                    className={`p-2.5 backdrop-blur-xl rounded-2xl transition-all ${
-                      isSaved ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
-                    }`}
-                  >
-                    <Bookmark size={18} fill={isSaved ? "currentColor" : "none"} />
-                  </button>
-                )}
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (navigator.share) {
-                    navigator.share({ title: item.title, url: item.url }).catch(() => {});
-                  } else {
-                    navigator.clipboard?.writeText(item.url).catch(() => {});
-                  }
-                }}
-                className="p-2.5 bg-white/10 backdrop-blur-xl rounded-2xl text-white hover:bg-white/20 transition-all"
-              >
-                <Share2 size={18} />
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 
