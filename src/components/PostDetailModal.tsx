@@ -89,7 +89,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState(1);
   const [seekFlash, setSeekFlash] = useState<'left' | 'right' | null>(null);
-  const [controlsVisible, setControlsVisible] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(false);
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -123,14 +123,13 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
   const showControls = useCallback(() => {
     setControlsVisible(true);
-    if (controlsTimer.current) clearTimeout(controlsTimer.current);
-    controlsTimer.current = setTimeout(() => setControlsVisible(false), 1500);
+  }, []);
+
+  const toggleControls = useCallback(() => {
+    setControlsVisible(v => !v);
   }, []);
 
   useEffect(() => {
-    // Auto-hide controls 1.5s after the video starts
-    if (controlsTimer.current) clearTimeout(controlsTimer.current);
-    controlsTimer.current = setTimeout(() => setControlsVisible(false), 1500);
     return () => {
       if (controlsTimer.current) clearTimeout(controlsTimer.current);
     };
@@ -255,7 +254,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
   const handleVideoTap = (e: React.MouseEvent<HTMLVideoElement>) => {
     e.stopPropagation();
-    showControls();
+    toggleControls();
   };
 
   const handleSeekStart = () => setIsSeeking(true);
