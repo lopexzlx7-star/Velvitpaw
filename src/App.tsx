@@ -2209,14 +2209,6 @@ export default function App() {
                         </button>
                       </div>
 
-                      <div className="flex gap-4 justify-center md:justify-start">
-                        <button 
-                          onClick={handleDeleteAccount}
-                          className="text-[10px] uppercase tracking-widest text-red-500/50 hover:text-red-500 transition-colors"
-                        >
-                          Excluir Conta
-                        </button>
-                      </div>
                     </div>
                   </div>
 
@@ -2529,6 +2521,7 @@ export default function App() {
         onUpdateUsername={async (n) => { await handleUpdateUsername(n); }}
         onSelectProfilePhoto={(e) => { handleFileSelect(e, 'profile'); setShowProfileEdit(false); }}
         onSelectBackgroundPhoto={(e) => { handleFileSelect(e, 'bg'); setShowProfileEdit(false); }}
+        onDeleteAccount={() => { setShowProfileEdit(false); handleDeleteAccount(); }}
       />
 
       <PhotoViewerModal

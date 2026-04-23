@@ -10,6 +10,7 @@ interface Props {
   onUpdateUsername: (newUsername: string) => Promise<void> | void;
   onSelectProfilePhoto: (e: ChangeEvent<HTMLInputElement>) => void;
   onSelectBackgroundPhoto: (e: ChangeEvent<HTMLInputElement>) => void;
+  onDeleteAccount?: () => void;
 }
 
 const ProfileEditModal: React.FC<Props> = ({
@@ -20,6 +21,7 @@ const ProfileEditModal: React.FC<Props> = ({
   onUpdateUsername,
   onSelectProfilePhoto,
   onSelectBackgroundPhoto,
+  onDeleteAccount,
 }) => {
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(currentUsername);
@@ -244,6 +246,20 @@ const ProfileEditModal: React.FC<Props> = ({
                 className="hidden"
                 onChange={(e) => onSelectBackgroundPhoto(e)}
               />
+
+              {onDeleteAccount && (
+                <button
+                  type="button"
+                  onClick={onDeleteAccount}
+                  className="w-full mt-2 rounded-2xl py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-red-400/80 hover:text-red-400 transition-colors"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.06)',
+                    border: '1px solid rgba(239, 68, 68, 0.18)',
+                  }}
+                >
+                  Excluir Conta
+                </button>
+              )}
             </div>
 
             <div className="h-2 sm:h-1" />
