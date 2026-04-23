@@ -248,17 +248,15 @@ const ProfileEditModal: React.FC<Props> = ({
               />
 
               {onDeleteAccount && (
-                <button
-                  type="button"
-                  onClick={onDeleteAccount}
-                  className="w-full mt-2 rounded-2xl py-3 text-[10px] uppercase tracking-[0.2em] font-bold text-red-400/80 hover:text-red-400 transition-colors"
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.06)',
-                    border: '1px solid rgba(239, 68, 68, 0.18)',
-                  }}
-                >
-                  Excluir Conta
-                </button>
+                <div className="w-full pt-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={onDeleteAccount}
+                    className="text-[10px] uppercase tracking-[0.2em] font-bold text-red-500/60 hover:text-red-500 transition-colors"
+                  >
+                    Excluir Conta
+                  </button>
+                </div>
               )}
             </div>
 
