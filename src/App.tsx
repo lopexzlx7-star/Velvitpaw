@@ -2077,7 +2077,7 @@ export default function App() {
                         onFollow={handleFollow}
                         onClick={() => setSelectedPost(item)}
                         onHashtagClick={handleHashtagClick}
-                        isUserPost={false}
+                        isUserPost={(item as any).authorUid === auth.currentUser?.uid}
                         searchQuery={searchQuery}
                       />
                     ))

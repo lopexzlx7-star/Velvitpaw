@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Heart, Trash2,
-  Volume2, VolumeX,
   Images, ExternalLink
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
@@ -182,7 +181,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
   const [isLoaded, setIsLoaded] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const isMuted = true;
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -351,17 +350,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   }`}
                 >
                   <Trash2 size={16} />
-                </button>
-              )}
-              {isHovered && item.type === 'video' && !isExternalEmbedUrl(item.url) && (
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsMuted(!isMuted);
-                  }}
-                  className="absolute bottom-4 right-4 p-2 bg-black/40 backdrop-blur-md rounded-xl text-white/70 hover:text-white transition-colors"
-                >
-                  {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                 </button>
               )}
             </div>
