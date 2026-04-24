@@ -99,6 +99,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [slideOffset, setSlideOffset] = useState(0); // -1 = sliding to prev, 1 = sliding to next
   const [transitionOn, setTransitionOn] = useState(true);
+  const [dragY, setDragY] = useState<number | null>(null); // px the finger has moved during an active drag
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const slidingRef = useRef(false);
 
@@ -212,10 +213,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (slideOffset !== 0) {
+    if (slideOffset !== 0 || dragY !== null) {
       try { v.pause(); } catch {}
     }
-  }, [slideOffset]);
+  }, [slideOffset, dragY]);
 
   // Trigger a TikTok-style slide; on completion swap the active item via onNavigate
   const triggerSlide = useCallback((dir: 'next' | 'prev') => {
@@ -407,32 +408,75 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     let touchStartY: number | null = null;
     let touchStartX: number | null = null;
     let touchStartT = 0;
+    let dragging = false;
+    let lockedAxis: 'y' | 'x' | null = null;
+
     const onTouchStart = (e: TouchEvent) => {
+      if (slidingRef.current) return;
       touchStartY = e.touches[0].clientY;
       touchStartX = e.touches[0].clientX;
       touchStartT = Date.now();
+      dragging = false;
+      lockedAxis = null;
     };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (touchStartY === null || touchStartX === null || slidingRef.current) return;
+      const dy = e.touches[0].clientY - touchStartY;
+      const dx = e.touches[0].clientX - touchStartX;
+      if (lockedAxis === null) {
+        if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+        lockedAxis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
+      }
+      if (lockedAxis !== 'y') return;
+      dragging = true;
+      // Resistance when there is no neighbor in that direction
+      let clamped = dy;
+      if (clamped < 0 && !nextItem) clamped = clamped * 0.25;
+      if (clamped > 0 && !prevItem) clamped = clamped * 0.25;
+      setDragY(clamped);
+    };
+
     const onTouchEnd = (e: TouchEvent) => {
-      if (touchStartY === null || touchStartX === null) return;
+      if (touchStartY === null) return;
       const dy = e.changedTouches[0].clientY - touchStartY;
-      const dx = e.changedTouches[0].clientX - touchStartX;
       const dt = Date.now() - touchStartT;
-      touchStartY = null; touchStartX = null;
-      if (Math.abs(dy) < 50 || Math.abs(dy) < Math.abs(dx)) return;
-      if (dt > 800) return;
-      const dir = dy < 0 ? 'next' : 'prev';
-      triggerSlide(dir);
+      const wasDragging = dragging;
+      touchStartY = null; touchStartX = null; dragging = false; lockedAxis = null;
+      if (!wasDragging) { setDragY(null); return; }
+
+      const h = container.clientHeight || 1;
+      const ratio = dy / h;
+      const velocity = dy / (dt || 1); // px/ms (sign-aware)
+      const commitNext = (ratio < -0.18 || velocity < -0.55) && !!nextItem;
+      const commitPrev = (ratio > 0.18 || velocity > 0.55) && !!prevItem;
+
+      // Re-enable transition so the snap (whether commit or cancel) animates from current dragY
+      setTransitionOn(true);
+      setDragY(null);
+      if (commitNext) {
+        slidingRef.current = true;
+        setSlideOffset(1);
+      } else if (commitPrev) {
+        slidingRef.current = true;
+        setSlideOffset(-1);
+      }
+      // else: snap back to 0 (slideOffset is already 0)
     };
 
     container.addEventListener('wheel', onWheel, { passive: true });
     container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: true });
     container.addEventListener('touchend', onTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', onTouchEnd, { passive: true });
     return () => {
       container.removeEventListener('wheel', onWheel);
       container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
       container.removeEventListener('touchend', onTouchEnd);
+      container.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, [isFullscreen, onNavigate, triggerSlide]);
+  }, [isFullscreen, onNavigate, triggerSlide, nextItem, prevItem]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -559,8 +603,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   <div
                     className="absolute inset-0 w-full h-full"
                     style={{
-                      transform: `translateY(${-slideOffset * 100}%)`,
-                      transition: transitionOn ? 'transform 360ms cubic-bezier(0.22, 0.61, 0.36, 1)' : 'none',
+                      transform: dragY !== null
+                        ? `translate3d(0, ${dragY}px, 0)`
+                        : `translate3d(0, ${-slideOffset * 100}%, 0)`,
+                      transition: (dragY !== null || !transitionOn)
+                        ? 'none'
+                        : 'transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1)',
                       willChange: 'transform',
                     }}
                     onTransitionEnd={handleSlideTransitionEnd}
