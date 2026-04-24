@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, Maximize2, ExternalLink, Bookmark } from 'lucide-react';
+import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -93,6 +93,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [seekFlash, setSeekFlash] = useState<'left' | 'right' | null>(null);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [animDir, setAnimDir] = useState<1 | -1>(1);
+  const [showSwipeHint, setShowSwipeHint] = useState(false);
+  const navDirectionRef = useRef<'next' | 'prev' | null>(null);
+  const prevItemIdRef = useRef<string>(item.id);
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -197,6 +201,31 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = 'unset'; };
   }, []);
+
+  // Track navigation direction whenever the displayed item changes
+  useEffect(() => {
+    if (item.id !== prevItemIdRef.current) {
+      const dir = navDirectionRef.current;
+      setAnimDir(dir === 'prev' ? -1 : 1);
+      navDirectionRef.current = null;
+      prevItemIdRef.current = item.id;
+    }
+  }, [item.id]);
+
+  // One-time swipe hint when first entering fullscreen on a video (per browser)
+  useEffect(() => {
+    if (!isFullscreen) return;
+    if (!isVideo || !directVideo) return;
+    try {
+      if (localStorage.getItem('velvit_fs_swipe_hint_seen') === '1') return;
+    } catch {}
+    setShowSwipeHint(true);
+    const t = setTimeout(() => {
+      setShowSwipeHint(false);
+      try { localStorage.setItem('velvit_fs_swipe_hint_seen', '1'); } catch {}
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [isFullscreen, isVideo, directVideo]);
 
   useEffect(() => { setLocalIsLiked(isLiked); }, [isLiked]);
 
@@ -339,7 +368,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaY) < 30 || wheelLock) return;
       wheelLock = true;
-      onNavigate(e.deltaY > 0 ? 'next' : 'prev');
+      const dir = e.deltaY > 0 ? 'next' : 'prev';
+      navDirectionRef.current = dir;
+      onNavigate(dir);
       window.setTimeout(() => { wheelLock = false; }, 600);
     };
 
@@ -359,7 +390,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       touchStartY = null; touchStartX = null;
       if (Math.abs(dy) < 50 || Math.abs(dy) < Math.abs(dx)) return;
       if (dt > 800) return;
-      onNavigate(dy < 0 ? 'next' : 'prev');
+      const dir = dy < 0 ? 'next' : 'prev';
+      navDirectionRef.current = dir;
+      onNavigate(dir);
     };
 
     container.addEventListener('wheel', onWheel, { passive: true });
@@ -494,20 +527,80 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
               ) : (
                 // Direct playable video URL
                 <>
-                  <video
-                    ref={videoRef}
-                    src={item.url}
-                    poster={item.thumbnailUrl || undefined}
-                    className="w-full h-full bg-black"
-                    autoPlay
-                    loop
-                    muted={isMuted}
-                    playsInline
-                    onClick={handleVideoTap}
-                    onDoubleClick={handleVideoDoubleClick}
-                    onTouchEnd={handleVideoTouchEnd}
-                    style={{ cursor: 'pointer', display: 'block', objectFit: 'contain' }}
-                  />
+                  <AnimatePresence custom={animDir} initial={false} mode="popLayout">
+                    <motion.div
+                      key={item.id}
+                      custom={animDir}
+                      variants={{
+                        enter: (d: number) => ({ y: `${d * 100}%`, opacity: 0.85 }),
+                        center: { y: '0%', opacity: 1 },
+                        exit: (d: number) => ({ y: `${d * -100}%`, opacity: 0.85 }),
+                      }}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      transition={{ duration: 0.34, ease: [0.32, 0.72, 0, 1] }}
+                      className="absolute inset-0 w-full h-full"
+                      style={{ willChange: 'transform' }}
+                    >
+                      <video
+                        ref={videoRef}
+                        src={item.url}
+                        poster={item.thumbnailUrl || undefined}
+                        className="w-full h-full bg-black"
+                        autoPlay
+                        loop
+                        muted={isMuted}
+                        playsInline
+                        onClick={handleVideoTap}
+                        onDoubleClick={handleVideoDoubleClick}
+                        onTouchEnd={handleVideoTouchEnd}
+                        style={{ cursor: 'pointer', display: 'block', objectFit: 'contain' }}
+                      />
+                    </motion.div>
+                  </AnimatePresence>
+
+                  {/* One-time swipe hint — overlays first video in fullscreen */}
+                  <AnimatePresence>
+                    {showSwipeHint && (
+                      <motion.div
+                        key="swipe-hint"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30"
+                        style={{ background: 'radial-gradient(circle at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 70%, transparent 100%)' }}
+                      >
+                        <motion.div
+                          animate={{ y: [0, 18, 0] }}
+                          transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
+                          className="flex flex-col items-center gap-2"
+                        >
+                          <div
+                            className="px-5 py-2.5 rounded-full"
+                            style={{
+                              background: 'rgba(255,255,255,0.14)',
+                              backdropFilter: 'blur(18px) saturate(160%)',
+                              WebkitBackdropFilter: 'blur(18px) saturate(160%)',
+                              border: '1px solid rgba(255,255,255,0.18)',
+                              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                            }}
+                          >
+                            <span className="text-white text-[13px] font-semibold tracking-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                              Role para baixo para ver mais vídeos
+                            </span>
+                          </div>
+                          <ChevronDown
+                            size={36}
+                            className="text-white"
+                            strokeWidth={2.5}
+                            style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.6))' }}
+                          />
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Top author overlay — only in fullscreen, fades with controlsVisible */}
                   <AnimatePresence>
