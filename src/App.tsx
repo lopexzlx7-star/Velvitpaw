@@ -41,6 +41,7 @@ import FolderDetailModal from './components/FolderDetailModal';
 import FolderCover from './components/FolderCover';
 import ProfileEditModal from './components/ProfileEditModal';
 import PhotoViewerModal from './components/PhotoViewerModal';
+import LoginBackdrop from './components/LoginBackdrop';
 import OfflineIndicator from './components/OfflineIndicator';
 
 // Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
@@ -312,6 +313,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [userSearchResults, setUserSearchResults] = useState<{ username: string; uid: string; profilePhotoUrl?: string }[]>([]);
   const [profileViewUid, setProfileViewUid] = useState<string | null>(null);
+  const [showFollowingList, setShowFollowingList] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isGeneratingFeed, setIsGeneratingFeed] = useState(true);
   const [followingUids, setFollowingUids] = useState<string[]>([]);
@@ -1484,6 +1486,7 @@ export default function App() {
         className="min-h-screen flex items-center justify-center p-6 bg-space-gray-900 relative overflow-hidden"
         data-accent={accentColor === 'default' ? undefined : accentColor}
       >
+        <LoginBackdrop posts={globalPosts} />
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -2155,7 +2158,7 @@ export default function App() {
                       {showColorPicker && (
                         <>
                           <div className="fixed inset-0 z-40" onClick={() => setShowColorPicker(false)} />
-                          <div className="modal-dark absolute right-0 top-9 z-50 flex flex-col gap-1.5 p-2.5 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/10 shadow-2xl">
+                          <div className="modal-dark absolute right-0 top-9 z-50 flex items-center gap-2 p-2.5 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/10 shadow-2xl">
                           {ACCENTS.map(a => (
                             <button
                               key={a.id}
@@ -2167,18 +2170,23 @@ export default function App() {
                                   updateDoc(doc(db, 'users', username), { accentColor: a.id }).catch(() => {});
                                 }
                               }}
-                              className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-white/10 transition-colors text-left"
+                              title={a.label}
+                              className="rounded-full transition-all hover:scale-110"
+                              style={{ outline: accentColor === a.id ? '2px solid rgba(255,255,255,0.85)' : 'none', outlineOffset: 2 }}
                             >
                               <span
-                                className="w-4 h-4 rounded-full shrink-0 border border-white/20"
-                                style={{ background: a.id === 'default' ? '#ffffff' : a.hex }}
+                                className="block w-5 h-5 rounded-full border border-white/20"
+                                style={{
+                                  background: a.id === 'default' ? '#ffffff' : a.hex,
+                                  boxShadow: a.id === 'default' ? 'none' : `0 0 8px rgba(${
+                                    a.hex === '#C50337' ? '197,3,55' :
+                                    a.hex === '#9303C5' ? '147,3,197' :
+                                    a.hex === '#0356C5' ? '3,86,197' :
+                                    a.hex === '#007D10' ? '0,125,16' :
+                                    a.hex === '#FC210D' ? '252,33,13' : '255,255,255'
+                                  }, 0.55)`,
+                                }}
                               />
-                              <span className={`text-[11px] font-medium ${accentColor === a.id ? 'text-white' : 'text-white/50'}`}>
-                                {a.label}
-                              </span>
-                              {accentColor === a.id && (
-                                <CheckCircle2 size={11} className="text-white/60 ml-auto" />
-                              )}
                             </button>
                           ))}
                         </div>
@@ -2221,6 +2229,13 @@ export default function App() {
                           className="px-5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-all flex items-center gap-2"
                         >
                           <User size={14} /> Editar Perfil
+                        </button>
+                        <button
+                          onClick={() => setShowFollowingList(true)}
+                          className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-all flex items-center gap-1.5"
+                          title="Quem eu sigo"
+                        >
+                          <UserPlus size={12} /> Seguindo ({followingUids.length})
                         </button>
                         <button 
                           onClick={resetBackground}
@@ -2552,6 +2567,103 @@ export default function App() {
         username={photoViewer?.username}
         onClose={() => setPhotoViewer(null)}
       />
+
+      <AnimatePresence>
+        {showFollowingList && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowFollowingList(false)}
+            className="fixed inset-0 z-[260] flex items-end sm:items-center justify-center p-0 sm:p-4"
+            style={{ background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(20px)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 24 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 16 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full sm:max-w-md max-h-[80vh] flex flex-col rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden glass-panel"
+              style={{
+                background: 'linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))',
+                border: '1px solid rgba(255,255,255,0.14)',
+              }}
+            >
+              <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold mb-1">Você segue</div>
+                  <h3 className="text-xl font-black tracking-tight text-white">Seguindo ({followingUids.length})</h3>
+                </div>
+                <button
+                  onClick={() => setShowFollowingList(false)}
+                  className="w-9 h-9 flex items-center justify-center rounded-full text-white/70 hover:text-white"
+                  style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.10)' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-3 pb-5 no-scrollbar">
+                {followingUids.length === 0 ? (
+                  <div className="text-center py-14 text-white/40 text-xs uppercase tracking-widest">
+                    Você ainda não segue ninguém
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {(() => {
+                      const seen = new Set<string>();
+                      const list: { uid: string; username: string; profilePhotoUrl?: string }[] = [];
+                      for (const p of globalPosts) {
+                        const uid = (p as any).authorUid as string | undefined;
+                        if (!uid || !followingUids.includes(uid) || seen.has(uid)) continue;
+                        seen.add(uid);
+                        list.push({
+                          uid,
+                          username: p.authorName || 'usuário',
+                          profilePhotoUrl: (p as any).authorPhotoUrl,
+                        });
+                      }
+                      // Add UIDs without posts in the loaded feed
+                      for (const uid of followingUids) {
+                        if (!seen.has(uid)) {
+                          seen.add(uid);
+                          list.push({ uid, username: 'usuário' });
+                        }
+                      }
+                      return list.map((u) => (
+                        <button
+                          key={u.uid}
+                          onClick={() => {
+                            setShowFollowingList(false);
+                            setProfileViewUid(u.uid);
+                          }}
+                          className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/5 transition-colors text-left"
+                        >
+                          <div
+                            className="w-11 h-11 rounded-full overflow-hidden bg-white/5 shrink-0 flex items-center justify-center"
+                            style={{ border: '1px solid rgba(255,255,255,0.10)' }}
+                          >
+                            {u.profilePhotoUrl ? (
+                              <img src={u.profilePhotoUrl} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <User size={18} className="text-white/40" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-white truncate">@{u.username}</div>
+                            <div className="text-[10px] uppercase tracking-widest text-white/30">Ver perfil</div>
+                          </div>
+                        </button>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <FolderDetailModal
         open={!!openFolder}
