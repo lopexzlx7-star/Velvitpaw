@@ -7,6 +7,8 @@ import { ContentItem } from '../types';
 
 interface PostDetailModalProps {
   item: ContentItem;
+  prevItem?: ContentItem;
+  nextItem?: ContentItem;
   onClose: () => void;
   onLike: (id: string) => void;
   onDelete?: (id: string) => void;
@@ -67,6 +69,8 @@ function getYouTubeEmbedUrl(url: string): string | null {
 
 const PostDetailModal: React.FC<PostDetailModalProps> = ({
   item,
+  prevItem,
+  nextItem,
   onClose,
   onLike,
   isLiked,
@@ -93,10 +97,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [seekFlash, setSeekFlash] = useState<'left' | 'right' | null>(null);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [animDir, setAnimDir] = useState<1 | -1>(1);
+  const [slideOffset, setSlideOffset] = useState(0); // -1 = sliding to prev, 1 = sliding to next
+  const [transitionOn, setTransitionOn] = useState(true);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
-  const navDirectionRef = useRef<'next' | 'prev' | null>(null);
-  const prevItemIdRef = useRef<string>(item.id);
+  const slidingRef = useRef(false);
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -202,15 +206,31 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     return () => { document.body.style.overflow = 'unset'; };
   }, []);
 
-  // Track navigation direction whenever the displayed item changes
-  useEffect(() => {
-    if (item.id !== prevItemIdRef.current) {
-      const dir = navDirectionRef.current;
-      setAnimDir(dir === 'prev' ? -1 : 1);
-      navDirectionRef.current = null;
-      prevItemIdRef.current = item.id;
-    }
-  }, [item.id]);
+  // Trigger a TikTok-style slide; on completion swap the active item via onNavigate
+  const triggerSlide = useCallback((dir: 'next' | 'prev') => {
+    if (slidingRef.current) return;
+    if (dir === 'next' && !nextItem) return;
+    if (dir === 'prev' && !prevItem) return;
+    slidingRef.current = true;
+    setTransitionOn(true);
+    setSlideOffset(dir === 'next' ? 1 : -1);
+  }, [nextItem, prevItem]);
+
+  const handleSlideTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
+    if (e.propertyName !== 'transform') return;
+    if (slideOffset === 0) return;
+    const dir = slideOffset > 0 ? 'next' : 'prev';
+    // Snap back to 0 with no transition while item changes, so the new neighbors recenter seamlessly
+    setTransitionOn(false);
+    setSlideOffset(0);
+    onNavigate?.(dir);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTransitionOn(true);
+        slidingRef.current = false;
+      });
+    });
+  };
 
   // One-time swipe hint when first entering fullscreen on a video (per browser)
   useEffect(() => {
@@ -369,8 +389,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       if (Math.abs(e.deltaY) < 30 || wheelLock) return;
       wheelLock = true;
       const dir = e.deltaY > 0 ? 'next' : 'prev';
-      navDirectionRef.current = dir;
-      onNavigate(dir);
+      triggerSlide(dir);
       window.setTimeout(() => { wheelLock = false; }, 600);
     };
 
@@ -391,8 +410,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       if (Math.abs(dy) < 50 || Math.abs(dy) < Math.abs(dx)) return;
       if (dt > 800) return;
       const dir = dy < 0 ? 'next' : 'prev';
-      navDirectionRef.current = dir;
-      onNavigate(dir);
+      triggerSlide(dir);
     };
 
     container.addEventListener('wheel', onWheel, { passive: true });
@@ -403,7 +421,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       container.removeEventListener('touchstart', onTouchStart);
       container.removeEventListener('touchend', onTouchEnd);
     };
-  }, [isFullscreen, onNavigate]);
+  }, [isFullscreen, onNavigate, triggerSlide]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -525,40 +543,59 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   </div>
                 )
               ) : (
-                // Direct playable video URL
+                // Direct playable video URL — TikTok-style stacked layers
                 <>
-                  <AnimatePresence custom={animDir} initial={false} mode="popLayout">
-                    <motion.div
-                      key={item.id}
-                      custom={animDir}
-                      variants={{
-                        enter: (d: number) => ({ y: `${d * 100}%`, opacity: 0.85 }),
-                        center: { y: '0%', opacity: 1 },
-                        exit: (d: number) => ({ y: `${d * -100}%`, opacity: 0.85 }),
-                      }}
-                      initial="enter"
-                      animate="center"
-                      exit="exit"
-                      transition={{ duration: 0.34, ease: [0.32, 0.72, 0, 1] }}
-                      className="absolute inset-0 w-full h-full"
-                      style={{ willChange: 'transform' }}
-                    >
+                  <div
+                    className="absolute inset-0 w-full h-full"
+                    style={{
+                      transform: `translateY(${-slideOffset * 100}%)`,
+                      transition: transitionOn ? 'transform 360ms cubic-bezier(0.22, 0.61, 0.36, 1)' : 'none',
+                      willChange: 'transform',
+                    }}
+                    onTransitionEnd={handleSlideTransitionEnd}
+                  >
+                    {prevItem && isDirectVideoUrl(prevItem.url) && (
                       <video
-                        ref={videoRef}
-                        src={item.url}
-                        poster={item.thumbnailUrl || undefined}
-                        className="w-full h-full bg-black"
-                        autoPlay
-                        loop
-                        muted={isMuted}
+                        key={`prev-${prevItem.id}`}
+                        src={prevItem.url}
+                        poster={prevItem.thumbnailUrl || undefined}
+                        className="absolute left-0 w-full h-full bg-black"
+                        muted
                         playsInline
-                        onClick={handleVideoTap}
-                        onDoubleClick={handleVideoDoubleClick}
-                        onTouchEnd={handleVideoTouchEnd}
-                        style={{ cursor: 'pointer', display: 'block', objectFit: 'contain' }}
+                        preload="auto"
+                        style={{ top: '-100%', display: 'block', objectFit: 'contain', pointerEvents: 'none' }}
                       />
-                    </motion.div>
-                  </AnimatePresence>
+                    )}
+
+                    <video
+                      key={`cur-${item.id}`}
+                      ref={videoRef}
+                      src={item.url}
+                      poster={item.thumbnailUrl || undefined}
+                      className="absolute left-0 top-0 w-full h-full bg-black"
+                      autoPlay
+                      loop
+                      muted={isMuted}
+                      playsInline
+                      onClick={handleVideoTap}
+                      onDoubleClick={handleVideoDoubleClick}
+                      onTouchEnd={handleVideoTouchEnd}
+                      style={{ cursor: 'pointer', display: 'block', objectFit: 'contain' }}
+                    />
+
+                    {nextItem && isDirectVideoUrl(nextItem.url) && (
+                      <video
+                        key={`next-${nextItem.id}`}
+                        src={nextItem.url}
+                        poster={nextItem.thumbnailUrl || undefined}
+                        className="absolute left-0 w-full h-full bg-black"
+                        muted
+                        playsInline
+                        preload="auto"
+                        style={{ top: '100%', display: 'block', objectFit: 'contain', pointerEvents: 'none' }}
+                      />
+                    )}
+                  </div>
 
                   {/* One-time swipe hint — overlays first video in fullscreen */}
                   <AnimatePresence>
@@ -570,7 +607,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.3 }}
                         className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-30"
-                        style={{ background: 'radial-gradient(circle at center, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 70%, transparent 100%)' }}
+                        style={{ background: 'rgba(0,0,0,0.55)' }}
                       >
                         <motion.div
                           animate={{ y: [0, 18, 0] }}

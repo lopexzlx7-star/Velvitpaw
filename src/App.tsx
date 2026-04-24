@@ -2421,9 +2421,16 @@ export default function App() {
       />
 
       <AnimatePresence>
-        {selectedPost && (
+        {selectedPost && (() => {
+          const videoFeed = globalPosts.filter(p => p.type === 'video' || p.type === 'gif');
+          const curIdx = videoFeed.findIndex(v => v.id === selectedPost.id);
+          const prevItem = curIdx > 0 ? videoFeed[(curIdx - 1 + videoFeed.length) % videoFeed.length] : undefined;
+          const nextItem = curIdx >= 0 ? videoFeed[(curIdx + 1) % videoFeed.length] : undefined;
+          return (
           <PostDetailModal 
             item={selectedPost}
+            prevItem={prevItem && prevItem.id !== selectedPost.id ? prevItem : undefined}
+            nextItem={nextItem && nextItem.id !== selectedPost.id ? nextItem : undefined}
             onClose={() => setSelectedPost(null)}
             onLike={handleLike}
             onDelete={handleDeletePost}
@@ -2432,14 +2439,11 @@ export default function App() {
             onSave={(id) => openSavePicker(id)}
             currentUserUid={auth.currentUser?.uid}
             onNavigate={(dir) => {
-              const videos = globalPosts.filter(p => p.type === 'video' || p.type === 'gif');
-              if (videos.length === 0) return;
-              const idx = videos.findIndex(v => v.id === selectedPost.id);
-              if (idx === -1) return;
+              if (videoFeed.length === 0 || curIdx === -1) return;
               const nextIdx = dir === 'next'
-                ? (idx + 1) % videos.length
-                : (idx - 1 + videos.length) % videos.length;
-              setSelectedPost(videos[nextIdx]);
+                ? (curIdx + 1) % videoFeed.length
+                : (curIdx - 1 + videoFeed.length) % videoFeed.length;
+              setSelectedPost(videoFeed[nextIdx]);
             }}
             onHashtagClick={(tag) => {
               setSelectedPost(null);
@@ -2455,7 +2459,8 @@ export default function App() {
               }
             }}
           />
-        )}
+          );
+        })()}
       </AnimatePresence>
 
       <AnimatePresence>
