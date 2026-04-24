@@ -213,18 +213,48 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   // element unmounts and the new one mounts — so playback never visibly pauses during
   // a scroll gesture.
 
-  // When the active item changes, briefly delay starting the new video and show a
-  // loading spinner. This hides the brief "black flick" between unmounting the old
-  // <video> element and the new one rendering its first decoded frame, and gives the
-  // browser a tiny moment to settle so playback starts smoothly without jank.
+  // Buffer-then-play: when the active item changes, wait until at least half of the
+  // video has been buffered before starting playback. The remainder keeps loading in
+  // the background while playing, which prevents mid-stream stutters. A loading
+  // spinner is shown during the wait, and a 4s fallback ensures playback always
+  // starts even on flaky networks or unknown durations.
   useEffect(() => {
     if (!isVideo || !directVideo) return;
     setVideoReady(false);
-    const t = setTimeout(() => {
-      const v = videoRef.current;
-      if (v) v.play().catch(() => {});
-    }, 220);
-    return () => clearTimeout(t);
+    const v = videoRef.current;
+    if (!v) return;
+
+    let started = false;
+    const startNow = () => {
+      if (started) return;
+      started = true;
+      v.play().catch(() => {});
+    };
+    const tryStart = () => {
+      if (started) return;
+      const dur = v.duration;
+      if (!dur || isNaN(dur) || !isFinite(dur)) return;
+      const buf = v.buffered;
+      if (buf.length === 0) return;
+      const bufferedEnd = buf.end(buf.length - 1);
+      if (bufferedEnd / dur >= 0.5) startNow();
+    };
+
+    v.addEventListener('progress', tryStart);
+    v.addEventListener('loadedmetadata', tryStart);
+    v.addEventListener('canplaythrough', startNow);
+    // Kick once in case the video was already half-buffered (cached neighbor)
+    tryStart();
+
+    // Safety fallback — never wait longer than 4s
+    const fallback = window.setTimeout(startNow, 4000);
+
+    return () => {
+      window.clearTimeout(fallback);
+      v.removeEventListener('progress', tryStart);
+      v.removeEventListener('loadedmetadata', tryStart);
+      v.removeEventListener('canplaythrough', startNow);
+    };
   }, [item.id, isVideo, directVideo]);
 
   // Trigger a TikTok-style slide; on completion swap the active item via onNavigate
