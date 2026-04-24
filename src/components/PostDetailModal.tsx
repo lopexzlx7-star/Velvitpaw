@@ -207,16 +207,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     return () => { document.body.style.overflow = 'unset'; };
   }, []);
 
-  // Pause the current video while the slide is in motion to keep the animation smooth.
-  // Neighbor videos have no autoPlay, so they only start playing once they become active
-  // (i.e. after the slide completes and the new <video> mounts with autoPlay).
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (slideOffset !== 0 || dragY !== null) {
-      try { v.pause(); } catch {}
-    }
-  }, [slideOffset, dragY]);
+  // The active video keeps playing throughout the drag and slide. It is only "stopped"
+  // when the slide commits and the item prop changes, at which point the old <video>
+  // element unmounts and the new one mounts with autoPlay — so playback never visibly
+  // pauses during a scroll gesture.
 
   // Trigger a TikTok-style slide; on completion swap the active item via onNavigate
   const triggerSlide = useCallback((dir: 'next' | 'prev') => {
@@ -448,8 +442,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       const h = container.clientHeight || 1;
       const ratio = dy / h;
       const velocity = dy / (dt || 1); // px/ms (sign-aware)
-      const commitNext = (ratio < -0.18 || velocity < -0.55) && !!nextItem;
-      const commitPrev = (ratio > 0.18 || velocity > 0.55) && !!prevItem;
+      const commitNext = (ratio < -0.10 || velocity < -0.45) && !!nextItem;
+      const commitPrev = (ratio > 0.10 || velocity > 0.45) && !!prevItem;
 
       // Re-enable transition so the snap (whether commit or cancel) animates from current dragY
       setTransitionOn(true);
@@ -608,7 +602,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         : `translate3d(0, ${-slideOffset * 100}%, 0)`,
                       transition: (dragY !== null || !transitionOn)
                         ? 'none'
-                        : 'transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1)',
+                        : 'transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1)',
                       willChange: 'transform',
                     }}
                     onTransitionEnd={handleSlideTransitionEnd}
