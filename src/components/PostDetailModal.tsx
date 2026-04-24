@@ -101,6 +101,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [transitionOn, setTransitionOn] = useState(true);
   const [dragY, setDragY] = useState<number | null>(null); // px the finger has moved during an active drag
   const [showSwipeHint, setShowSwipeHint] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
   const slidingRef = useRef(false);
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
@@ -209,8 +210,22 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
   // The active video keeps playing throughout the drag and slide. It is only "stopped"
   // when the slide commits and the item prop changes, at which point the old <video>
-  // element unmounts and the new one mounts with autoPlay — so playback never visibly
-  // pauses during a scroll gesture.
+  // element unmounts and the new one mounts — so playback never visibly pauses during
+  // a scroll gesture.
+
+  // When the active item changes, briefly delay starting the new video and show a
+  // loading spinner. This hides the brief "black flick" between unmounting the old
+  // <video> element and the new one rendering its first decoded frame, and gives the
+  // browser a tiny moment to settle so playback starts smoothly without jank.
+  useEffect(() => {
+    if (!isVideo || !directVideo) return;
+    setVideoReady(false);
+    const t = setTimeout(() => {
+      const v = videoRef.current;
+      if (v) v.play().catch(() => {});
+    }, 220);
+    return () => clearTimeout(t);
+  }, [item.id, isVideo, directVideo]);
 
   // Trigger a TikTok-style slide; on completion swap the active item via onNavigate
   const triggerSlide = useCallback((dir: 'next' | 'prev') => {
@@ -626,13 +641,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       src={item.url}
                       poster={item.thumbnailUrl || undefined}
                       className="absolute left-0 top-0 w-full h-full bg-black"
-                      autoPlay
                       loop
                       muted={isMuted}
                       playsInline
+                      preload="auto"
                       onClick={handleVideoTap}
                       onDoubleClick={handleVideoDoubleClick}
                       onTouchEnd={handleVideoTouchEnd}
+                      onPlaying={() => setVideoReady(true)}
+                      onWaiting={() => setVideoReady(false)}
                       style={{ cursor: 'pointer', display: 'block', objectFit: 'contain', transform: 'translateZ(0)' }}
                     />
 
@@ -730,6 +747,33 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                             @{authorName}
                           </span>
                         </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Tiny loading spinner shown while the active video buffers / starts up.
+                      Sits above the play/pause button area to mask the brief black flick
+                      between unmounting the previous video and the new one rendering its first frame. */}
+                  <AnimatePresence>
+                    {!videoReady && (
+                      <motion.div
+                        key="video-loading"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute inset-0 flex items-center justify-center pointer-events-none z-40"
+                        style={{ background: 'rgba(0,0,0,0.35)' }}
+                      >
+                        <div
+                          className="w-9 h-9 rounded-full"
+                          style={{
+                            border: '2.5px solid rgba(255,255,255,0.22)',
+                            borderTopColor: 'rgba(255,255,255,0.95)',
+                            animation: 'velvit-spin 0.75s linear infinite',
+                            filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))',
+                          }}
+                        />
                       </motion.div>
                     )}
                   </AnimatePresence>
