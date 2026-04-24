@@ -314,9 +314,48 @@ export default function App() {
   const [userSearchResults, setUserSearchResults] = useState<{ username: string; uid: string; profilePhotoUrl?: string }[]>([]);
   const [profileViewUid, setProfileViewUid] = useState<string | null>(null);
   const [showFollowingList, setShowFollowingList] = useState(false);
+  const [followingProfiles, setFollowingProfiles] = useState<{ uid: string; username: string; profilePhotoUrl?: string }[]>([]);
+  const [loadingFollowing, setLoadingFollowing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isGeneratingFeed, setIsGeneratingFeed] = useState(true);
   const [followingUids, setFollowingUids] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!showFollowingList) return;
+    if (followingUids.length === 0) {
+      setFollowingProfiles([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingFollowing(true);
+    (async () => {
+      const results: { uid: string; username: string; profilePhotoUrl?: string }[] = [];
+      await Promise.all(
+        followingUids.map(async (uid) => {
+          try {
+            const snap = await getDocs(query(collection(db, 'users'), where('uid', '==', uid)));
+            if (!snap.empty) {
+              const d = snap.docs[0].data() as any;
+              results.push({
+                uid,
+                username: d.username || 'usuário',
+                profilePhotoUrl: d.profilePhotoUrl || undefined,
+              });
+            } else {
+              results.push({ uid, username: 'usuário' });
+            }
+          } catch {
+            results.push({ uid, username: 'usuário' });
+          }
+        })
+      );
+      if (cancelled) return;
+      results.sort((a, b) => a.username.localeCompare(b.username));
+      setFollowingProfiles(results);
+      setLoadingFollowing(false);
+    })();
+    return () => { cancelled = true; };
+  }, [showFollowingList, followingUids]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [trendingPosts, setTrendingPosts] = useState<ContentItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -2619,54 +2658,42 @@ export default function App() {
                   <div className="text-center py-14 text-white/40 text-xs uppercase tracking-widest">
                     Você ainda não segue ninguém
                   </div>
+                ) : loadingFollowing && followingProfiles.length === 0 ? (
+                  <div className="text-center py-14 text-white/40 text-xs uppercase tracking-widest">
+                    Carregando…
+                  </div>
                 ) : (
                   <div className="space-y-1">
-                    {(() => {
-                      const seen = new Set<string>();
-                      const list: { uid: string; username: string; profilePhotoUrl?: string }[] = [];
-                      for (const p of globalPosts) {
-                        const uid = (p as any).authorUid as string | undefined;
-                        if (!uid || !followingUids.includes(uid) || seen.has(uid)) continue;
-                        seen.add(uid);
-                        list.push({
-                          uid,
-                          username: p.authorName || 'usuário',
-                          profilePhotoUrl: (p as any).authorPhotoUrl,
-                        });
-                      }
-                      // Add UIDs without posts in the loaded feed
-                      for (const uid of followingUids) {
-                        if (!seen.has(uid)) {
-                          seen.add(uid);
-                          list.push({ uid, username: 'usuário' });
-                        }
-                      }
-                      return list.map((u) => (
-                        <button
-                          key={u.uid}
-                          onClick={() => {
-                            setShowFollowingList(false);
+                    {followingProfiles.map((u) => (
+                      <button
+                        key={u.uid}
+                        onClick={() => {
+                          setShowFollowingList(false);
+                          if (u.uid === auth.currentUser?.uid) {
+                            setCurrentTab('profile');
+                            setProfileTab('posts');
+                          } else {
                             setProfileViewUid(u.uid);
-                          }}
-                          className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/5 transition-colors text-left"
+                          }
+                        }}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/5 transition-colors text-left"
+                      >
+                        <div
+                          className="w-11 h-11 rounded-full overflow-hidden bg-white/5 shrink-0 flex items-center justify-center"
+                          style={{ border: '1px solid rgba(255,255,255,0.10)' }}
                         >
-                          <div
-                            className="w-11 h-11 rounded-full overflow-hidden bg-white/5 shrink-0 flex items-center justify-center"
-                            style={{ border: '1px solid rgba(255,255,255,0.10)' }}
-                          >
-                            {u.profilePhotoUrl ? (
-                              <img src={u.profilePhotoUrl} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              <User size={18} className="text-white/40" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-bold text-white truncate">@{u.username}</div>
-                            <div className="text-[10px] uppercase tracking-widest text-white/30">Ver perfil</div>
-                          </div>
-                        </button>
-                      ));
-                    })()}
+                          {u.profilePhotoUrl ? (
+                            <img src={u.profilePhotoUrl} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            <User size={18} className="text-white/40" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold text-white truncate">@{u.username}</div>
+                          <div className="text-[10px] uppercase tracking-widest text-white/30">Ver perfil</div>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
