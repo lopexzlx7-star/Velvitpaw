@@ -255,6 +255,10 @@ export default function App() {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [userPosts, setUserPosts] = useState<ContentItem[]>([]);
   const [globalPosts, setGlobalPosts] = useState<ContentItem[]>([]);
+  const videoFeedMemo = useMemo(
+    () => globalPosts.filter(p => p.type === 'video' || p.type === 'gif'),
+    [globalPosts]
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPublishModal, setShowPublishModal] = useState(false);
@@ -2422,7 +2426,7 @@ export default function App() {
 
       <AnimatePresence>
         {selectedPost && (() => {
-          const videoFeed = globalPosts.filter(p => p.type === 'video' || p.type === 'gif');
+          const videoFeed = videoFeedMemo;
           const curIdx = videoFeed.findIndex(v => v.id === selectedPost.id);
           const prevItem = curIdx > 0 ? videoFeed[(curIdx - 1 + videoFeed.length) % videoFeed.length] : undefined;
           const nextItem = curIdx >= 0 ? videoFeed[(curIdx + 1) % videoFeed.length] : undefined;

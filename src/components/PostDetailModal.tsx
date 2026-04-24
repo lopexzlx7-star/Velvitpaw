@@ -237,7 +237,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       const buf = v.buffered;
       if (buf.length === 0) return;
       const bufferedEnd = buf.end(buf.length - 1);
-      if (bufferedEnd / dur >= 0.5) startNow();
+      // Start when EITHER 50% of the file OR 5 seconds of playback are already
+      // buffered — whichever happens first. This makes long videos start almost
+      // instantly while still keeping short videos safely pre-buffered.
+      const enoughByRatio = bufferedEnd / dur >= 0.5;
+      const enoughByTime = bufferedEnd >= 5;
+      if (enoughByRatio || enoughByTime) startNow();
     };
 
     v.addEventListener('progress', tryStart);
@@ -605,6 +610,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
             style={{
               borderRadius: '1.6rem',
               border: '1px solid rgba(255,255,255,0.08)',
+              // CSS containment isolates the player's layout/paint/style work from the
+              // rest of the page, so animations and video repaints never trigger heavy
+              // re-layout outside the modal.
+              contain: 'layout paint style',
               ...getMediaStyle(),
             }}
           >
@@ -660,7 +669,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         className="absolute left-0 w-full h-full bg-black"
                         muted
                         playsInline
-                        preload="auto"
+                        // Going back is less likely than forward, so only fetch metadata
+                        // for the prev neighbor — saves bandwidth and decoder load.
+                        preload="metadata"
                         style={{ top: '-100%', display: 'block', objectFit: 'contain', pointerEvents: 'none', transform: 'translateZ(0)' }}
                       />
                     )}
