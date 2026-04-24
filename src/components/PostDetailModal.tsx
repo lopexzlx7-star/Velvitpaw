@@ -206,6 +206,17 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     return () => { document.body.style.overflow = 'unset'; };
   }, []);
 
+  // Pause the current video while the slide is in motion to keep the animation smooth.
+  // Neighbor videos have no autoPlay, so they only start playing once they become active
+  // (i.e. after the slide completes and the new <video> mounts with autoPlay).
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (slideOffset !== 0) {
+      try { v.pause(); } catch {}
+    }
+  }, [slideOffset]);
+
   // Trigger a TikTok-style slide; on completion swap the active item via onNavigate
   const triggerSlide = useCallback((dir: 'next' | 'prev') => {
     if (slidingRef.current) return;
@@ -563,7 +574,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         muted
                         playsInline
                         preload="auto"
-                        style={{ top: '-100%', display: 'block', objectFit: 'contain', pointerEvents: 'none' }}
+                        style={{ top: '-100%', display: 'block', objectFit: 'contain', pointerEvents: 'none', transform: 'translateZ(0)' }}
                       />
                     )}
 
@@ -580,7 +591,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       onClick={handleVideoTap}
                       onDoubleClick={handleVideoDoubleClick}
                       onTouchEnd={handleVideoTouchEnd}
-                      style={{ cursor: 'pointer', display: 'block', objectFit: 'contain' }}
+                      style={{ cursor: 'pointer', display: 'block', objectFit: 'contain', transform: 'translateZ(0)' }}
                     />
 
                     {nextItem && isDirectVideoUrl(nextItem.url) && (
@@ -592,7 +603,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         muted
                         playsInline
                         preload="auto"
-                        style={{ top: '100%', display: 'block', objectFit: 'contain', pointerEvents: 'none' }}
+                        style={{ top: '100%', display: 'block', objectFit: 'contain', pointerEvents: 'none', transform: 'translateZ(0)' }}
                       />
                     )}
                   </div>
