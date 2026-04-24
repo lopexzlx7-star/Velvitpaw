@@ -2395,6 +2395,16 @@ export default function App() {
             isSaved={savedIds.includes(selectedPost.id)}
             onSave={(id) => openSavePicker(id)}
             currentUserUid={auth.currentUser?.uid}
+            onNavigate={(dir) => {
+              const videos = globalPosts.filter(p => p.type === 'video' || p.type === 'gif');
+              if (videos.length === 0) return;
+              const idx = videos.findIndex(v => v.id === selectedPost.id);
+              if (idx === -1) return;
+              const nextIdx = dir === 'next'
+                ? (idx + 1) % videos.length
+                : (idx - 1 + videos.length) % videos.length;
+              setSelectedPost(videos[nextIdx]);
+            }}
             onHashtagClick={(tag) => {
               setSelectedPost(null);
               handleHashtagClick(tag);

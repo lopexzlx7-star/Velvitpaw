@@ -16,6 +16,7 @@ interface PostDetailModalProps {
   currentUserUid?: string;
   onHashtagClick?: (tag: string) => void;
   onAuthorClick?: (authorUid: string) => void;
+  onNavigate?: (direction: 'next' | 'prev') => void;
 }
 
 interface FloatingHeart {
@@ -74,6 +75,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   currentUserUid,
   onHashtagClick,
   onAuthorClick,
+  onNavigate,
 }) => {
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -90,6 +92,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [swipeDirection, setSwipeDirection] = useState(1);
   const [seekFlash, setSeekFlash] = useState<'left' | 'right' | null>(null);
   const [controlsVisible, setControlsVisible] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -277,10 +280,13 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     ('ontouchstart' in window && window.innerWidth < 1024);
 
-  // Unlock orientation whenever fullscreen is exited
+  // Track fullscreen state and unlock orientation on exit
   useEffect(() => {
     const onFsChange = () => {
-      if (!document.fullscreenElement) {
+      const fsEl = document.fullscreenElement || (document as any).webkitFullscreenElement;
+      const inFs = !!fsEl && fsEl === mediaContainerRef.current;
+      setIsFullscreen(inFs);
+      if (!fsEl) {
         try { screen.orientation?.unlock?.(); } catch {}
       }
     };
@@ -322,6 +328,49 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       });
     }
   };
+
+  // TikTok-style vertical swipe/wheel navigation while in fullscreen
+  useEffect(() => {
+    if (!isFullscreen || !onNavigate) return;
+    const container = mediaContainerRef.current;
+    if (!container) return;
+
+    let wheelLock = false;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) < 30 || wheelLock) return;
+      wheelLock = true;
+      onNavigate(e.deltaY > 0 ? 'next' : 'prev');
+      window.setTimeout(() => { wheelLock = false; }, 600);
+    };
+
+    let touchStartY: number | null = null;
+    let touchStartX: number | null = null;
+    let touchStartT = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartY = e.touches[0].clientY;
+      touchStartX = e.touches[0].clientX;
+      touchStartT = Date.now();
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (touchStartY === null || touchStartX === null) return;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dt = Date.now() - touchStartT;
+      touchStartY = null; touchStartX = null;
+      if (Math.abs(dy) < 50 || Math.abs(dy) < Math.abs(dx)) return;
+      if (dt > 800) return;
+      onNavigate(dy < 0 ? 'next' : 'prev');
+    };
+
+    container.addEventListener('wheel', onWheel, { passive: true });
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      container.removeEventListener('wheel', onWheel);
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isFullscreen, onNavigate]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -459,6 +508,48 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     onTouchEnd={handleVideoTouchEnd}
                     style={{ cursor: 'pointer', display: 'block', objectFit: 'contain' }}
                   />
+
+                  {/* Top author overlay — only in fullscreen, fades with controlsVisible */}
+                  <AnimatePresence>
+                    {isFullscreen && controlsVisible && (
+                      <motion.div
+                        key="fs-author"
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute top-0 left-0 right-0 px-5 pt-5 pb-10 flex items-center"
+                        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%)' }}
+                      >
+                        <button
+                          className="flex items-center gap-2.5 active:scale-95 transition-transform"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (item.authorUid && onAuthorClick) {
+                              if (document.fullscreenElement) {
+                                document.exitFullscreen().catch(() => {});
+                              }
+                              onAuthorClick(item.authorUid as string);
+                            }
+                          }}
+                        >
+                          <div
+                            className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center shrink-0"
+                            style={{ border: '1.5px solid rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.1)' }}
+                          >
+                            {authorPhoto ? (
+                              <img src={authorPhoto} alt={authorName} className="w-full h-full object-cover" />
+                            ) : (
+                              <User size={16} className="text-white/70" />
+                            )}
+                          </div>
+                          <span className="text-[14px] font-semibold text-white tracking-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>
+                            @{authorName}
+                          </span>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Centered play/pause toggle — visible only with controls */}
                   <AnimatePresence>
