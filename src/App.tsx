@@ -2687,7 +2687,6 @@ export default function App() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-bold text-white truncate">@{u.username}</div>
-                          <div className="text-[10px] uppercase tracking-widest text-white/30">Ver perfil</div>
                         </div>
                       </button>
                     ))}
