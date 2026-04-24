@@ -896,20 +896,17 @@ export default function App() {
     setEmailPopupError(null);
     try {
       const trimmedEmail = recoveryEmail.trim();
-      // Save to Firestore
       await updateDoc(doc(db, 'users', username), { recoveryEmail: trimmedEmail });
-      // Also update the Firebase Auth account email so password reset works correctly
-      try {
-        await updateEmail(auth.currentUser, trimmedEmail);
-      } catch {
-        // If this fails (e.g. email already used by another account), Firestore record still saved
-        // Password reset will still work via sendPasswordResetEmail with the stored email
-      }
       setShowEmailPopup(false);
       setRecoveryEmail('');
       setHasRecoveryEmail(true);
     } catch (err: any) {
-      setEmailPopupError('Erro ao salvar e-mail. Tente novamente.');
+      const code = err?.code || '';
+      if (code === 'permission-denied') {
+        setEmailPopupError('Permissão negada pelo banco. As regras do Firestore precisam ser atualizadas (publique a versão mais recente de firestore.rules).');
+      } else {
+        setEmailPopupError(err?.message || 'Erro ao salvar e-mail. Tente novamente.');
+      }
     } finally {
       setEmailPopupLoading(false);
     }
