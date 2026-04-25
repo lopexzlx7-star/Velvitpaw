@@ -87,11 +87,19 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 });
 
 // ─── Firebase Admin (Auth only — for updateUser) ──────────────────────────────
-const FIREBASE_PROJECT_ID = 'gen-lang-client-0766084456';
-const FIREBASE_FIRESTORE_DB = 'ai-studio-77ffd2cc-dfda-47fc-9d29-f9bbf07dfa46';
-const FIREBASE_API_KEY = 'AIzaSyAtZa2ddMFWqf0RPAZ1Jq00gl7AtwjrUEo'; // public client key
-const FIREBASE_CLIENT_EMAIL_ENV = process.env.FIREBASE_CLIENT_EMAIL ?? '';
-const FIREBASE_PRIVATE_KEY_ENV = (process.env.FIREBASE_PRIVATE_KEY ?? '').replace(/\\n/g, '\n');
+// Read project from the same config file used by the frontend
+let _appletCfg: { projectId?: string; apiKey?: string; firestoreDatabaseId?: string } = {};
+try {
+  _appletCfg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
+} catch {}
+const FIREBASE_PROJECT_ID = _appletCfg.projectId ?? 'velvitpaw';
+const FIREBASE_FIRESTORE_DB = _appletCfg.firestoreDatabaseId ?? '(default)';
+const FIREBASE_API_KEY = _appletCfg.apiKey ?? '';
+const stripWrappingQuotes = (s: string): string =>
+  s.replace(/^\s*['"]/, '').replace(/['"]\s*$/, '');
+const FIREBASE_CLIENT_EMAIL_ENV = stripWrappingQuotes(process.env.FIREBASE_CLIENT_EMAIL ?? '');
+const FIREBASE_PRIVATE_KEY_ENV = stripWrappingQuotes(process.env.FIREBASE_PRIVATE_KEY ?? '')
+  .replace(/\\n/g, '\n');
 
 let adminAuth: admin.auth.Auth | null = null;
 

@@ -1,10 +1,26 @@
 import admin from 'firebase-admin';
 import { getFirestore, Firestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
-const PROJECT_ID = 'gen-lang-client-0766084456';
-const FIRESTORE_DB_ID = 'ai-studio-77ffd2cc-dfda-47fc-9d29-f9bbf07dfa46';
-const CLIENT_EMAIL = process.env.FIREBASE_CLIENT_EMAIL ?? '';
-const PRIVATE_KEY = (process.env.FIREBASE_PRIVATE_KEY ?? '').replace(/\\n/g, '\n');
+// Read project + database from the same config file used by the frontend so
+// backend and client always point at the same Firestore instance.
+let appletCfg: { projectId?: string; firestoreDatabaseId?: string } = {};
+try {
+  const raw = readFileSync(join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
+  appletCfg = JSON.parse(raw);
+} catch (err) {
+  console.warn('[notifications] firebase-applet-config.json não encontrado:', (err as Error).message);
+}
+
+const PROJECT_ID = appletCfg.projectId ?? '';
+const FIRESTORE_DB_ID = appletCfg.firestoreDatabaseId ?? '(default)';
+const stripWrappingQuotes = (s: string): string =>
+  s.replace(/^\s*['"]/, '').replace(/['"]\s*$/, '');
+
+const CLIENT_EMAIL = stripWrappingQuotes(process.env.FIREBASE_CLIENT_EMAIL ?? '');
+const PRIVATE_KEY = stripWrappingQuotes(process.env.FIREBASE_PRIVATE_KEY ?? '')
+  .replace(/\\n/g, '\n');
 
 let cachedDb: Firestore | null = null;
 let initAttempted = false;
@@ -30,7 +46,10 @@ export const getDb = (): Firestore => {
       'Firebase Admin não está configurado. Defina FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY nos Secrets.'
     );
   }
-  cachedDb = getFirestore(app, FIRESTORE_DB_ID);
+  cachedDb =
+    FIRESTORE_DB_ID && FIRESTORE_DB_ID !== '(default)'
+      ? getFirestore(app, FIRESTORE_DB_ID)
+      : getFirestore(app);
   return cachedDb;
 };
 
