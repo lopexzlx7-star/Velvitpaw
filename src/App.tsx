@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo, ChangeEvent, ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
 import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { 
   doc, 
   getDoc, 
@@ -1254,27 +1254,112 @@ export default function App() {
     goToTab(TAB_ORDER[nextIdx]);
   };
 
-  const swipeStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
-  const onMainTouchStart = (e: { touches: { clientX: number; clientY: number }[] }) => {
-    if (selectedPost || showPublishModal) return; // don't intercept inside modals
+  // Real-time finger-tracking drag offset for the main view.
+  // While the user swipes horizontally, the visible tab moves with their finger.
+  // On release, it commits to the next/previous tab or springs back.
+  const dragX = useMotionValue(0);
+  const swipeStartRef = useRef<{
+    x: number;
+    y: number;
+    t: number;
+    direction: 'horizontal' | 'vertical' | null;
+  } | null>(null);
+
+  const SWIPE_COMMIT_RATIO = 0.22;          // fraction of viewport width to commit
+  const SWIPE_VELOCITY_PX_MS = 0.5;         // px/ms to commit even if below ratio
+  const SWIPE_DIRECTION_LOCK_PX = 8;        // px before deciding axis
+
+  const isInteractiveTarget = (el: EventTarget | null): boolean => {
+    let node = el as HTMLElement | null;
+    while (node && node !== document.body) {
+      if (node.dataset?.noSwipe === 'true') return true;
+      const tag = node.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      // Ignore drags that start inside a horizontally scrollable element
+      const overflowX = getComputedStyle(node).overflowX;
+      if ((overflowX === 'auto' || overflowX === 'scroll') && node.scrollWidth > node.clientWidth) {
+        return true;
+      }
+      node = node.parentElement;
+    }
+    return false;
+  };
+
+  const onMainTouchStart = (e: ReactTouchEvent) => {
+    if (selectedPost || showPublishModal) return;
+    if (isInteractiveTarget(e.target)) return;
     const t = e.touches[0];
     if (!t) return;
-    swipeStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+    swipeStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now(), direction: null };
   };
-  const onMainTouchEnd = (e: { changedTouches: { clientX: number; clientY: number }[] }) => {
+
+  const onMainTouchMove = (e: ReactTouchEvent) => {
     const start = swipeStartRef.current;
-    swipeStartRef.current = null;
     if (!start) return;
-    const t = e.changedTouches[0];
+    const t = e.touches[0];
     if (!t) return;
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
-    const dt = Date.now() - start.t;
-    // Require a clearly horizontal swipe — ignore taps and vertical scrolls
-    if (Math.abs(dx) < 70) return;
-    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    if (dt > 700) return;
-    handleSwipeNav(dx < 0 ? 'left' : 'right');
+
+    if (start.direction === null) {
+      if (Math.abs(dx) < SWIPE_DIRECTION_LOCK_PX && Math.abs(dy) < SWIPE_DIRECTION_LOCK_PX) return;
+      start.direction = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+    }
+    if (start.direction !== 'horizontal') return;
+
+    const current: 'publish' | 'feed' | 'profile' = showPublishModal ? 'publish' : currentTab;
+    const idx = TAB_ORDER.indexOf(current);
+    const atLeftEdge = idx === 0;       // can't go further right (towards previous)
+    const atRightEdge = idx === TAB_ORDER.length - 1; // can't go further left (towards next)
+
+    // Add resistance at the edges so the user feels the boundary.
+    let offset = dx;
+    if (offset > 0 && atLeftEdge) offset = offset * 0.25;
+    if (offset < 0 && atRightEdge) offset = offset * 0.25;
+
+    dragX.set(offset);
+  };
+
+  const onMainTouchEnd = (e: ReactTouchEvent) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || start.direction !== 'horizontal') {
+      animate(dragX, 0, { type: 'spring', stiffness: 380, damping: 32 });
+      return;
+    }
+    const t = e.changedTouches[0];
+    if (!t) {
+      animate(dragX, 0, { type: 'spring', stiffness: 380, damping: 32 });
+      return;
+    }
+    const dx = t.clientX - start.x;
+    const dt = Math.max(1, Date.now() - start.t);
+    const velocity = dx / dt; // px per ms
+
+    const width = typeof window !== 'undefined' ? window.innerWidth : 360;
+    const commitDistance = width * SWIPE_COMMIT_RATIO;
+    const past = Math.abs(dx) > commitDistance || Math.abs(velocity) > SWIPE_VELOCITY_PX_MS;
+
+    const direction: 'left' | 'right' = dx < 0 ? 'left' : 'right';
+    const current: 'publish' | 'feed' | 'profile' = showPublishModal ? 'publish' : currentTab;
+    const idx = TAB_ORDER.indexOf(current);
+    const nextIdx = direction === 'left' ? idx + 1 : idx - 1;
+
+    if (past && nextIdx >= 0 && nextIdx < TAB_ORDER.length) {
+      // Slide the current view fully off-screen, then swap tab and reset.
+      const target = direction === 'left' ? -width : width;
+      animate(dragX, target, {
+        type: 'spring',
+        stiffness: 380,
+        damping: 36,
+        onComplete: () => {
+          dragX.set(0);
+          goToTab(TAB_ORDER[nextIdx]);
+        },
+      });
+    } else {
+      animate(dragX, 0, { type: 'spring', stiffness: 380, damping: 32 });
+    }
   };
 
   const handleUpdateUsername = async (overrideName?: string) => {
@@ -2010,10 +2095,13 @@ export default function App() {
         </div>
       </motion.header>
 
-      <main
+      <motion.main
         className="relative min-h-screen"
+        style={{ x: dragX }}
         onTouchStart={onMainTouchStart}
+        onTouchMove={onMainTouchMove}
         onTouchEnd={onMainTouchEnd}
+        onTouchCancel={onMainTouchEnd}
       >
         <AnimatePresence initial={false}>
           {currentTab === 'feed' && (
@@ -2626,7 +2714,7 @@ export default function App() {
             </motion.div>
           )}
           </AnimatePresence>
-      </main>
+      </motion.main>
 
       {!publishHasMedia && !selectedPost && (
         <FloatingNav
