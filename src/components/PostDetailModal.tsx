@@ -102,7 +102,21 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [dragY, setDragY] = useState<number | null>(null); // px the finger has moved during an active drag
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  // Briefly shown when the user tries to swipe past the last/first video.
+  const [endToast, setEndToast] = useState<'next' | 'prev' | null>(null);
+  const endToastTimerRef = useRef<number | null>(null);
   const slidingRef = useRef(false);
+
+  const flashEndToast = useCallback((dir: 'next' | 'prev') => {
+    setEndToast(dir);
+    if (endToastTimerRef.current) window.clearTimeout(endToastTimerRef.current);
+    endToastTimerRef.current = window.setTimeout(() => setEndToast(null), 1600);
+  }, []);
+
+  // Cleanup the toast timer on unmount
+  useEffect(() => () => {
+    if (endToastTimerRef.current) window.clearTimeout(endToastTimerRef.current);
+  }, []);
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -265,12 +279,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   // Trigger a TikTok-style slide; on completion swap the active item via onNavigate
   const triggerSlide = useCallback((dir: 'next' | 'prev') => {
     if (slidingRef.current) return;
-    if (dir === 'next' && !nextItem) return;
-    if (dir === 'prev' && !prevItem) return;
+    if (dir === 'next' && !nextItem) { flashEndToast('next'); return; }
+    if (dir === 'prev' && !prevItem) { flashEndToast('prev'); return; }
     slidingRef.current = true;
     setTransitionOn(true);
     setSlideOffset(dir === 'next' ? 1 : -1);
-  }, [nextItem, prevItem]);
+  }, [nextItem, prevItem, flashEndToast]);
 
   const handleSlideTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
     if (e.propertyName !== 'transform') return;
@@ -492,8 +506,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       const h = container.clientHeight || 1;
       const ratio = dy / h;
       const velocity = dy / (dt || 1); // px/ms (sign-aware)
-      const commitNext = (ratio < -0.10 || velocity < -0.45) && !!nextItem;
-      const commitPrev = (ratio > 0.10 || velocity > 0.45) && !!prevItem;
+      const wantsNext = (ratio < -0.10 || velocity < -0.45);
+      const wantsPrev = (ratio > 0.10 || velocity > 0.45);
+      const commitNext = wantsNext && !!nextItem;
+      const commitPrev = wantsPrev && !!prevItem;
 
       // Re-enable transition so the snap (whether commit or cancel) animates from current dragY
       setTransitionOn(true);
@@ -504,10 +520,16 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       } else if (commitPrev) {
         slidingRef.current = true;
         setSlideOffset(-1);
+      } else if (wantsNext && !nextItem) {
+        // User clearly tried to advance, but there is nothing after — show end toast.
+        flashEndToast('next');
+      } else if (wantsPrev && !prevItem) {
+        flashEndToast('prev');
       }
       // else: snap back to 0 (slideOffset is already 0)
     };
 
+    // Update dependency note: wheel handler indirectly calls flashEndToast via triggerSlide.
     container.addEventListener('wheel', onWheel, { passive: true });
     container.addEventListener('touchstart', onTouchStart, { passive: true });
     container.addEventListener('touchmove', onTouchMove, { passive: true });
@@ -520,7 +542,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       container.removeEventListener('touchend', onTouchEnd);
       container.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, [isFullscreen, onNavigate, triggerSlide, nextItem, prevItem]);
+  }, [isFullscreen, onNavigate, triggerSlide, nextItem, prevItem, flashEndToast]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -746,6 +768,40 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                             style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.6))' }}
                           />
                         </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* End-of-feed toast — appears when the user tries to swipe past the
+                      first or last video. Auto-dismisses after ~1.6s. */}
+                  <AnimatePresence>
+                    {endToast && (
+                      <motion.div
+                        key="end-toast"
+                        initial={{ opacity: 0, y: endToast === 'next' ? 20 : -20, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: endToast === 'next' ? 20 : -20, scale: 0.96 }}
+                        transition={{ duration: 0.22, ease: 'easeOut' }}
+                        className="absolute inset-x-0 flex justify-center pointer-events-none z-30"
+                        style={{ [endToast === 'next' ? 'bottom' : 'top']: '14%' } as React.CSSProperties}
+                      >
+                        <div
+                          className="px-5 py-2.5 rounded-full"
+                          style={{
+                            background: 'rgba(0,0,0,0.55)',
+                            backdropFilter: 'blur(18px) saturate(160%)',
+                            WebkitBackdropFilter: 'blur(18px) saturate(160%)',
+                            border: '1px solid rgba(255,255,255,0.18)',
+                            boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+                          }}
+                        >
+                          <span
+                            className="text-white text-[13px] font-semibold tracking-tight"
+                            style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}
+                          >
+                            {endToast === 'next' ? 'Você chegou ao final' : 'Você está no início'}
+                          </span>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>

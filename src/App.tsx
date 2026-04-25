@@ -2428,13 +2428,15 @@ export default function App() {
         {selectedPost && (() => {
           const videoFeed = videoFeedMemo;
           const curIdx = videoFeed.findIndex(v => v.id === selectedPost.id);
-          const prevItem = curIdx > 0 ? videoFeed[(curIdx - 1 + videoFeed.length) % videoFeed.length] : undefined;
-          const nextItem = curIdx >= 0 ? videoFeed[(curIdx + 1) % videoFeed.length] : undefined;
+          // No wrap-around: at the very first/last video, the corresponding neighbor
+          // is undefined so PostDetailModal can show "you reached the end" instead.
+          const prevItem = curIdx > 0 ? videoFeed[curIdx - 1] : undefined;
+          const nextItem = curIdx >= 0 && curIdx < videoFeed.length - 1 ? videoFeed[curIdx + 1] : undefined;
           return (
           <PostDetailModal 
             item={selectedPost}
-            prevItem={prevItem && prevItem.id !== selectedPost.id ? prevItem : undefined}
-            nextItem={nextItem && nextItem.id !== selectedPost.id ? nextItem : undefined}
+            prevItem={prevItem}
+            nextItem={nextItem}
             onClose={() => setSelectedPost(null)}
             onLike={handleLike}
             onDelete={handleDeletePost}
@@ -2444,9 +2446,9 @@ export default function App() {
             currentUserUid={auth.currentUser?.uid}
             onNavigate={(dir) => {
               if (videoFeed.length === 0 || curIdx === -1) return;
-              const nextIdx = dir === 'next'
-                ? (curIdx + 1) % videoFeed.length
-                : (curIdx - 1 + videoFeed.length) % videoFeed.length;
+              if (dir === 'next' && curIdx >= videoFeed.length - 1) return;
+              if (dir === 'prev' && curIdx <= 0) return;
+              const nextIdx = dir === 'next' ? curIdx + 1 : curIdx - 1;
               setSelectedPost(videoFeed[nextIdx]);
             }}
             onHashtagClick={(tag) => {
