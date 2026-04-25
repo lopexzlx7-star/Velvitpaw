@@ -393,7 +393,8 @@ export default function App() {
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [hasRecoveryEmail, setHasRecoveryEmail] = useState(false);
   
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const feedScrollRef = useRef<HTMLDivElement>(null);
+  const profileScrollRef = useRef<HTMLDivElement>(null);
   const scrollY = useMotionValue(0);
   const headerOpacity = useTransform(scrollY, [0, 50], [1, 0]);
   const headerScale = useTransform(scrollY, [0, 50], [1, 0.9]);
@@ -401,7 +402,7 @@ export default function App() {
   const headerPointerEvents = useTransform(scrollY, [0, 50], ['auto', 'none']);
 
   useEffect(() => {
-    const el = scrollRef.current;
+    const el = currentTab === 'feed' ? feedScrollRef.current : profileScrollRef.current;
     if (!el) return;
     scrollY.set(el.scrollTop);
     const onScroll = () => scrollY.set(el.scrollTop);
@@ -1254,20 +1255,45 @@ export default function App() {
     goToTab(TAB_ORDER[nextIdx]);
   };
 
-  // Real-time finger-tracking drag offset for the main view.
-  // While the user swipes horizontally, the visible tab moves with their finger.
-  // On release, it commits to the next/previous tab or springs back.
-  const dragX = useMotionValue(0);
+  // Horizontal carousel: feed and profile sit side by side in a single strip
+  // that slides left/right. The user's finger drags the strip in real time and
+  // the panel they're swiping toward is already visible at the edge.
+  const SWIPE_TABS: Array<'feed' | 'profile'> = ['feed', 'profile'];
+  const tabIndex = SWIPE_TABS.indexOf(currentTab);
+  const stripX = useMotionValue(0);
+  const vwRef = useRef<number>(typeof window !== 'undefined' ? window.innerWidth : 360);
   const swipeStartRef = useRef<{
     x: number;
     y: number;
     t: number;
+    baseX: number;
     direction: 'horizontal' | 'vertical' | null;
   } | null>(null);
 
-  const SWIPE_COMMIT_RATIO = 0.22;          // fraction of viewport width to commit
-  const SWIPE_VELOCITY_PX_MS = 0.5;         // px/ms to commit even if below ratio
-  const SWIPE_DIRECTION_LOCK_PX = 8;        // px before deciding axis
+  const SWIPE_COMMIT_RATIO = 0.22;
+  const SWIPE_VELOCITY_PX_MS = 0.5;
+  const SWIPE_DIRECTION_LOCK_PX = 8;
+
+  // Keep the viewport width in sync and snap the strip to the active tab on resize.
+  useEffect(() => {
+    const onResize = () => {
+      vwRef.current = window.innerWidth;
+      stripX.set(-tabIndex * vwRef.current);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [tabIndex]);
+
+  // Animate the strip when the tab changes (e.g. nav button, programmatic).
+  useEffect(() => {
+    const target = -tabIndex * vwRef.current;
+    const controls = animate(stripX, target, {
+      type: 'spring',
+      stiffness: 380,
+      damping: 36,
+    });
+    return () => controls.stop();
+  }, [tabIndex]);
 
   const isInteractiveTarget = (el: EventTarget | null): boolean => {
     let node = el as HTMLElement | null;
@@ -1275,7 +1301,6 @@ export default function App() {
       if (node.dataset?.noSwipe === 'true') return true;
       const tag = node.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-      // Ignore drags that start inside a horizontally scrollable element
       const overflowX = getComputedStyle(node).overflowX;
       if ((overflowX === 'auto' || overflowX === 'scroll') && node.scrollWidth > node.clientWidth) {
         return true;
@@ -1290,7 +1315,13 @@ export default function App() {
     if (isInteractiveTarget(e.target)) return;
     const t = e.touches[0];
     if (!t) return;
-    swipeStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now(), direction: null };
+    swipeStartRef.current = {
+      x: t.clientX,
+      y: t.clientY,
+      t: Date.now(),
+      baseX: -tabIndex * vwRef.current,
+      direction: null,
+    };
   };
 
   const onMainTouchMove = (e: ReactTouchEvent) => {
@@ -1307,58 +1338,40 @@ export default function App() {
     }
     if (start.direction !== 'horizontal') return;
 
-    const current: 'publish' | 'feed' | 'profile' = showPublishModal ? 'publish' : currentTab;
-    const idx = TAB_ORDER.indexOf(current);
-    const atLeftEdge = idx === 0;       // can't go further right (towards previous)
-    const atRightEdge = idx === TAB_ORDER.length - 1; // can't go further left (towards next)
-
-    // Add resistance at the edges so the user feels the boundary.
+    const atFirst = tabIndex === 0;
+    const atLast = tabIndex === SWIPE_TABS.length - 1;
     let offset = dx;
-    if (offset > 0 && atLeftEdge) offset = offset * 0.25;
-    if (offset < 0 && atRightEdge) offset = offset * 0.25;
+    if (offset > 0 && atFirst) offset *= 0.25;
+    if (offset < 0 && atLast) offset *= 0.25;
 
-    dragX.set(offset);
+    stripX.set(start.baseX + offset);
   };
 
   const onMainTouchEnd = (e: ReactTouchEvent) => {
     const start = swipeStartRef.current;
     swipeStartRef.current = null;
-    if (!start || start.direction !== 'horizontal') {
-      animate(dragX, 0, { type: 'spring', stiffness: 380, damping: 32 });
-      return;
-    }
+    if (!start) return;
+    if (start.direction !== 'horizontal') return;
+
     const t = e.changedTouches[0];
-    if (!t) {
-      animate(dragX, 0, { type: 'spring', stiffness: 380, damping: 32 });
-      return;
-    }
-    const dx = t.clientX - start.x;
+    const dx = t ? t.clientX - start.x : 0;
     const dt = Math.max(1, Date.now() - start.t);
-    const velocity = dx / dt; // px per ms
+    const velocity = dx / dt;
 
-    const width = typeof window !== 'undefined' ? window.innerWidth : 360;
-    const commitDistance = width * SWIPE_COMMIT_RATIO;
-    const past = Math.abs(dx) > commitDistance || Math.abs(velocity) > SWIPE_VELOCITY_PX_MS;
+    const vw = vwRef.current;
+    const past = Math.abs(dx) > vw * SWIPE_COMMIT_RATIO || Math.abs(velocity) > SWIPE_VELOCITY_PX_MS;
 
-    const direction: 'left' | 'right' = dx < 0 ? 'left' : 'right';
-    const current: 'publish' | 'feed' | 'profile' = showPublishModal ? 'publish' : currentTab;
-    const idx = TAB_ORDER.indexOf(current);
-    const nextIdx = direction === 'left' ? idx + 1 : idx - 1;
+    let nextIndex = tabIndex;
+    if (past) {
+      if (dx < 0 && tabIndex < SWIPE_TABS.length - 1) nextIndex = tabIndex + 1;
+      else if (dx > 0 && tabIndex > 0) nextIndex = tabIndex - 1;
+    }
 
-    if (past && nextIdx >= 0 && nextIdx < TAB_ORDER.length) {
-      // Slide the current view fully off-screen, then swap tab and reset.
-      const target = direction === 'left' ? -width : width;
-      animate(dragX, target, {
-        type: 'spring',
-        stiffness: 380,
-        damping: 36,
-        onComplete: () => {
-          dragX.set(0);
-          goToTab(TAB_ORDER[nextIdx]);
-        },
-      });
+    if (nextIndex !== tabIndex) {
+      // setCurrentTab triggers the effect above, which animates the strip.
+      setCurrentTab(SWIPE_TABS[nextIndex]);
     } else {
-      animate(dragX, 0, { type: 'spring', stiffness: 380, damping: 32 });
+      animate(stripX, start.baseX, { type: 'spring', stiffness: 380, damping: 32 });
     }
   };
 
@@ -2095,23 +2108,22 @@ export default function App() {
         </div>
       </motion.header>
 
-      <motion.main
-        className="relative min-h-screen"
-        style={{ x: dragX }}
-        onTouchStart={onMainTouchStart}
-        onTouchMove={onMainTouchMove}
-        onTouchEnd={onMainTouchEnd}
-        onTouchCancel={onMainTouchEnd}
-      >
-        <AnimatePresence initial={false}>
-          {currentTab === 'feed' && (
-            <motion.div
-              ref={scrollRef}
+      <main className="relative min-h-screen">
+        <div
+          className="fixed inset-0 pt-24 z-30 overflow-hidden"
+          onTouchStart={onMainTouchStart}
+          onTouchMove={onMainTouchMove}
+          onTouchEnd={onMainTouchEnd}
+          onTouchCancel={onMainTouchEnd}
+        >
+          <motion.div
+            style={{ x: stripX, width: `${SWIPE_TABS.length * 100}vw` }}
+            className="flex h-full"
+          >
+            <div
+              ref={feedScrollRef}
               key="feed"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
+              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar"
             >
               <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
                 <div className="flex items-center justify-between mb-8 gap-4">
@@ -2461,17 +2473,12 @@ export default function App() {
                   </div>
                 )}
               </div>
-            </motion.div>
-          )}
+            </div>
 
-          {currentTab === 'profile' && (
-            <motion.div
-              ref={scrollRef}
+            <div
+              ref={profileScrollRef}
               key="profile"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 pt-24 overflow-y-auto no-scrollbar z-30"
+              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar"
             >
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl relative">
@@ -2711,10 +2718,10 @@ export default function App() {
                   )}
                 </div>
               </div>
-            </motion.div>
-          )}
-          </AnimatePresence>
-      </motion.main>
+            </div>
+          </motion.div>
+        </div>
+      </main>
 
       {!publishHasMedia && !selectedPost && (
         <FloatingNav
