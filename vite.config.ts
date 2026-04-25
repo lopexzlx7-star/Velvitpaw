@@ -24,7 +24,7 @@ export default defineConfig(() => {
       },
       proxy: {
         '/api': {
-          target: 'http://localhost:3001',
+          target: 'https://velvitpaw-1.onrender.com',
           changeOrigin: true,
           proxyTimeout: TEN_MINUTES_MS,
           timeout: TEN_MINUTES_MS,

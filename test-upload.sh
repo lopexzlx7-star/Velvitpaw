@@ -4,7 +4,7 @@
 # Uso: bash test-upload.sh
 # ─────────────────────────────────────────────────────────────────────────────
 
-API="http://localhost:3001/api/upload-video"
+API="https://velvitpaw-1.onrender.com/api/upload-video"
 PASS=0; FAIL=0
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
 
