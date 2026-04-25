@@ -2195,7 +2195,7 @@ export default function App() {
                           initial={{ opacity: 0, y: 10, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          className="absolute top-full right-0 mt-4 w-96 glass-panel rounded-3xl z-[60] border border-white/10 overflow-hidden shadow-2xl"
+                          className="fixed sm:absolute top-20 sm:top-full left-2 right-2 sm:left-auto sm:right-0 sm:mt-4 sm:w-96 glass-panel rounded-3xl z-[60] border border-white/10 overflow-hidden shadow-2xl"
                         >
                           <div className="p-4 border-b border-white/5 flex items-center justify-between">
                             <span className="text-xs font-bold uppercase tracking-widest text-white">Notificações</span>
