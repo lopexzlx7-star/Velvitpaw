@@ -4,6 +4,8 @@ import {
   listNotifications,
   markAsRead,
   markAllAsRead,
+  removeNotification,
+  cleanupOldNotifications,
   notifyFollowersOfNewPost,
   notifyOnNewFollower,
   sendRecommendationToUser,
@@ -98,6 +100,31 @@ export const readAll = async (req: Request, res: Response) => {
     return res.json({ updated });
   } catch (err: any) {
     console.error('[notifications.readAll]', err);
+    return res.status(500).json({ error: err.message || 'Erro interno.' });
+  }
+};
+
+export const remove = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'id é obrigatório.' });
+    const result = await removeNotification(id);
+    return res.json(result);
+  } catch (err: any) {
+    console.error('[notifications.remove]', err);
+    return res.status(500).json({ error: err.message || 'Erro interno.' });
+  }
+};
+
+export const cleanupOld = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const days = req.query.days ? Math.max(1, Number(req.query.days)) : 7;
+    if (!userId) return res.status(400).json({ error: 'userId é obrigatório.' });
+    const deleted = await cleanupOldNotifications(userId, days);
+    return res.json({ deleted, olderThanDays: days });
+  } catch (err: any) {
+    console.error('[notifications.cleanupOld]', err);
     return res.status(500).json({ error: err.message || 'Erro interno.' });
   }
 };

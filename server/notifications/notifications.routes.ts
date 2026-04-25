@@ -4,6 +4,8 @@ import {
   list,
   read,
   readAll,
+  remove,
+  cleanupOld,
   triggerNewPost,
   triggerNewFollower,
   triggerRecommendation,
@@ -16,6 +18,8 @@ router.post('/', create);                     // POST   /notifications
 router.get('/:userId', list);                 // GET    /notifications/:userId
 router.patch('/:id/read', read);              // PATCH  /notifications/:id/read
 router.patch('/:userId/read-all', readAll);   // PATCH  /notifications/:userId/read-all
+router.delete('/:id', remove);                // DELETE /notifications/:id
+router.delete('/:userId/old', cleanupOld);    // DELETE /notifications/:userId/old?days=7
 
 // ─── Triggers automáticos (opcionais — facilitam integração) ───────────────
 router.post('/trigger/new-post', triggerNewPost);

@@ -184,6 +184,51 @@ export const markAllAsRead = async (userId: string): Promise<number> => {
   return updated;
 };
 
+/**
+ * Deletes a single notification by id.
+ */
+export const removeNotification = async (notificationId: string): Promise<{ id: string; deleted: boolean }> => {
+  if (!notificationId) throw new Error('notificationId é obrigatório.');
+  const db = getDb();
+  const ref = db.collection(COLLECTION).doc(notificationId);
+  const snap = await ref.get();
+  if (!snap.exists) return { id: notificationId, deleted: false };
+  await ref.delete();
+  return { id: notificationId, deleted: true };
+};
+
+/**
+ * Deletes notifications older than `olderThanDays` for a given user.
+ * Returns the number of notifications deleted.
+ */
+export const cleanupOldNotifications = async (
+  userId: string,
+  olderThanDays = 7
+): Promise<number> => {
+  if (!userId) throw new Error('userId é obrigatório.');
+  const db = getDb();
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+
+  const snap = await db
+    .collection(COLLECTION)
+    .where('userId', '==', userId)
+    .where('createdAt', '<', Timestamp.fromDate(cutoff))
+    .get();
+
+  if (snap.empty) return 0;
+
+  const docs = snap.docs;
+  let deleted = 0;
+  for (let i = 0; i < docs.length; i += 450) {
+    const chunk = docs.slice(i, i + 450);
+    const batch = db.batch();
+    chunk.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    deleted += chunk.length;
+  }
+  return deleted;
+};
+
 // ─── Helper: getFollowers (real query against `follows` with safe fallback) ──
 
 /**

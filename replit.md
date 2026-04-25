@@ -88,3 +88,26 @@ A social media app for sharing images, GIFs, and videos with a glassmorphism aes
 - Search popup "Recomendações" replaced with "Categorias em alta" — horizontal carousel of `HashtagCategoryCard` (cover image + name + post count) computed from `globalPosts`.
 - Tapping a category triggers `handleHashtagClick(tag)`.
 - Files: `src/components/HashtagCategoryCard.tsx`, `src/types.ts` (HashtagCategory).
+
+## New Features (2026-04-25)
+
+### Vercel deployment readiness
+- `vite.config.ts` proxy target points to the Render backend (`https://velvitpaw-1.onrender.com`).
+- `src/main.tsx` installs a global `fetch` wrapper that prepends the Render base URL to every `/api/*` request **only in production builds** (`import.meta.env.PROD`). Dev still uses the Vite proxy.
+- `test-upload.sh` updated to the Render URL.
+
+### Swipe navigation between tabs
+- `<main>` now intercepts horizontal swipes (`onTouchStart` / `onTouchEnd`) and switches between `publish` ◀ `feed` ▶ `profile`.
+- Vertical scrolls are ignored (swipe must be ≥ 70px and clearly horizontal).
+- Helpers: `TAB_ORDER`, `goToTab`, `handleSwipeNav`, `onMainTouchStart`, `onMainTouchEnd` in `src/App.tsx`.
+
+### Swipe-to-delete notifications + 7-day auto cleanup
+- New component: `src/components/SwipeableNotification.tsx` — wraps each notification, exposes a red trash background as the user drags left; releasing past the threshold deletes.
+- `handleDeleteNotification(id)` calls `DELETE /api/notifications/:id` (optimistically updates UI first).
+- On mount (per session per user), the app calls `DELETE /api/notifications/:userId/old?days=7` to permanently purge old notifications.
+- `visibleNotifications` (memoized) hides any notification older than 7 days from the UI immediately, even before the backend cleanup completes.
+
+### New backend endpoints (`server/notifications/`)
+- `DELETE /api/notifications/:id` — removes a single notification (`removeNotification` in service).
+- `DELETE /api/notifications/:userId/old?days=7` — batch-deletes notifications older than `days` for a user (`cleanupOldNotifications`).
+- CORS in `server.ts` updated to allow `PATCH` and `DELETE` methods.

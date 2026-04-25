@@ -43,6 +43,7 @@ import ProfileEditModal from './components/ProfileEditModal';
 import PhotoViewerModal from './components/PhotoViewerModal';
 import LoginBackdrop from './components/LoginBackdrop';
 import OfflineIndicator from './components/OfflineIndicator';
+import SwipeableNotification from './components/SwipeableNotification';
 
 // Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
 function getCloudinaryThumb(videoUrl: string): string | null {
@@ -1198,6 +1199,84 @@ export default function App() {
     setItems(globalPosts);
   };
 
+  // ─── Notifications: delete one + auto-cleanup of older than 7 days ───────
+  const handleDeleteNotification = async (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    try {
+      await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+    } catch {
+      // best-effort: snapshot listener will eventually re-sync if it fails
+    }
+  };
+
+  // Hide notifications older than one week from the UI immediately, and tell
+  // the backend to permanently delete them (best-effort, runs at most once
+  // per session per user).
+  const cleanupRanRef = useRef<string | null>(null);
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    if (cleanupRanRef.current === uid) return;
+    cleanupRanRef.current = uid;
+    fetch(`/api/notifications/${uid}/old?days=7`, { method: 'DELETE' }).catch(() => {});
+  }, [notifications.length]);
+
+  const visibleNotifications = useMemo(() => {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return notifications.filter(n => {
+      const raw: any = (n as any).createdAt;
+      if (!raw) return true;
+      const ms =
+        typeof raw === 'string' ? Date.parse(raw) :
+        raw?.seconds ? raw.seconds * 1000 :
+        typeof raw?.toDate === 'function' ? raw.toDate().getTime() :
+        NaN;
+      if (isNaN(ms)) return true;
+      return ms >= cutoff;
+    });
+  }, [notifications]);
+
+  // ─── Swipe navigation between Publish ◀ Feed ▶ Profile ─────────────────
+  const TAB_ORDER: Array<'publish' | 'feed' | 'profile'> = ['publish', 'feed', 'profile'];
+  const goToTab = (tab: 'publish' | 'feed' | 'profile') => {
+    if (tab === 'publish') {
+      setShowPublishModal(true);
+      return;
+    }
+    if (showPublishModal) setShowPublishModal(false);
+    setCurrentTab(tab);
+  };
+  const handleSwipeNav = (direction: 'left' | 'right') => {
+    const current: 'publish' | 'feed' | 'profile' = showPublishModal ? 'publish' : currentTab;
+    const idx = TAB_ORDER.indexOf(current);
+    const nextIdx = direction === 'left' ? idx + 1 : idx - 1;
+    if (nextIdx < 0 || nextIdx >= TAB_ORDER.length) return;
+    goToTab(TAB_ORDER[nextIdx]);
+  };
+
+  const swipeStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onMainTouchStart = (e: { touches: { clientX: number; clientY: number }[] }) => {
+    if (selectedPost || showPublishModal) return; // don't intercept inside modals
+    const t = e.touches[0];
+    if (!t) return;
+    swipeStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+  };
+  const onMainTouchEnd = (e: { changedTouches: { clientX: number; clientY: number }[] }) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const dt = Date.now() - start.t;
+    // Require a clearly horizontal swipe — ignore taps and vertical scrolls
+    if (Math.abs(dx) < 70) return;
+    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dt > 700) return;
+    handleSwipeNav(dx < 0 ? 'left' : 'right');
+  };
+
   const handleUpdateUsername = async (overrideName?: string) => {
     const source = (overrideName ?? newUsername).trim();
     if (!source || !auth.currentUser) return;
@@ -1931,7 +2010,11 @@ export default function App() {
         </div>
       </motion.header>
 
-      <main className="relative min-h-screen">
+      <main
+        className="relative min-h-screen"
+        onTouchStart={onMainTouchStart}
+        onTouchEnd={onMainTouchEnd}
+      >
         <AnimatePresence initial={false}>
           {currentTab === 'feed' && (
             <motion.div
@@ -2117,7 +2200,7 @@ export default function App() {
                           <div className="p-4 border-b border-white/5 flex items-center justify-between">
                             <span className="text-xs font-bold uppercase tracking-widest text-white">Notificações</span>
                             <div className="flex items-center gap-3">
-                              {notifications.some(n => !n.read) && auth.currentUser && (
+                              {visibleNotifications.some(n => !n.read) && auth.currentUser && (
                                 <button
                                   onClick={() => {
                                     fetch(`/api/notifications/${auth.currentUser!.uid}/read-all`, { method: 'PATCH' }).catch(() => {});
@@ -2131,10 +2214,10 @@ export default function App() {
                             </div>
                           </div>
                           <div className="max-h-[28rem] overflow-y-auto">
-                            {notifications.length === 0 ? (
+                            {visibleNotifications.length === 0 ? (
                               <div className="p-8 text-center text-white/20 text-xs uppercase tracking-widest">Nenhuma notificação</div>
                             ) : (
-                              notifications.map(n => {
+                              visibleNotifications.map(n => {
                                 const anyN = n as any;
                                 const name = anyN.fromUserName || 'Alguém';
                                 const photo = anyN.fromUserPhotoUrl as string | null | undefined;
@@ -2166,38 +2249,41 @@ export default function App() {
                                   return new Date(ms).toLocaleDateString();
                                 })();
                                 return (
-                                  <button
+                                  <SwipeableNotification
                                     key={n.id}
+                                    onDelete={() => handleDeleteNotification(n.id)}
                                     onClick={() => {
                                       if (!n.read) {
                                         fetch(`/api/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {});
                                       }
                                     }}
-                                    className={`w-full text-left p-3 border-b border-white/5 hover:bg-white/5 transition-colors flex items-center gap-3 ${!n.read ? 'bg-white/5' : ''}`}
+                                    className={`border-b border-white/5 ${!n.read ? 'bg-white/5' : ''}`}
                                   >
-                                    <div className="relative shrink-0">
-                                      {photo ? (
-                                        <img src={photo} alt={name} className="w-11 h-11 rounded-full object-cover border border-white/10" />
-                                      ) : (
-                                        <div className="w-11 h-11 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/60">
-                                          <User size={18} />
-                                        </div>
-                                      )}
-                                      {!n.read && (
-                                        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black" />
+                                    <div className="p-3 flex items-center gap-3">
+                                      <div className="relative shrink-0">
+                                        {photo ? (
+                                          <img src={photo} alt={name} className="w-11 h-11 rounded-full object-cover border border-white/10" />
+                                        ) : (
+                                          <div className="w-11 h-11 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/60">
+                                            <User size={18} />
+                                          </div>
+                                        )}
+                                        {!n.read && (
+                                          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black" />
+                                        )}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-xs text-white/80 leading-snug">
+                                          <span className="font-bold text-white">{name}</span>
+                                          {verb ? ' ' : ''}{verb || n.message}
+                                        </p>
+                                        {ts && <span className="text-[10px] text-white/30 mt-1 block">{ts}</span>}
+                                      </div>
+                                      {thumb && (
+                                        <img src={thumb} alt="" className="w-10 h-10 rounded-md object-cover shrink-0 border border-white/10" />
                                       )}
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-xs text-white/80 leading-snug">
-                                        <span className="font-bold text-white">{name}</span>
-                                        {verb ? ' ' : ''}{verb || n.message}
-                                      </p>
-                                      {ts && <span className="text-[10px] text-white/30 mt-1 block">{ts}</span>}
-                                    </div>
-                                    {thumb && (
-                                      <img src={thumb} alt="" className="w-10 h-10 rounded-md object-cover shrink-0 border border-white/10" />
-                                    )}
-                                  </button>
+                                  </SwipeableNotification>
                                 );
                               })
                             )}
