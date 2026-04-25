@@ -460,7 +460,20 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           hashtags: extractedHashtags,
         };
 
-        await addDoc(collection(db, 'posts'), postData);
+        const newPostRef = await addDoc(collection(db, 'posts'), postData);
+        // Notify followers (best-effort — backend handles dedup + missing creds)
+        void fetch('/api/notifications/trigger/new-post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            authorUid: auth.currentUser.uid,
+            postId: newPostRef.id,
+            authorName: postData.authorName,
+            authorPhotoUrl: postData.authorPhotoUrl,
+            postThumbnailUrl: imageUrls[0] || null,
+            postType: 'image',
+          }),
+        }).catch(() => {});
       } else if (videoDraft) {
         if (!videoDraft) { setIsSubmitting(false); return; }
 
@@ -496,7 +509,20 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           ...(hostedThumbnailUrl ? { thumbnailUrl: hostedThumbnailUrl } : {}),
         };
 
-        await addDoc(collection(db, 'posts'), postData);
+        const newVideoRef = await addDoc(collection(db, 'posts'), postData);
+        // Notify followers about the new video (best-effort)
+        void fetch('/api/notifications/trigger/new-post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            authorUid: auth.currentUser.uid,
+            postId: newVideoRef.id,
+            authorName: postData.authorName,
+            authorPhotoUrl: postData.authorPhotoUrl,
+            postThumbnailUrl: hostedThumbnailUrl,
+            postType: 'video',
+          }),
+        }).catch(() => {});
         if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
       }
 

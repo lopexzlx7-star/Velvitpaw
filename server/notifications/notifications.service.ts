@@ -11,7 +11,10 @@ export interface NotificationInput {
   userId: string;
   type: NotificationType;
   fromUserId: string;
+  fromUserName?: string;
+  fromUserPhotoUrl?: string | null;
   postId?: string;
+  postThumbnailUrl?: string | null;
   message: string;
 }
 
@@ -43,7 +46,10 @@ const mapDoc = (snap: FirebaseFirestore.DocumentSnapshot): NotificationDoc => {
     userId: data.userId,
     type: data.type,
     fromUserId: data.fromUserId,
+    fromUserName: data.fromUserName ?? undefined,
+    fromUserPhotoUrl: data.fromUserPhotoUrl ?? null,
     postId: data.postId ?? undefined,
+    postThumbnailUrl: data.postThumbnailUrl ?? null,
     message: data.message ?? '',
     read: !!data.read,
     createdAt: toIsoDate(data.createdAt),
@@ -60,7 +66,16 @@ const mapDoc = (snap: FirebaseFirestore.DocumentSnapshot): NotificationDoc => {
 export const createNotification = async (
   input: NotificationInput
 ): Promise<NotificationDoc | null> => {
-  const { userId, fromUserId, type, postId, message } = input;
+  const {
+    userId,
+    fromUserId,
+    type,
+    postId,
+    message,
+    fromUserName,
+    fromUserPhotoUrl,
+    postThumbnailUrl,
+  } = input;
 
   if (!userId || !fromUserId || !type || !message) {
     throw new Error('Campos obrigatórios faltando: userId, fromUserId, type, message.');
@@ -92,7 +107,10 @@ export const createNotification = async (
     userId,
     type,
     fromUserId,
+    fromUserName: fromUserName ?? null,
+    fromUserPhotoUrl: fromUserPhotoUrl ?? null,
     postId: postId ?? null,
+    postThumbnailUrl: postThumbnailUrl ?? null,
     message,
     read: false,
     createdAt: FieldValue.serverTimestamp(),
@@ -176,19 +194,26 @@ export const markAllAsRead = async (userId: string): Promise<number> => {
  * so the caller can keep working without crashing.
  */
 export const getFollowers = async (userId: string): Promise<string[]> => {
-  try {
-    const db = getDb();
-    const snap = await db
-      .collection('follows')
-      .where('followingUid', '==', userId)
-      .get();
-    return snap.docs
-      .map((d) => d.data().followerUid as string)
-      .filter((uid) => typeof uid === 'string' && uid.length > 0);
-  } catch (err) {
-    console.warn('[notifications] getFollowers fallback (vazio):', (err as Error).message);
-    return [];
+  const db = getDb();
+  const collections = ['following', 'follows'];
+  for (const collectionName of collections) {
+    try {
+      const snap = await db
+        .collection(collectionName)
+        .where('followingUid', '==', userId)
+        .get();
+      const ids = snap.docs
+        .map((d) => d.data().followerUid as string)
+        .filter((uid) => typeof uid === 'string' && uid.length > 0);
+      if (ids.length > 0) return ids;
+    } catch (err) {
+      console.warn(
+        `[notifications] getFollowers em "${collectionName}" falhou:`,
+        (err as Error).message
+      );
+    }
   }
+  return [];
 };
 
 // ─── Automatic dispatch helpers ─────────────────────────────────────────────
@@ -201,8 +226,18 @@ export const notifyFollowersOfNewPost = async (params: {
   authorUid: string;
   postId: string;
   authorName?: string;
+  authorPhotoUrl?: string | null;
+  postThumbnailUrl?: string | null;
+  postType?: 'image' | 'video';
 }): Promise<number> => {
-  const { authorUid, postId, authorName } = params;
+  const {
+    authorUid,
+    postId,
+    authorName,
+    authorPhotoUrl,
+    postThumbnailUrl,
+    postType,
+  } = params;
   if (!authorUid || !postId) {
     throw new Error('authorUid e postId são obrigatórios.');
   }
@@ -210,9 +245,10 @@ export const notifyFollowersOfNewPost = async (params: {
   const followers = await getFollowers(authorUid);
   if (followers.length === 0) return 0;
 
+  const subject = postType === 'video' ? 'um novo vídeo' : 'um novo post';
   const message = authorName
-    ? `${authorName} publicou um novo post.`
-    : 'Alguém que você segue publicou um novo post.';
+    ? `${authorName} publicou ${subject}.`
+    : `Alguém que você segue publicou ${subject}.`;
 
   const results = await Promise.all(
     followers.map((followerUid) =>
@@ -220,7 +256,10 @@ export const notifyFollowersOfNewPost = async (params: {
         userId: followerUid,
         type: 'new_post',
         fromUserId: authorUid,
+        fromUserName: authorName,
+        fromUserPhotoUrl: authorPhotoUrl ?? null,
         postId,
+        postThumbnailUrl: postThumbnailUrl ?? null,
         message,
       }).catch((err) => {
         console.warn('[notifications] new_post falhou para', followerUid, err.message);
@@ -239,8 +278,9 @@ export const notifyOnNewFollower = async (params: {
   followedUid: string;
   followerUid: string;
   followerName?: string;
+  followerPhotoUrl?: string | null;
 }): Promise<NotificationDoc | null> => {
-  const { followedUid, followerUid, followerName } = params;
+  const { followedUid, followerUid, followerName, followerPhotoUrl } = params;
   if (!followedUid || !followerUid) {
     throw new Error('followedUid e followerUid são obrigatórios.');
   }
@@ -253,6 +293,8 @@ export const notifyOnNewFollower = async (params: {
     userId: followedUid,
     type: 'new_follower',
     fromUserId: followerUid,
+    fromUserName: followerName,
+    fromUserPhotoUrl: followerPhotoUrl ?? null,
     message,
   });
 };

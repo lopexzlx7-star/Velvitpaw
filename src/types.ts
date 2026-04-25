@@ -36,10 +36,23 @@ export interface HashtagCategory {
   latestAt: number;
 }
 
+export type NotificationType =
+  | 'new_post'
+  | 'new_follower'
+  | 'recommended'
+  | 'like'
+  | 'comment';
+
 export interface Notification {
   id: string;
-  recipientUid: string;
+  userId: string;
+  type: NotificationType;
+  fromUserId: string;
+  fromUserName?: string;
+  fromUserPhotoUrl?: string | null;
+  postId?: string;
+  postThumbnailUrl?: string | null;
   message: string;
-  createdAt: string;
+  createdAt: string | { seconds: number; nanoseconds: number };
   read: boolean;
 }

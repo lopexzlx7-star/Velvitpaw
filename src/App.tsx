@@ -550,12 +550,12 @@ export default function App() {
 
       const notifQ = query(
         collection(db, 'notifications'), 
-        where('recipientUid', '==', uid),
+        where('userId', '==', uid),
         orderBy('createdAt', 'desc'),
         limit(20)
       );
       unsubscribeNotifications = onSnapshot(notifQ, (snapshot) => {
-        setNotifications(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+        setNotifications(snapshot.docs.map(doc => ({ ...(doc.data() as any), id: doc.id })) as any);
       });
     };
 
@@ -988,6 +988,22 @@ export default function App() {
     }
   };
 
+  // ── Helper: send a notification through the backend (silent on failure) ──
+  const notify = async (
+    path: string,
+    body: Record<string, unknown>
+  ): Promise<void> => {
+    try {
+      await fetch(`/api/notifications${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      // notifications are best-effort — never block UX on failure
+    }
+  };
+
   const handleLike = async (id: string) => {
     const itemToLike = [...items, ...userPosts].find(i => i.id === id);
     if (!itemToLike) return;
@@ -1035,6 +1051,29 @@ export default function App() {
           await updateDoc(postRef, {
             likesCount: increment(1)
           });
+
+          // Notify the post author (best-effort, deduped server-side)
+          const authorUid = (itemToLike as any).authorUid as string | undefined;
+          if (authorUid && authorUid !== auth.currentUser.uid) {
+            const myName =
+              localStorage.getItem('velvit_username') ||
+              auth.currentUser.displayName ||
+              'Alguém';
+            const myPhoto = localStorage.getItem('velvit_profile_pic');
+            void notify('', {
+              userId: authorUid,
+              type: 'like',
+              fromUserId: auth.currentUser.uid,
+              fromUserName: myName,
+              fromUserPhotoUrl: myPhoto,
+              postId: id,
+              postThumbnailUrl:
+                (itemToLike as any).thumbnailUrl ||
+                (itemToLike as any).url ||
+                null,
+              message: `${myName} curtiu seu post.`,
+            });
+          }
         }
       } catch (err) {
         handleFirestoreError(err, isLiked ? OperationType.DELETE : OperationType.WRITE, `interactions/${interactionId}`);
@@ -1109,6 +1148,19 @@ export default function App() {
           followerUid: auth.currentUser.uid,
           followingUid: targetUid,
           createdAt: new Date().toISOString()
+        });
+
+        // Notify the user that they have a new follower (best-effort)
+        const myName =
+          localStorage.getItem('velvit_username') ||
+          auth.currentUser.displayName ||
+          'Alguém';
+        const myPhoto = localStorage.getItem('velvit_profile_pic');
+        void notify('/trigger/new-follower', {
+          followedUid: targetUid,
+          followerUid: auth.currentUser.uid,
+          followerName: myName,
+          followerPhotoUrl: myPhoto,
         });
       }
     } catch (err) {
@@ -2060,22 +2112,94 @@ export default function App() {
                           initial={{ opacity: 0, y: 10, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          className="absolute top-full right-0 mt-4 w-80 glass-panel rounded-3xl z-[60] border border-white/10 overflow-hidden shadow-2xl"
+                          className="absolute top-full right-0 mt-4 w-96 glass-panel rounded-3xl z-[60] border border-white/10 overflow-hidden shadow-2xl"
                         >
                           <div className="p-4 border-b border-white/5 flex items-center justify-between">
                             <span className="text-xs font-bold uppercase tracking-widest text-white">Notificações</span>
-                            <button onClick={() => setShowNotifications(false)} className="text-white/30 hover:text-white"><X size={16} /></button>
+                            <div className="flex items-center gap-3">
+                              {notifications.some(n => !n.read) && auth.currentUser && (
+                                <button
+                                  onClick={() => {
+                                    fetch(`/api/notifications/${auth.currentUser!.uid}/read-all`, { method: 'PATCH' }).catch(() => {});
+                                  }}
+                                  className="text-[10px] uppercase tracking-widest text-white/40 hover:text-white"
+                                >
+                                  Marcar todas
+                                </button>
+                              )}
+                              <button onClick={() => setShowNotifications(false)} className="text-white/30 hover:text-white"><X size={16} /></button>
+                            </div>
                           </div>
-                          <div className="max-h-96 overflow-y-auto">
+                          <div className="max-h-[28rem] overflow-y-auto">
                             {notifications.length === 0 ? (
                               <div className="p-8 text-center text-white/20 text-xs uppercase tracking-widest">Nenhuma notificação</div>
                             ) : (
-                              notifications.map(n => (
-                                <div key={n.id} className={`p-4 border-b border-white/5 hover:bg-white/5 transition-colors ${!n.read ? 'bg-white/5' : ''}`}>
-                                  <p className="text-xs text-white/80 leading-relaxed">{n.message}</p>
-                                  <span className="text-[10px] text-white/30 mt-2 block">{new Date(n.createdAt).toLocaleDateString()}</span>
-                                </div>
-                              ))
+                              notifications.map(n => {
+                                const anyN = n as any;
+                                const name = anyN.fromUserName || 'Alguém';
+                                const photo = anyN.fromUserPhotoUrl as string | null | undefined;
+                                const thumb = anyN.postThumbnailUrl as string | null | undefined;
+                                const verb = (() => {
+                                  switch (anyN.type) {
+                                    case 'new_follower': return 'começou a seguir você.';
+                                    case 'new_post':     return 'publicou um novo post.';
+                                    case 'like':         return 'curtiu seu post.';
+                                    case 'comment':      return 'comentou no seu post.';
+                                    case 'recommended':  return 'recomendado para você.';
+                                    default:             return '';
+                                  }
+                                })();
+                                const ts = (() => {
+                                  const raw: any = anyN.createdAt;
+                                  if (!raw) return '';
+                                  const ms =
+                                    typeof raw === 'string' ? Date.parse(raw) :
+                                    raw?.seconds ? raw.seconds * 1000 :
+                                    typeof raw?.toDate === 'function' ? raw.toDate().getTime() :
+                                    NaN;
+                                  if (isNaN(ms)) return '';
+                                  const diffSec = Math.max(1, Math.floor((Date.now() - ms) / 1000));
+                                  if (diffSec < 60) return `${diffSec}s`;
+                                  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}min`;
+                                  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h`;
+                                  if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d`;
+                                  return new Date(ms).toLocaleDateString();
+                                })();
+                                return (
+                                  <button
+                                    key={n.id}
+                                    onClick={() => {
+                                      if (!n.read) {
+                                        fetch(`/api/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {});
+                                      }
+                                    }}
+                                    className={`w-full text-left p-3 border-b border-white/5 hover:bg-white/5 transition-colors flex items-center gap-3 ${!n.read ? 'bg-white/5' : ''}`}
+                                  >
+                                    <div className="relative shrink-0">
+                                      {photo ? (
+                                        <img src={photo} alt={name} className="w-11 h-11 rounded-full object-cover border border-white/10" />
+                                      ) : (
+                                        <div className="w-11 h-11 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/60">
+                                          <User size={18} />
+                                        </div>
+                                      )}
+                                      {!n.read && (
+                                        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black" />
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs text-white/80 leading-snug">
+                                        <span className="font-bold text-white">{name}</span>
+                                        {verb ? ' ' : ''}{verb || n.message}
+                                      </p>
+                                      {ts && <span className="text-[10px] text-white/30 mt-1 block">{ts}</span>}
+                                    </div>
+                                    {thumb && (
+                                      <img src={thumb} alt="" className="w-10 h-10 rounded-md object-cover shrink-0 border border-white/10" />
+                                    )}
+                                  </button>
+                                );
+                              })
                             )}
                           </div>
                         </motion.div>

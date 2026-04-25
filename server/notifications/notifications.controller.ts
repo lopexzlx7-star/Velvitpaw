@@ -20,7 +20,16 @@ const VALID_TYPES: NotificationType[] = [
 
 export const create = async (req: Request, res: Response) => {
   try {
-    const { userId, type, fromUserId, postId, message } = req.body || {};
+    const {
+      userId,
+      type,
+      fromUserId,
+      fromUserName,
+      fromUserPhotoUrl,
+      postId,
+      postThumbnailUrl,
+      message,
+    } = req.body || {};
 
     if (!userId || !type || !fromUserId || !message) {
       return res.status(400).json({
@@ -37,7 +46,10 @@ export const create = async (req: Request, res: Response) => {
       userId,
       type,
       fromUserId,
+      fromUserName,
+      fromUserPhotoUrl,
       postId,
+      postThumbnailUrl,
       message,
     });
 
@@ -94,11 +106,25 @@ export const readAll = async (req: Request, res: Response) => {
 
 export const triggerNewPost = async (req: Request, res: Response) => {
   try {
-    const { authorUid, postId, authorName } = req.body || {};
+    const {
+      authorUid,
+      postId,
+      authorName,
+      authorPhotoUrl,
+      postThumbnailUrl,
+      postType,
+    } = req.body || {};
     if (!authorUid || !postId) {
       return res.status(400).json({ error: 'authorUid e postId são obrigatórios.' });
     }
-    const sent = await notifyFollowersOfNewPost({ authorUid, postId, authorName });
+    const sent = await notifyFollowersOfNewPost({
+      authorUid,
+      postId,
+      authorName,
+      authorPhotoUrl,
+      postThumbnailUrl,
+      postType,
+    });
     return res.json({ sent });
   } catch (err: any) {
     console.error('[notifications.triggerNewPost]', err);
@@ -108,11 +134,17 @@ export const triggerNewPost = async (req: Request, res: Response) => {
 
 export const triggerNewFollower = async (req: Request, res: Response) => {
   try {
-    const { followedUid, followerUid, followerName } = req.body || {};
+    const { followedUid, followerUid, followerName, followerPhotoUrl } =
+      req.body || {};
     if (!followedUid || !followerUid) {
       return res.status(400).json({ error: 'followedUid e followerUid são obrigatórios.' });
     }
-    const result = await notifyOnNewFollower({ followedUid, followerUid, followerName });
+    const result = await notifyOnNewFollower({
+      followedUid,
+      followerUid,
+      followerName,
+      followerPhotoUrl,
+    });
     return res.json({ created: result });
   } catch (err: any) {
     console.error('[notifications.triggerNewFollower]', err);
