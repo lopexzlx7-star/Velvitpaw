@@ -371,6 +371,8 @@ export default function App() {
   const [publishHasMedia, setPublishHasMedia] = useState(false);
   const [photoViewer, setPhotoViewer] = useState<{ url: string | null; username: string } | null>(null);
   const [showEmailPopup, setShowEmailPopup] = useState(false);
+  // Yellow "in development" toast shown when the user clicks a temporarily disabled feature.
+  const [devNoticeMessage, setDevNoticeMessage] = useState<string | null>(null);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [emailPopupLoading, setEmailPopupLoading] = useState(false);
   const [emailPopupError, setEmailPopupError] = useState<string | null>(null);
@@ -2206,8 +2208,15 @@ export default function App() {
                                 setAccentColor(a.id);
                                 localStorage.setItem('velvit_accent', a.id);
                                 setShowColorPicker(false);
+                                // Use setDoc with merge so it succeeds even if the user
+                                // doc has never been written before — this is what was
+                                // preventing the color from syncing across devices.
                                 if (username) {
-                                  updateDoc(doc(db, 'users', username), { accentColor: a.id }).catch(() => {});
+                                  setDoc(
+                                    doc(db, 'users', username),
+                                    { accentColor: a.id, uid: auth.currentUser?.uid || null },
+                                    { merge: true }
+                                  ).catch((err) => console.warn('[accent] save failed', err));
                                 }
                               }}
                               title={a.label}
@@ -2385,12 +2394,17 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Sync / recovery email — bottom of profile */}
+                  {/* Sync / recovery email — bottom of profile.
+                      Temporarily disabled: clicking shows a yellow "in development" toast. */}
                   {!hasRecoveryEmail && (
                     <div className="mt-8 pt-6 border-t border-white/5 flex justify-center">
                       <button
-                        onClick={() => { setShowEmailPopup(true); setEmailPopupError(null); setRecoveryEmail(''); }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[9px] uppercase tracking-widest text-white/30 hover:text-white/60 transition-all"
+                        onClick={() => {
+                          setDevNoticeMessage('A sincronização de e-mail ainda está em desenvolvimento.');
+                          window.setTimeout(() => setDevNoticeMessage(null), 3500);
+                        }}
+                        title="Em desenvolvimento"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full text-[9px] uppercase tracking-widest text-white/25 cursor-not-allowed opacity-70"
                       >
                         <RotateCcw size={9} />
                         Vincular e-mail de recuperação
@@ -2414,6 +2428,39 @@ export default function App() {
       )}
 
       <OfflineIndicator />
+
+      {/* Yellow "in development" toast — shown when the user clicks a feature that's not ready yet. */}
+      <AnimatePresence>
+        {devNoticeMessage && (
+          <motion.div
+            key="dev-notice"
+            initial={{ opacity: 0, y: 30, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.96 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="fixed left-1/2 -translate-x-1/2 bottom-24 z-[100] pointer-events-none"
+          >
+            <div
+              className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl"
+              style={{
+                background: 'rgba(60, 45, 5, 0.92)',
+                border: '1px solid rgba(250, 204, 21, 0.55)',
+                boxShadow: '0 10px 40px rgba(0,0,0,0.45)',
+                backdropFilter: 'blur(14px) saturate(160%)',
+                WebkitBackdropFilter: 'blur(14px) saturate(160%)',
+              }}
+            >
+              <AlertCircle size={16} style={{ color: '#facc15' }} />
+              <span
+                className="text-[13px] font-medium tracking-tight"
+                style={{ color: '#fde68a' }}
+              >
+                {devNoticeMessage}
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <PublishModal 
         isOpen={showPublishModal} 
