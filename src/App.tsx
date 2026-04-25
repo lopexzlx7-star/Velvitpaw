@@ -2198,7 +2198,7 @@ export default function App() {
                       {showColorPicker && (
                         <>
                           <div className="fixed inset-0 z-40" onClick={() => setShowColorPicker(false)} />
-                          <div className="absolute right-0 top-9 z-50 flex flex-col items-center gap-2 p-2.5">
+                          <div className="absolute left-1/2 -translate-x-1/2 top-9 z-50 flex flex-col items-center gap-2 p-2.5">
                           {ACCENTS.map(a => (
                             <button
                               key={a.id}
