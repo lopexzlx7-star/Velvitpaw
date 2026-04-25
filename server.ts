@@ -286,6 +286,10 @@ async function uploadToStorj(
   return `${STORJ_PUBLIC_BASE}/${key}`;
 }
 
+// ─── Notifications module (modular routes) ──────────────────────────────────
+import notificationsRoutes from './server/notifications/notifications.routes';
+app.use('/api/notifications', notificationsRoutes);
+
 // ─── /api/health ──────────────────────────────────────────────────────────────
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
