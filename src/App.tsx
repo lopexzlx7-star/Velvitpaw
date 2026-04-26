@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus, Users } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { 
   doc, 
@@ -324,6 +324,47 @@ export default function App() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [isGeneratingFeed, setIsGeneratingFeed] = useState(true);
   const [followingUids, setFollowingUids] = useState<string[]>([]);
+  const [followersUids, setFollowersUids] = useState<string[]>([]);
+  const [showFollowersList, setShowFollowersList] = useState(false);
+  const [followersProfiles, setFollowersProfiles] = useState<{ uid: string; username: string; profilePhotoUrl?: string }[]>([]);
+  const [loadingFollowers, setLoadingFollowers] = useState(false);
+
+  useEffect(() => {
+    if (!showFollowersList) return;
+    if (followersUids.length === 0) {
+      setFollowersProfiles([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingFollowers(true);
+    (async () => {
+      const results: { uid: string; username: string; profilePhotoUrl?: string }[] = [];
+      await Promise.all(
+        followersUids.map(async (uid) => {
+          try {
+            const snap = await getDocs(query(collection(db, 'users'), where('uid', '==', uid)));
+            if (!snap.empty) {
+              const d = snap.docs[0].data() as any;
+              results.push({
+                uid,
+                username: d.username || 'usuário',
+                profilePhotoUrl: d.profilePhotoUrl || undefined,
+              });
+            } else {
+              results.push({ uid, username: 'usuário' });
+            }
+          } catch {
+            results.push({ uid, username: 'usuário' });
+          }
+        })
+      );
+      if (cancelled) return;
+      results.sort((a, b) => a.username.localeCompare(b.username));
+      setFollowersProfiles(results);
+      setLoadingFollowers(false);
+    })();
+    return () => { cancelled = true; };
+  }, [showFollowersList, followersUids]);
 
   useEffect(() => {
     if (!showFollowingList) return;
@@ -542,12 +583,18 @@ export default function App() {
     });
 
     let unsubscribeFollowing = () => {};
+    let unsubscribeFollowers = () => {};
     let unsubscribeNotifications = () => {};
 
     const setupAuthListeners = (uid: string) => {
       const followQ = query(collection(db, 'following'), where('followerUid', '==', uid));
       unsubscribeFollowing = onSnapshot(followQ, (snapshot) => {
         setFollowingUids(snapshot.docs.map(doc => doc.data().followingUid));
+      });
+
+      const followersQ = query(collection(db, 'following'), where('followingUid', '==', uid));
+      unsubscribeFollowers = onSnapshot(followersQ, (snapshot) => {
+        setFollowersUids(snapshot.docs.map(doc => doc.data().followerUid));
       });
 
       const notifQ = query(
@@ -566,6 +613,7 @@ export default function App() {
       unsubscribeAuth();
       unsubscribePosts();
       unsubscribeFollowing();
+      unsubscribeFollowers();
       unsubscribeNotifications();
     };
   }, []);
@@ -2591,6 +2639,13 @@ export default function App() {
                         >
                           <UserPlus size={12} /> Seguindo ({followingUids.length})
                         </button>
+                        <button
+                          onClick={() => setShowFollowersList(true)}
+                          className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-all flex items-center gap-1.5"
+                          title="Quem me segue"
+                        >
+                          <Users size={12} /> Seguidores ({followersUids.length})
+                        </button>
                         <button 
                           onClick={resetBackground}
                           className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/50 hover:text-white transition-colors"
@@ -3051,6 +3106,95 @@ export default function App() {
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-bold text-white truncate">@{u.username}</div>
                         </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showFollowersList && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowFollowersList(false)}
+            className="fixed inset-0 z-[260] flex items-end sm:items-center justify-center p-0 sm:p-4"
+            style={{ background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(20px)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 24 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 16 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full sm:max-w-md max-h-[80vh] flex flex-col rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden glass-panel"
+              style={{
+                background: 'linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))',
+                border: '1px solid rgba(255,255,255,0.14)',
+              }}
+            >
+              <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold mb-1">Quem te segue</div>
+                  <h3 className="text-xl font-black tracking-tight text-white">Seguidores ({followersUids.length})</h3>
+                </div>
+                <button
+                  onClick={() => setShowFollowersList(false)}
+                  className="w-9 h-9 flex items-center justify-center rounded-full text-white/70 hover:text-white"
+                  style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.10)' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-3 pb-5 no-scrollbar">
+                {followersUids.length === 0 ? (
+                  <div className="text-center py-14 text-white/40 text-xs uppercase tracking-widest">
+                    Você ainda não tem seguidores
+                  </div>
+                ) : loadingFollowers && followersProfiles.length === 0 ? (
+                  <div className="text-center py-14 text-white/40 text-xs uppercase tracking-widest">
+                    Carregando…
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {followersProfiles.map((u) => (
+                      <button
+                        key={u.uid}
+                        onClick={() => {
+                          setShowFollowersList(false);
+                          if (u.uid === auth.currentUser?.uid) {
+                            setCurrentTab('profile');
+                            setProfileTab('posts');
+                          } else {
+                            setProfileViewUid(u.uid);
+                          }
+                        }}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-white/5 transition-colors text-left"
+                      >
+                        <div
+                          className="w-11 h-11 rounded-full overflow-hidden bg-white/5 shrink-0 flex items-center justify-center"
+                          style={{ border: '1px solid rgba(255,255,255,0.10)' }}
+                        >
+                          {u.profilePhotoUrl ? (
+                            <img src={u.profilePhotoUrl} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            <User size={18} className="text-white/40" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold text-white truncate">@{u.username}</div>
+                        </div>
+                        {followingUids.includes(u.uid) && (
+                          <span className="text-[9px] uppercase tracking-widest text-white/40 px-2 py-1 rounded-full border border-white/10">
+                            Você segue
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>

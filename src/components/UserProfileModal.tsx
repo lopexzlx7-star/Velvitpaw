@@ -44,6 +44,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [posts, setPosts] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
 
   const [showFollowing, setShowFollowing] = useState(false);
   const [followingList, setFollowingList] = useState<FollowedUser[]>([]);
@@ -70,6 +71,9 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
         const followersSnap = await getDocs(query(collection(db, 'following'), where('followingUid', '==', targetUid)));
         setFollowersCount(followersSnap.size);
+
+        const followingSnap = await getDocs(query(collection(db, 'following'), where('followerUid', '==', targetUid)));
+        setFollowingCount(followingSnap.size);
       } catch (err) {
         console.error('Error loading profile:', err);
       } finally {
@@ -301,6 +305,14 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
               <div className="flex items-center gap-4 mt-2.5 text-[11px] text-white/55">
                 <span><span className="text-white font-bold text-sm">{posts.length}</span> Posts</span>
                 <span><span className="text-white font-bold text-sm">{followersCount}</span> Seguidores</span>
+                <button
+                  type="button"
+                  onClick={openFollowing}
+                  className="hover:text-white transition-colors"
+                  title="Ver quem este usuário segue"
+                >
+                  <span className="text-white font-bold text-sm">{followingCount}</span> Seguindo
+                </button>
               </div>
             </div>
           </div>
