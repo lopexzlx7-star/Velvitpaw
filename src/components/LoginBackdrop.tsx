@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ContentItem } from '../types';
+import { useIsMobile, getResponsiveVideoUrl } from '../utils/videoUrl';
 
 interface Props {
   posts: ContentItem[];
@@ -24,6 +25,7 @@ const shuffle = <T,>(arr: T[]): T[] => {
 };
 
 const LoginBackdrop: React.FC<Props> = ({ posts }) => {
+  const isMobile = useIsMobile();
   const order = useMemo<Slide[]>(() => {
     const slides: Slide[] = [];
     const seen = new Set<string>();
@@ -100,7 +102,7 @@ const LoginBackdrop: React.FC<Props> = ({ posts }) => {
           return (
             <video
               key={`${i}-${slide.url}`}
-              src={slide.url}
+              src={getResponsiveVideoUrl(slide.url, isMobile)}
               poster={slide.poster}
               autoPlay
               muted

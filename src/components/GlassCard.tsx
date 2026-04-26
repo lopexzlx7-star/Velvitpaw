@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { auth, db } from '../firebase';
 import { ContentItem } from '../types';
 import { deleteDoc, doc } from 'firebase/firestore';
+import { useResponsiveVideoUrl } from '../utils/videoUrl';
 
 function getCloudinaryThumb(videoUrl: string): string | null {
   if (!videoUrl.includes('res.cloudinary.com')) return null;
@@ -178,6 +179,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
   isUserPost,
   searchQuery = ''
 }) => {
+  const responsiveVideoUrl = useResponsiveVideoUrl(item.url);
   const [isLoaded, setIsLoaded] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -316,7 +318,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                     )}
                     <video
                       ref={videoRef}
-                      src={item.url}
+                      src={responsiveVideoUrl}
                       muted={isMuted}
                       playsInline
                       loop

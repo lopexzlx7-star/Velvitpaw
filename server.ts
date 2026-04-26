@@ -247,11 +247,12 @@ function buildCloudinarySignature(params: Record<string, string>): string {
 
 // ─── Cloudinary video optimization (incoming transformation) ─────────────────
 // Aplica no momento do upload — o arquivo armazenado JÁ vem otimizado:
-//   • q_auto:good   → qualidade automática equilibrada (alta qualidade percebida)
-//   • vc_auto       → codec automático (H.264 / H.265 / AV1 conforme suporte)
-//   • w_1280,h_720,c_limit → limita a 720p sem fazer upscale, preserva proporção
-// Isso costuma reduzir 70–90% o tamanho final sem perda visível em mobile/web.
-const VIDEO_INCOMING_TRANSFORMATION = 'q_auto:good,vc_auto,w_1280,h_720,c_limit';
+//   • q_auto:good   → qualidade automática equilibrada
+//   • vc_auto       → codec automático (H.264 / H.265 / AV1)
+//   • w_1920,h_1080,c_limit → master em 1080p (sem upscale, preserva proporção)
+// O front-end pede 720p via URL pra mobile e 1080p pra desktop, então o master
+// aqui é 1080p — o Cloudinary entrega a versão menor sob demanda.
+const VIDEO_INCOMING_TRANSFORMATION = 'q_auto:good,vc_auto,w_1920,h_1080,c_limit';
 
 // ─── Cloudinary upload helper ─────────────────────────────────────────────────
 async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName: string): Promise<string> {

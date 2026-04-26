@@ -4,6 +4,7 @@ import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRigh
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
+import { useIsMobile, getResponsiveVideoUrl } from '../utils/videoUrl';
 
 interface PostDetailModalProps {
   item: ContentItem;
@@ -117,6 +118,11 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   useEffect(() => () => {
     if (endToastTimerRef.current) window.clearTimeout(endToastTimerRef.current);
   }, []);
+
+  const isMobileScreen = useIsMobile();
+  const curVideoUrl = getResponsiveVideoUrl(item.url, isMobileScreen);
+  const prevVideoUrl = prevItem ? getResponsiveVideoUrl(prevItem.url, isMobileScreen) : '';
+  const nextVideoUrl = nextItem ? getResponsiveVideoUrl(nextItem.url, isMobileScreen) : '';
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -686,7 +692,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     {prevItem && isDirectVideoUrl(prevItem.url) && (
                       <video
                         key={`prev-${prevItem.id}`}
-                        src={prevItem.url}
+                        src={prevVideoUrl}
                         poster={prevItem.thumbnailUrl || undefined}
                         className="absolute left-0 w-full h-full bg-black"
                         muted
@@ -701,7 +707,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     <video
                       key={`cur-${item.id}`}
                       ref={videoRef}
-                      src={item.url}
+                      src={curVideoUrl}
                       poster={item.thumbnailUrl || undefined}
                       className="absolute left-0 top-0 w-full h-full bg-black"
                       loop
@@ -719,7 +725,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     {nextItem && isDirectVideoUrl(nextItem.url) && (
                       <video
                         key={`next-${nextItem.id}`}
-                        src={nextItem.url}
+                        src={nextVideoUrl}
                         poster={nextItem.thumbnailUrl || undefined}
                         className="absolute left-0 w-full h-full bg-black"
                         muted

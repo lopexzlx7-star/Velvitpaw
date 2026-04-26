@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Folder as FolderIcon } from 'lucide-react';
 import { Folder, ContentItem } from '../types';
+import { useIsMobile, getResponsiveVideoUrl } from '../utils/videoUrl';
 
 interface Props {
   folder: Folder;
@@ -32,10 +33,11 @@ function pickCover(post: ContentItem | undefined): CoverEntry | null {
 }
 
 const CoverMedia: React.FC<{ entry: CoverEntry; className?: string }> = ({ entry, className = '' }) => {
+  const isMobile = useIsMobile();
   if (entry.isVideo) {
     return (
       <video
-        src={`${entry.url}#t=0.1`}
+        src={`${getResponsiveVideoUrl(entry.url, isMobile)}#t=0.1`}
         poster={entry.poster}
         className={className}
         muted

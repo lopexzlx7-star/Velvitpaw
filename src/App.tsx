@@ -31,6 +31,7 @@ import {
 import { db, auth } from './firebase';
 import { ContentItem, Notification, Folder, HashtagCategory } from './types';
 import GlassCard from './components/GlassCard';
+import { useResponsiveVideoUrl, getResponsiveVideoUrl } from './utils/videoUrl';
 import FloatingNav from './components/FloatingNav';
 import PublishModal from './components/PublishModal';
 import PostDetailModal from './components/PostDetailModal';
@@ -81,6 +82,7 @@ function RecommendationCard({ item, onClick }: RecCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const isVideo = item.type === 'video';
   const previewUrl = isVideo ? getVideoThumb(item) : item.url;
+  const responsiveVideoUrl = useResponsiveVideoUrl(item.url);
 
   const handleMouseEnter = () => {
     if (videoRef.current) {
@@ -121,7 +123,7 @@ function RecommendationCard({ item, onClick }: RecCardProps) {
           {/* Cloudinary video — plays on hover */}
           <video
             ref={videoRef}
-            src={item.url}
+            src={responsiveVideoUrl}
             muted
             loop
             playsInline
@@ -2441,7 +2443,7 @@ export default function App() {
                                         <div className="w-10 h-10 rounded-md overflow-hidden shrink-0 border border-white/10 bg-white/5">
                                           {isVideo && postUrl && !thumb ? (
                                             <video
-                                              src={`${postUrl}#t=0.1`}
+                                              src={`${getResponsiveVideoUrl(postUrl, true)}#t=0.1`}
                                               muted
                                               playsInline
                                               preload="metadata"
