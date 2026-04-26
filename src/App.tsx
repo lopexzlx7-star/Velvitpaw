@@ -2632,20 +2632,22 @@ export default function App() {
                         >
                           <User size={14} /> Editar Perfil
                         </button>
-                        <button
-                          onClick={() => setShowFollowingList(true)}
-                          className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-all flex items-center gap-1.5"
-                          title="Quem eu sigo"
-                        >
-                          <UserPlus size={12} /> Seguindo ({followingUids.length})
-                        </button>
-                        <button
-                          onClick={() => setShowFollowersList(true)}
-                          className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-all flex items-center gap-1.5"
-                          title="Quem me segue"
-                        >
-                          <Users size={12} /> Seguidores ({followersUids.length})
-                        </button>
+                        <div className="flex items-center gap-2 flex-nowrap shrink-0">
+                          <button
+                            onClick={() => setShowFollowingList(true)}
+                            className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-all flex items-center gap-1.5 whitespace-nowrap"
+                            title="Quem eu sigo"
+                          >
+                            <UserPlus size={12} /> Seguindo ({followingUids.length})
+                          </button>
+                          <button
+                            onClick={() => setShowFollowersList(true)}
+                            className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] uppercase tracking-widest text-white/70 hover:text-white transition-all flex items-center gap-1.5 whitespace-nowrap"
+                            title="Quem me segue"
+                          >
+                            <Users size={12} /> Seguidores ({followersUids.length})
+                          </button>
+                        </div>
                         <button 
                           onClick={resetBackground}
                           className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/50 hover:text-white transition-colors"
