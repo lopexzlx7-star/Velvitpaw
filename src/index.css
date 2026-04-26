@@ -332,15 +332,7 @@
 }
 
 /* ── Subtle neon glow on accent elements (skip default white) ─────── */
-[data-accent="red"] .accent-logo,
-[data-accent="violet"] .accent-logo,
-[data-accent="blue"] .accent-logo,
-[data-accent="green"] .accent-logo,
-[data-accent="orange"] .accent-logo {
-  text-shadow:
-    0 0 6px rgba(var(--accent-rgb), 0.55),
-    0 0 14px rgba(var(--accent-rgb), 0.30);
-}
+/* Logo glow removed — was creating a visible "bubble" halo around VELVIT. */
 [data-accent="red"] .accent-primary-btn,
 [data-accent="violet"] .accent-primary-btn,
 [data-accent="blue"] .accent-primary-btn,
