@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 
-const TEN_MINUTES_MS = 10 * 60 * 1000;
+const PROXY_TIMEOUT_MS = 30 * 60 * 1000;
 
 export default defineConfig(() => {
   return {
@@ -26,8 +26,8 @@ export default defineConfig(() => {
         '/api': {
           target: 'http://localhost:3001',
           changeOrigin: true,
-          proxyTimeout: TEN_MINUTES_MS,
-          timeout: TEN_MINUTES_MS,
+          proxyTimeout: PROXY_TIMEOUT_MS,
+          timeout: PROXY_TIMEOUT_MS,
           configure: (proxy) => {
             proxy.on('error', (err) => {
               console.error('[vite-proxy] Erro:', err.message);

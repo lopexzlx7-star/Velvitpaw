@@ -36,7 +36,7 @@ const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const XHR_TIMEOUT_MS = 10 * 60 * 1000;
+const XHR_TIMEOUT_MS = 30 * 60 * 1000; // 30 min de tolerância para uploads longos
 const MAX_IMAGES = 10;
 
 function captureVideoFrame(file: File): Promise<string> {
