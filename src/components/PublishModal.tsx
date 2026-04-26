@@ -31,12 +31,12 @@ interface ImageItem {
   preview: string;
 }
 
-const MAX_VIDEO_DURATION = 180; // 3 minutes
+const MAX_VIDEO_DURATION = 600; // 10 minutes
 const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const XHR_TIMEOUT_MS = 3 * 60 * 1000;
+const XHR_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_IMAGES = 10;
 
 function captureVideoFrame(file: File): Promise<string> {
