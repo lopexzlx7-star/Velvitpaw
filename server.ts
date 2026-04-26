@@ -245,16 +245,11 @@ function buildCloudinarySignature(params: Record<string, string>): string {
     .digest('hex');
 }
 
-// ─── Cloudinary video optimization (incoming transformation) ─────────────────
-// Aplica no momento do upload — o arquivo armazenado JÁ vem otimizado:
-//   • q_auto:good   → qualidade automática equilibrada
-//   • vc_auto       → codec automático (H.264 / H.265 / AV1)
-//   • w_1920,h_1080,c_limit → master em 1080p (sem upscale, preserva proporção)
-// O front-end pede 720p via URL pra mobile e 1080p pra desktop, então o master
-// aqui é 1080p — o Cloudinary entrega a versão menor sob demanda.
-const VIDEO_INCOMING_TRANSFORMATION = 'q_auto:good,vc_auto,w_1920,h_1080,c_limit';
-
 // ─── Cloudinary upload helper ─────────────────────────────────────────────────
+// O upload guarda o arquivo original (rápido). A otimização é feita na entrega,
+// via URLs responsivas no front-end (ver src/utils/videoUrl.ts) — o Cloudinary
+// gera as versões 720p/1080p sob demanda e cacheia, então economia de banda
+// continua valendo sem travar o upload em vídeos longos.
 async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName: string): Promise<string> {
   if (!cloudinaryReady) throw new Error('Cloudinary não configurado');
   const fileName = originalName || 'upload';
@@ -262,11 +257,7 @@ async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName
   return withRetry(async () => {
     const timestamp = String(Math.floor(Date.now() / 1000));
     const folder = 'videos';
-    const paramsToSign: Record<string, string> = {
-      folder,
-      timestamp,
-      transformation: VIDEO_INCOMING_TRANSFORMATION,
-    };
+    const paramsToSign: Record<string, string> = { folder, timestamp };
     const signature = buildCloudinarySignature(paramsToSign);
 
     const form = new FormData();
@@ -274,7 +265,6 @@ async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName
     form.append('file', blob, fileName);
     form.append('folder', folder);
     form.append('timestamp', timestamp);
-    form.append('transformation', VIDEO_INCOMING_TRANSFORMATION);
     form.append('api_key', CLOUDINARY_API_KEY);
     form.append('signature', signature);
 
@@ -736,17 +726,12 @@ app.get('/api/cloudinary-sign', (_req: Request, res: Response) => {
   }
   const timestamp = String(Math.floor(Date.now() / 1000));
   const folder = 'videos';
-  const paramsToSign: Record<string, string> = {
-    folder,
-    timestamp,
-    transformation: VIDEO_INCOMING_TRANSFORMATION,
-  };
+  const paramsToSign: Record<string, string> = { folder, timestamp };
   const signature = buildCloudinarySignature(paramsToSign);
   return res.json({
     timestamp,
     folder,
     signature,
-    transformation: VIDEO_INCOMING_TRANSFORMATION,
     apiKey: CLOUDINARY_API_KEY,
     cloudName: CLOUD_NAME,
   });
