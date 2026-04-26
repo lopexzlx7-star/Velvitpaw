@@ -2372,6 +2372,14 @@ export default function App() {
                                 const name = anyN.fromUserName || 'Alguém';
                                 const photo = anyN.fromUserPhotoUrl as string | null | undefined;
                                 const thumb = anyN.postThumbnailUrl as string | null | undefined;
+                                const postIdFromN = anyN.postId as string | undefined;
+                                const post = postIdFromN
+                                  ? [...globalPosts, ...userPosts].find(p => p.id === postIdFromN)
+                                  : null;
+                                const postUrl = (post as any)?.url as string | undefined;
+                                const postType = (post as any)?.type as string | undefined;
+                                const isVideo = postType === 'video';
+                                const previewSrc = thumb || (!isVideo ? postUrl : undefined);
                                 const verb = (() => {
                                   switch (anyN.type) {
                                     case 'new_follower': return 'começou a seguir você.';
@@ -2429,8 +2437,26 @@ export default function App() {
                                         </p>
                                         {ts && <span className="text-[10px] text-white/30 mt-1 block">{ts}</span>}
                                       </div>
-                                      {thumb && (
-                                        <img src={thumb} alt="" className="w-10 h-10 rounded-md object-cover shrink-0 border border-white/10" />
+                                      {(previewSrc || (isVideo && postUrl)) && (
+                                        <div className="w-10 h-10 rounded-md overflow-hidden shrink-0 border border-white/10 bg-white/5">
+                                          {isVideo && postUrl && !thumb ? (
+                                            <video
+                                              src={`${postUrl}#t=0.1`}
+                                              muted
+                                              playsInline
+                                              preload="metadata"
+                                              className="w-full h-full object-cover"
+                                            />
+                                          ) : previewSrc ? (
+                                            <img
+                                              src={previewSrc}
+                                              alt=""
+                                              referrerPolicy="no-referrer"
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                            />
+                                          ) : null}
+                                        </div>
                                       )}
                                     </div>
                                   </SwipeableNotification>
