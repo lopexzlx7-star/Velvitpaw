@@ -41,6 +41,7 @@ import SaveToFolderModal from './components/SaveToFolderModal';
 import FolderDetailModal from './components/FolderDetailModal';
 import FolderCover from './components/FolderCover';
 import ProfileEditModal from './components/ProfileEditModal';
+import ImageCropperModal from './components/ImageCropperModal';
 import PhotoViewerModal from './components/PhotoViewerModal';
 import LoginBackdrop from './components/LoginBackdrop';
 import OfflineIndicator from './components/OfflineIndicator';
@@ -412,6 +413,7 @@ export default function App() {
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [cropperState, setCropperState] = useState<{ open: boolean; src: string | null; target: 'profile' | 'bg' | null }>({ open: false, src: null, target: null });
   const [publishHasMedia, setPublishHasMedia] = useState(false);
   const [photoViewer, setPhotoViewer] = useState<{ url: string | null; username: string } | null>(null);
   const [showEmailPopup, setShowEmailPopup] = useState(false);
@@ -1541,12 +1543,15 @@ export default function App() {
     reader.onloadend = () => {
       const base64String = reader.result as string;
       if (type === 'bg') {
-        updateBackground(base64String);
+        setCropperState({ open: true, src: base64String, target: 'bg' });
       } else if (type === 'profile') {
-        updateProfilePic(base64String);
+        setCropperState({ open: true, src: base64String, target: 'profile' });
       }
     };
     reader.readAsDataURL(file);
+
+    // Permite selecionar o mesmo arquivo de novo após cancelar
+    e.target.value = '';
   };
 
   const fuzzyScore = (text: string, query: string): number => {
@@ -3052,9 +3057,31 @@ export default function App() {
         currentProfilePic={profilePic}
         onClose={() => setShowProfileEdit(false)}
         onUpdateUsername={async (n) => { await handleUpdateUsername(n); }}
-        onSelectProfilePhoto={(e) => { handleFileSelect(e, 'profile'); setShowProfileEdit(false); }}
-        onSelectBackgroundPhoto={(e) => { handleFileSelect(e, 'bg'); setShowProfileEdit(false); }}
+        onSelectProfilePhoto={(e) => { handleFileSelect(e, 'profile'); }}
+        onSelectBackgroundPhoto={(e) => { handleFileSelect(e, 'bg'); }}
         onDeleteAccount={() => { setShowProfileEdit(false); handleDeleteAccount(); }}
+      />
+
+      <ImageCropperModal
+        open={cropperState.open}
+        imageSrc={cropperState.src}
+        shape={cropperState.target === 'profile' ? 'circle' : 'rect'}
+        aspect={cropperState.target === 'profile' ? 1 : 16 / 9}
+        outputWidth={cropperState.target === 'profile' ? 512 : 1920}
+        outputHeight={cropperState.target === 'profile' ? 512 : 1080}
+        outputType={cropperState.target === 'profile' ? 'image/png' : 'image/jpeg'}
+        outputQuality={0.92}
+        title={cropperState.target === 'profile' ? 'Foto de perfil' : 'Imagem de fundo'}
+        onCancel={() => setCropperState({ open: false, src: null, target: null })}
+        onConfirm={(dataUrl) => {
+          if (cropperState.target === 'profile') {
+            updateProfilePic(dataUrl);
+          } else if (cropperState.target === 'bg') {
+            updateBackground(dataUrl);
+          }
+          setCropperState({ open: false, src: null, target: null });
+          setShowProfileEdit(false);
+        }}
       />
 
       <PhotoViewerModal
