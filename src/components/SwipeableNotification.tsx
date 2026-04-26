@@ -27,6 +27,10 @@ const SwipeableNotification: React.FC<Props> = ({ children, onDelete, onClick, c
     }
   };
 
+  const stopTouchPropagation = (e: React.TouchEvent | React.PointerEvent) => {
+    e.stopPropagation();
+  };
+
   return (
     <AnimatePresence>
       {!removed && (
@@ -34,7 +38,13 @@ const SwipeableNotification: React.FC<Props> = ({ children, onDelete, onClick, c
           layout
           exit={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0 }}
           transition={{ duration: 0.2 }}
-          className={`relative overflow-hidden ${className ?? ''}`}
+          data-no-swipe="true"
+          onTouchStart={stopTouchPropagation}
+          onTouchMove={stopTouchPropagation}
+          onTouchEnd={stopTouchPropagation}
+          onPointerDown={stopTouchPropagation}
+          className={`relative overflow-hidden isolate ${className ?? ''}`}
+          style={{ touchAction: 'pan-y' }}
         >
           <motion.div
             className="absolute inset-0 flex items-center justify-end pr-6 bg-red-500/80 pointer-events-none"

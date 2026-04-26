@@ -2343,6 +2343,8 @@ export default function App() {
                           initial={{ opacity: 0, y: 10, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          data-no-swipe="true"
+                          style={{ isolation: 'isolate', WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}
                           className="fixed sm:absolute top-20 sm:top-full left-2 right-2 sm:left-auto sm:right-0 sm:mt-4 sm:w-96 glass-panel rounded-3xl z-[60] border border-white/10 overflow-hidden shadow-2xl"
                         >
                           <div className="p-4 border-b border-white/5 flex items-center justify-between">
@@ -2361,7 +2363,7 @@ export default function App() {
                               <button onClick={() => setShowNotifications(false)} className="text-white/30 hover:text-white"><X size={16} /></button>
                             </div>
                           </div>
-                          <div className="max-h-[28rem] overflow-y-auto">
+                          <div className="max-h-[28rem] overflow-y-auto overflow-x-hidden">
                             {visibleNotifications.length === 0 ? (
                               <div className="p-8 text-center text-white/20 text-xs uppercase tracking-widest">Nenhuma notificação</div>
                             ) : (
