@@ -1180,7 +1180,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="text-green-400 underline underline-offset-2 hover:text-green-300 transition-colors"
+                      className="text-red-500 underline underline-offset-2 hover:text-red-400 transition-colors"
+                      style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
                     >
                       {part}
                     </a>
