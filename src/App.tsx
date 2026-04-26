@@ -2087,15 +2087,7 @@ export default function App() {
         <div className="liquid-blob w-[300px] h-[300px] bg-white/5 top-[40%] right-[20%]" style={{ animationDelay: '-10s' }} />
       </div>
 
-      <motion.header 
-        style={{ 
-          opacity: headerOpacity,
-          scale: headerScale,
-          y: headerY,
-          pointerEvents: headerPointerEvents
-        }}
-        className="sticky top-0 z-50 px-6 py-8"
-      >
+      <header className="fixed top-0 inset-x-0 z-50 px-6 py-6 bg-space-gray-900/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-center">
           <motion.h1 
             initial={{ opacity: 0, x: -20 }}
@@ -2106,7 +2098,7 @@ export default function App() {
             VELVIT
           </motion.h1>
         </div>
-      </motion.header>
+      </header>
 
       <main className="relative h-full">
         <div
