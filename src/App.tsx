@@ -2057,7 +2057,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div
-        className="min-h-screen relative pb-32"
+        className="h-screen relative overflow-hidden"
         data-accent={accentColor === 'default' ? undefined : accentColor}
       >
       <div className="fixed inset-0 z-[-2] bg-space-gray-900" />
@@ -2108,9 +2108,9 @@ export default function App() {
         </div>
       </motion.header>
 
-      <main className="relative min-h-screen">
+      <main className="relative h-full">
         <div
-          className="fixed inset-0 pt-24 z-30 overflow-hidden"
+          className="fixed top-24 inset-x-0 bottom-0 z-30 overflow-hidden"
           onTouchStart={onMainTouchStart}
           onTouchMove={onMainTouchMove}
           onTouchEnd={onMainTouchEnd}
