@@ -410,6 +410,9 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
     fd.append('signature', sign.signature);
     fd.append('api_key', sign.apiKey);
     fd.append('resource_type', 'video');
+    // Otimização no upload: o Cloudinary já armazena uma versão re-encodada
+    // (codec/qualidade auto, máx 1080p) — economiza muito espaço sem perda visível.
+    if (sign.transformation) fd.append('transformation', sign.transformation);
     const data = await xhrDirectUpload(`https://api.cloudinary.com/v1_1/${sign.cloudName}/video/upload`, fd);
     if (!data.secure_url) throw new Error('Cloudinary não retornou URL do vídeo.');
     return data.secure_url as string;
