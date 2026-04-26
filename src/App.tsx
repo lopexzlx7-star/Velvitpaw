@@ -2087,9 +2087,17 @@ export default function App() {
         <div className="liquid-blob w-[300px] h-[300px] bg-white/5 top-[40%] right-[20%]" style={{ animationDelay: '-10s' }} />
       </div>
 
-      <header className="fixed top-0 inset-x-0 z-50 px-6 py-6 bg-space-gray-900/80 backdrop-blur-md">
+      <motion.header
+        style={{
+          opacity: headerOpacity,
+          scale: headerScale,
+          y: headerY,
+          pointerEvents: headerPointerEvents
+        }}
+        className="fixed top-0 inset-x-0 z-50 px-6 py-8"
+      >
         <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             onClick={handleHomeClick}
@@ -2098,11 +2106,11 @@ export default function App() {
             VELVIT
           </motion.h1>
         </div>
-      </header>
+      </motion.header>
 
       <main className="relative h-full">
         <div
-          className="fixed top-24 inset-x-0 bottom-0 z-30 overflow-hidden"
+          className="fixed inset-0 z-30 overflow-hidden"
           onTouchStart={onMainTouchStart}
           onTouchMove={onMainTouchMove}
           onTouchEnd={onMainTouchEnd}
@@ -2115,7 +2123,7 @@ export default function App() {
             <div
               ref={feedScrollRef}
               key="feed"
-              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar"
+              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar pt-24"
             >
               <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
                 <div className="flex items-center justify-between mb-8 gap-4">
@@ -2470,7 +2478,7 @@ export default function App() {
             <div
               ref={profileScrollRef}
               key="profile"
-              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar"
+              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar pt-24"
             >
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl relative">
