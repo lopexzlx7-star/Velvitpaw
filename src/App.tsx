@@ -1262,6 +1262,66 @@ export default function App() {
     }
   };
 
+  // Abre a tela correta para a notificação clicada
+  const handleNotificationClick = async (n: Notification) => {
+    const anyN = n as any;
+
+    // Marca como lida (best-effort)
+    if (!n.read) {
+      fetch(`/api/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {});
+      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } as Notification : x));
+    }
+
+    // Fecha o painel de notificações
+    setShowNotifications(false);
+
+    const type = anyN.type as string | undefined;
+
+    // Notificação de novo seguidor → abrir perfil do usuário
+    if (type === 'new_follower') {
+      const fromUid = anyN.fromUserId as string | undefined;
+      if (!fromUid) return;
+      if (auth.currentUser && fromUid === auth.currentUser.uid) {
+        setCurrentTab('profile');
+        setProfileTab('posts');
+      } else {
+        setSelectedPost(null);
+        setOpenFolder(null);
+        setProfileViewUid(fromUid);
+      }
+      return;
+    }
+
+    // Demais tipos (new_post, like, comment, recommended) → abrir o post
+    const postId = anyN.postId as string | undefined;
+    if (!postId) return;
+
+    // Tenta achar o post entre os já carregados
+    const cached = [...globalPosts, ...userPosts].find(p => p.id === postId);
+    if (cached) {
+      setProfileViewUid(null);
+      setOpenFolder(null);
+      setSelectedPost(cached);
+      return;
+    }
+
+    // Caso não esteja em cache, busca no Firestore
+    try {
+      const snap = await getDoc(doc(db, 'posts', postId));
+      if (snap.exists()) {
+        const data = snap.data() as any;
+        const post: ContentItem = { id: snap.id, ...data };
+        setProfileViewUid(null);
+        setOpenFolder(null);
+        setSelectedPost(post);
+      } else {
+        alert('Esse post não está mais disponível.');
+      }
+    } catch (err) {
+      console.error('Erro ao abrir post da notificação:', err);
+    }
+  };
+
   // Hide notifications older than one week from the UI immediately, and tell
   // the backend to permanently delete them (best-effort, runs at most once
   // per session per user).
@@ -2417,12 +2477,8 @@ export default function App() {
                                   <SwipeableNotification
                                     key={n.id}
                                     onDelete={() => handleDeleteNotification(n.id)}
-                                    onClick={() => {
-                                      if (!n.read) {
-                                        fetch(`/api/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {});
-                                      }
-                                    }}
-                                    className={`border-b border-white/5 ${!n.read ? 'bg-white/5' : ''}`}
+                                    onClick={() => { handleNotificationClick(n); }}
+                                    className={`border-b border-white/5 cursor-pointer hover:bg-white/[0.07] transition-colors ${!n.read ? 'bg-white/5' : ''}`}
                                   >
                                     <div className="p-3 flex items-center gap-3">
                                       <div className="relative shrink-0">
