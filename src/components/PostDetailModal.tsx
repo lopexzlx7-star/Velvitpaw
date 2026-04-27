@@ -5,7 +5,6 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
 import { useIsMobile, getResponsiveVideoUrl } from '../utils/videoUrl';
-import { enhanceVideoAudio } from '../utils/audioEnhancer';
 
 interface PostDetailModalProps {
   item: ContentItem;
@@ -168,15 +167,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       if (controlsTimer.current) clearTimeout(controlsTimer.current);
     };
   }, []);
-
-  // Liga o processamento de áudio (filtros + compressor) no vídeo principal.
-  // Roda no próprio dispositivo do usuário, em tempo real.
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    const cleanup = enhanceVideoAudio(v);
-    return cleanup;
-  }, [item.id, item.url]);
 
   const triggerSeek = (side: 'left' | 'right') => {
     const video = videoRef.current;
