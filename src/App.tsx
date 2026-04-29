@@ -409,6 +409,14 @@ export default function App() {
   const [trendingPosts, setTrendingPosts] = useState<ContentItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentTab, setCurrentTab] = useState<'feed' | 'profile'>('feed');
+  // Auto-close the notifications panel whenever the user navigates away
+  // (changes tabs, opens the publish modal, opens a post, etc).
+  useEffect(() => {
+    if (currentTab !== 'feed') setShowNotifications(false);
+  }, [currentTab]);
+  useEffect(() => {
+    if (showPublishModal) setShowNotifications(false);
+  }, [showPublishModal]);
   const [selectedPost, setSelectedPost] = useState<ContentItem | null>(null);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
