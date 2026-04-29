@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'velvit-v1';
+const CACHE_VERSION = 'velvit-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -33,7 +33,6 @@ function shouldBypass(url) {
   if (url.hostname.includes('googleapis.com')) return true;
   if (url.hostname.includes('firebaseapp.com')) return true;
   if (url.hostname.includes('cloudfunctions.net')) return true;
-  if (url.hostname.includes('onrender.com')) return true;
   return false;
 }
 
