@@ -33,6 +33,7 @@ import { ContentItem, Notification, Folder, HashtagCategory } from './types';
 import GlassCard from './components/GlassCard';
 import { useResponsiveVideoUrl, getResponsiveVideoUrl } from './utils/videoUrl';
 import FloatingNav from './components/FloatingNav';
+import RefreshIndicator from './components/RefreshIndicator';
 import PublishModal from './components/PublishModal';
 import PostDetailModal from './components/PostDetailModal';
 import UserProfileModal from './components/UserProfileModal';
@@ -409,6 +410,7 @@ export default function App() {
   const [trendingPosts, setTrendingPosts] = useState<ContentItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentTab, setCurrentTab] = useState<'feed' | 'profile'>('feed');
+  const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
   // Auto-close the notifications panel whenever the user navigates away
   // (changes tabs, opens the publish modal, opens a post, etc).
   useEffect(() => {
@@ -1257,7 +1259,28 @@ export default function App() {
     setSearchQuery('');
     setActiveHashtag(null);
     setHashtagResults([]);
-    setItems(globalPosts);
+
+    // Show the refresh indicator and pull the freshest posts from Firestore.
+    setIsRefreshingFeed(true);
+    const minVisible = new Promise<void>(resolve => setTimeout(resolve, 750));
+    const refresh = (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'posts'), limit(100)));
+        const fetched = snap.docs.map(d => ({ ...d.data(), id: d.id })) as ContentItem[];
+        fetched.sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          if (dateB !== dateA) return dateB - dateA;
+          return (b.id || '').localeCompare(a.id || '');
+        });
+        const visible = fetched.filter(p => !(p as any).archived);
+        setGlobalPosts(visible);
+        setItems(visible);
+      } catch {
+        setItems(globalPosts);
+      }
+    })();
+    Promise.all([refresh, minVisible]).finally(() => setIsRefreshingFeed(false));
   };
 
   // ─── Notifications: delete one + auto-cleanup of older than 7 days ───────
@@ -2878,6 +2901,8 @@ export default function App() {
           </motion.div>
         </div>
       </main>
+
+      <RefreshIndicator visible={isRefreshingFeed} />
 
       {!publishHasMedia && !selectedPost && (
         <FloatingNav
