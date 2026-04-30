@@ -64,6 +64,8 @@ interface GlassCardProps {
   isLiked: boolean;
   isSaved?: boolean;
   isFollowing?: boolean;
+  isNew?: boolean;
+  onSeen?: (id: string) => void;
   onLike: (id: string) => void;
   onSave?: (id: string) => void;
   onFollow?: (uid: string) => void;
@@ -170,6 +172,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
   isLiked, 
   isSaved, 
   isFollowing, 
+  isNew,
+  onSeen,
   onLike, 
   onSave, 
   onFollow, 
@@ -179,6 +183,39 @@ const GlassCard: React.FC<GlassCardProps> = ({
   isUserPost,
   searchQuery = ''
 }) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isNew || !onSeen) return;
+    const el = cardRef.current;
+    if (!el) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+            if (!timer) {
+              timer = setTimeout(() => {
+                onSeen(item.id);
+                timer = null;
+              }, 1500);
+            }
+          } else if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+        });
+      },
+      { threshold: [0.5] }
+    );
+    observer.observe(el);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [isNew, item.id, onSeen]);
   const responsiveVideoUrl = useResponsiveVideoUrl(item.url);
   const [isLoaded, setIsLoaded] = useState(false);
   const [videoError, setVideoError] = useState(false);
@@ -258,11 +295,41 @@ const GlassCard: React.FC<GlassCardProps> = ({
       } as React.CSSProperties}
     >
       <div 
+        ref={cardRef}
         className="relative rounded-[2rem] overflow-hidden bg-white/5 border border-white/10 shadow-xl transition-transform duration-300 group-hover:-translate-y-1 cursor-pointer"
         onClick={handleTap}
         onContextMenu={(e) => e.preventDefault()}
         style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', willChange: 'transform' }}
       >
+        {/* New post badge — shown only for unseen posts from followed users */}
+        <AnimatePresence>
+          {isNew && (
+            <motion.div
+              key="new-badge"
+              initial={{ opacity: 0, y: -6, scale: 0.85 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.85 }}
+              transition={{ duration: 0.25 }}
+              className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full backdrop-blur-md"
+              style={{
+                background: 'rgba(0,0,0,0.55)',
+                boxShadow:
+                  '0 4px 14px -3px rgba(var(--accent-rgb, 255 255 255), 0.45), inset 0 0 0 1px rgba(var(--accent-rgb, 255 255 255), 0.6)',
+              }}
+            >
+              <motion.span
+                className="block w-1.5 h-1.5 rounded-full"
+                style={{ background: 'rgb(var(--accent-rgb, 255 255 255))' }}
+                animate={{ opacity: [1, 0.35, 1], scale: [1, 1.25, 1] }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <span className="text-[9px] font-black uppercase tracking-widest text-white">
+                Novo
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Media Container */}
         <div className="relative overflow-hidden">
           {!isLoaded && !getVideoThumb(item.url, item.thumbnailUrl) && (
@@ -455,6 +522,7 @@ export default React.memo(GlassCard, (prev, next) => {
     prev.isLiked === next.isLiked &&
     prev.isSaved === next.isSaved &&
     prev.isFollowing === next.isFollowing &&
+    prev.isNew === next.isNew &&
     prev.isUserPost === next.isUserPost &&
     prev.searchQuery === next.searchQuery &&
     prev.item.likesCount === next.item.likesCount

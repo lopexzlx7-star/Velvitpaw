@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
 import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus, Users } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { 
@@ -303,6 +303,29 @@ export default function App() {
     const saved = localStorage.getItem('velvit_saves');
     return saved ? JSON.parse(saved) : [];
   });
+  const [seenPostIds, setSeenPostIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('velvit_seen_posts');
+    return new Set(saved ? JSON.parse(saved) : []);
+  });
+  const [seenBaseline] = useState<string>(() => {
+    let baseline = localStorage.getItem('velvit_seen_baseline');
+    if (!baseline) {
+      baseline = new Date().toISOString();
+      localStorage.setItem('velvit_seen_baseline', baseline);
+    }
+    return baseline;
+  });
+  const markPostAsSeen = useCallback((id: string) => {
+    setSeenPostIds(prev => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem('velvit_seen_posts', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  }, []);
   const [profileTab, setProfileTab] = useState<'posts' | 'liked' | 'folders'>('posts');
   const [folders, setFolders] = useState<Folder[]>([]);
   const [saveToFolderTarget, setSaveToFolderTarget] = useState<ContentItem | null>(null);
@@ -2612,22 +2635,32 @@ export default function App() {
                       <div key={i} className="mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: [250, 300, 400, 600][i % 4] }} />
                     ))
                   ) : (
-                    (activeTab === 'foryou' ? forYouItems : items).map((item) => (
-                      <GlassCard 
-                        key={item.id} 
-                        item={item} 
-                        isLiked={likedIds.includes(item.id)}
-                        isSaved={savedIds.includes(item.id)}
-                        isFollowing={followingUids.includes((item as any).authorUid)}
-                        onLike={handleLike}
-                        onSave={openSavePicker}
-                        onFollow={handleFollow}
-                        onClick={() => setSelectedPost(item)}
-                        onHashtagClick={handleHashtagClick}
-                        isUserPost={(item as any).authorUid === auth.currentUser?.uid}
-                        searchQuery={searchQuery}
-                      />
-                    ))
+                    (activeTab === 'foryou' ? forYouItems : items).map((item) => {
+                      const authorUid = (item as any).authorUid as string | undefined;
+                      const isOwnPost = authorUid === auth.currentUser?.uid;
+                      const isFromFollowed = !!authorUid && followingUids.includes(authorUid);
+                      const createdAt = (item as any).createdAt as string | undefined;
+                      const isAfterBaseline = !!createdAt && createdAt > seenBaseline;
+                      const isNew = isFromFollowed && !isOwnPost && isAfterBaseline && !seenPostIds.has(item.id);
+                      return (
+                        <GlassCard 
+                          key={item.id} 
+                          item={item} 
+                          isLiked={likedIds.includes(item.id)}
+                          isSaved={savedIds.includes(item.id)}
+                          isFollowing={followingUids.includes(authorUid || '')}
+                          isNew={isNew}
+                          onSeen={markPostAsSeen}
+                          onLike={handleLike}
+                          onSave={openSavePicker}
+                          onFollow={handleFollow}
+                          onClick={() => { markPostAsSeen(item.id); setSelectedPost(item); }}
+                          onHashtagClick={handleHashtagClick}
+                          isUserPost={isOwnPost}
+                          searchQuery={searchQuery}
+                        />
+                      );
+                    })
                   )}
                 </div>
 
