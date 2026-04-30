@@ -558,7 +558,7 @@ export default function App() {
       }
     });
 
-    const q = query(collection(db, 'posts'), limit(100));
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(100));
     const unsubscribePosts = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(doc => ({
         ...doc.data(),
@@ -1265,7 +1265,7 @@ export default function App() {
     const minVisible = new Promise<void>(resolve => setTimeout(resolve, 750));
     const refresh = (async () => {
       try {
-        const snap = await getDocs(query(collection(db, 'posts'), limit(100)));
+        const snap = await getDocs(query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(100)));
         const fetched = snap.docs.map(d => ({ ...d.data(), id: d.id })) as ContentItem[];
         fetched.sort((a, b) => {
           const dateA = new Date(a.createdAt || 0).getTime();
