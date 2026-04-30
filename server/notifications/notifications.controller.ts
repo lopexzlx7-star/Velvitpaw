@@ -20,6 +20,13 @@ const VALID_TYPES: NotificationType[] = [
   'comment',
 ];
 
+// Returns true if this error is just "Firebase Admin not configured".
+// In that case the caller should respond 200 with a clean payload instead of
+// noisy 500s, since the rest of the app (which talks to Firestore directly
+// from the client) is unaffected.
+const isFirebaseAdminMissing = (err: any): boolean =>
+  typeof err?.message === 'string' && err.message.includes('Firebase Admin');
+
 export const create = async (req: Request, res: Response) => {
   try {
     const {
@@ -63,6 +70,9 @@ export const create = async (req: Request, res: Response) => {
 
     return res.status(201).json(created);
   } catch (err: any) {
+    if (isFirebaseAdminMissing(err)) {
+      return res.json({ skipped: true, configured: false });
+    }
     console.error('[notifications.create]', err);
     return res.status(500).json({ error: err.message || 'Erro interno.' });
   }
@@ -76,6 +86,9 @@ export const list = async (req: Request, res: Response) => {
     const items = await listNotifications(userId, limit);
     return res.json({ count: items.length, items });
   } catch (err: any) {
+    if (isFirebaseAdminMissing(err)) {
+      return res.json({ count: 0, items: [], configured: false });
+    }
     console.error('[notifications.list]', err);
     return res.status(500).json({ error: err.message || 'Erro interno.' });
   }
@@ -87,6 +100,9 @@ export const read = async (req: Request, res: Response) => {
     const updated = await markAsRead(id);
     return res.json(updated);
   } catch (err: any) {
+    if (isFirebaseAdminMissing(err)) {
+      return res.json({ ok: true, configured: false });
+    }
     console.error('[notifications.read]', err);
     const status = err.message?.includes('não encontrada') ? 404 : 500;
     return res.status(status).json({ error: err.message || 'Erro interno.' });
@@ -99,6 +115,9 @@ export const readAll = async (req: Request, res: Response) => {
     const updated = await markAllAsRead(userId);
     return res.json({ updated });
   } catch (err: any) {
+    if (isFirebaseAdminMissing(err)) {
+      return res.json({ updated: 0, configured: false });
+    }
     console.error('[notifications.readAll]', err);
     return res.status(500).json({ error: err.message || 'Erro interno.' });
   }
@@ -111,6 +130,9 @@ export const remove = async (req: Request, res: Response) => {
     const result = await removeNotification(id);
     return res.json(result);
   } catch (err: any) {
+    if (isFirebaseAdminMissing(err)) {
+      return res.json({ ok: true, configured: false });
+    }
     console.error('[notifications.remove]', err);
     return res.status(500).json({ error: err.message || 'Erro interno.' });
   }
@@ -124,6 +146,9 @@ export const cleanupOld = async (req: Request, res: Response) => {
     const deleted = await cleanupOldNotifications(userId, days);
     return res.json({ deleted, olderThanDays: days });
   } catch (err: any) {
+    if (isFirebaseAdminMissing(err)) {
+      return res.json({ deleted: 0, configured: false });
+    }
     console.error('[notifications.cleanupOld]', err);
     return res.status(500).json({ error: err.message || 'Erro interno.' });
   }
@@ -154,6 +179,9 @@ export const triggerNewPost = async (req: Request, res: Response) => {
     });
     return res.json({ sent });
   } catch (err: any) {
+    if (isFirebaseAdminMissing(err)) {
+      return res.json({ sent: 0, configured: false });
+    }
     console.error('[notifications.triggerNewPost]', err);
     return res.status(500).json({ error: err.message || 'Erro interno.' });
   }
@@ -174,6 +202,9 @@ export const triggerNewFollower = async (req: Request, res: Response) => {
     });
     return res.json({ created: result });
   } catch (err: any) {
+    if (isFirebaseAdminMissing(err)) {
+      return res.json({ created: false, configured: false });
+    }
     console.error('[notifications.triggerNewFollower]', err);
     return res.status(500).json({ error: err.message || 'Erro interno.' });
   }
@@ -186,6 +217,9 @@ export const triggerRecommendation = async (req: Request, res: Response) => {
     const result = await sendRecommendationToUser(userId);
     return res.json({ created: result });
   } catch (err: any) {
+    if (isFirebaseAdminMissing(err)) {
+      return res.json({ created: false, configured: false });
+    }
     console.error('[notifications.triggerRecommendation]', err);
     return res.status(500).json({ error: err.message || 'Erro interno.' });
   }

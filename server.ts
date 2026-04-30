@@ -225,7 +225,7 @@ async function withRetry<T>(
     try {
       return await fn();
     } catch (err: any) {
-      if (attempt === retries) throw err;
+      if (err?.noRetry || attempt === retries) throw err;
       console.warn(`[${label}] Tentativa ${attempt} falhou: ${err?.message}. Aguardando ${delayMs * attempt}ms...`);
       await new Promise(r => setTimeout(r, delayMs * attempt));
     }
@@ -286,14 +286,43 @@ async function uploadToStorj(
 ): Promise<string> {
   if (!storjReady || !storjClient) throw new Error('Storj não configurado');
 
-  await withRetry(async () => {
-    await storjClient!.send(new PutObjectCommand({
-      Bucket: STORJ_BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-    }));
-  }, 3, 2000, 'Storj-upload');
+  // Auth/permission errors are permanent — fail fast so the caller can
+  // immediately fall back to Cloudinary instead of waiting through retries.
+  const isAuthError = (err: any): boolean => {
+    const name = err?.name || '';
+    const code = err?.Code || err?.code || '';
+    const msg = (err?.message || '').toLowerCase();
+    return (
+      name === 'AccessDenied' ||
+      code === 'AccessDenied' ||
+      code === 'InvalidAccessKeyId' ||
+      code === 'SignatureDoesNotMatch' ||
+      code === 'NoSuchBucket' ||
+      msg.includes('access denied') ||
+      msg.includes('forbidden')
+    );
+  };
+
+  try {
+    await withRetry(async () => {
+      try {
+        await storjClient!.send(new PutObjectCommand({
+          Bucket: STORJ_BUCKET,
+          Key: key,
+          Body: buffer,
+          ContentType: contentType,
+        }));
+      } catch (err: any) {
+        if (isAuthError(err)) {
+          // Mark as non-retryable so withRetry stops immediately.
+          (err as any).noRetry = true;
+        }
+        throw err;
+      }
+    }, 3, 2000, 'Storj-upload');
+  } catch (err: any) {
+    throw err;
+  }
 
   return `${STORJ_PUBLIC_BASE}/${key}`;
 }
