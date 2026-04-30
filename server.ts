@@ -6,7 +6,6 @@ import path from 'path';
 import express, { Request, Response, NextFunction } from 'express';
 import OpenAI from 'openai';
 import multer from 'multer';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import admin from 'firebase-admin';
 
 // ─── Cloudinary v2 client ─────────────────────────────────────────────────────
@@ -34,42 +33,13 @@ const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME ?? '';
 const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY ?? '';
 const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET ?? '';
 
-// ─── Storj config (S3-compatible) ─────────────────────────────────────────────
-const STORJ_ACCESS_KEY = process.env.STORJ_ACCESS_KEY ?? '';
-const STORJ_SECRET_KEY = process.env.STORJ_SECRET_KEY ?? '';
-const STORJ_BUCKET = process.env.STORJ_BUCKET ?? '';
-const STORJ_ENDPOINT = process.env.STORJ_ENDPOINT ?? 'https://gateway.storjshare.io';
-// Public base URL for served files, e.g. https://link.storjshare.io/raw/ACCESS/bucket
-// Falls back to constructing from endpoint + bucket
-const STORJ_PUBLIC_BASE = process.env.STORJ_PUBLIC_BASE_URL
-  ? process.env.STORJ_PUBLIC_BASE_URL.replace(/\/$/, '')
-  : `${STORJ_ENDPOINT}/${STORJ_BUCKET}`;
-
 // ─── Startup diagnostics ──────────────────────────────────────────────────────
 const cloudinaryReady = !!(CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
-const storjReady = !!(STORJ_ACCESS_KEY && STORJ_SECRET_KEY && STORJ_BUCKET);
 
 if (cloudinaryReady) {
-  console.log(`[OK] Cloudinary pronto: cloud=${CLOUD_NAME} (vídeos grandes)`);
+  console.log(`[OK] Cloudinary pronto: cloud=${CLOUD_NAME} (vídeos, imagens, thumbnails e frames)`);
 } else {
   console.error('[AVISO] Cloudinary NÃO configurado. Defina CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY e CLOUDINARY_API_SECRET nos Secrets.');
-}
-
-if (storjReady) {
-  console.log(`[OK] Storj pronto: bucket=${STORJ_BUCKET} (imagens, thumbnails e vídeos pequenos)`);
-} else {
-  console.error('[AVISO] Storj NÃO configurado. Defina STORJ_ACCESS_KEY, STORJ_SECRET_KEY e STORJ_BUCKET nos Secrets.');
-}
-
-// ─── Storj S3 client ──────────────────────────────────────────────────────────
-let storjClient: S3Client | null = null;
-if (storjReady) {
-  storjClient = new S3Client({
-    region: 'us-east-1',
-    endpoint: STORJ_ENDPOINT,
-    credentials: { accessKeyId: STORJ_ACCESS_KEY, secretAccessKey: STORJ_SECRET_KEY },
-    forcePathStyle: true,
-  });
 }
 
 // ─── Multer (memory storage, 500 MB cap) ─────────────────────────────────────
@@ -278,53 +248,40 @@ async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName
   }, 3, 2000, 'Cloudinary');
 }
 
-// ─── Storj upload helper ──────────────────────────────────────────────────────
-async function uploadToStorj(
+// ─── Cloudinary image upload helper ──────────────────────────────────────────
+// Uploads any image (jpeg/png/webp) to Cloudinary's image resource via signed
+// upload. Returns the secure CDN URL. `folder` controls Cloudinary folder
+// (e.g. "images", "thumbnails", "frames").
+async function uploadImageToCloudinary(
   buffer: Buffer,
-  key: string,
-  contentType: string
+  mimetype: string,
+  originalName: string,
+  folder: string
 ): Promise<string> {
-  if (!storjReady || !storjClient) throw new Error('Storj não configurado');
+  if (!cloudinaryReady) throw new Error('Cloudinary não configurado');
+  const fileName = originalName || 'upload';
 
-  // Auth/permission errors are permanent — fail fast so the caller can
-  // immediately fall back to Cloudinary instead of waiting through retries.
-  const isAuthError = (err: any): boolean => {
-    const name = err?.name || '';
-    const code = err?.Code || err?.code || '';
-    const msg = (err?.message || '').toLowerCase();
-    return (
-      name === 'AccessDenied' ||
-      code === 'AccessDenied' ||
-      code === 'InvalidAccessKeyId' ||
-      code === 'SignatureDoesNotMatch' ||
-      code === 'NoSuchBucket' ||
-      msg.includes('access denied') ||
-      msg.includes('forbidden')
+  return withRetry(async () => {
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const paramsToSign: Record<string, string> = { folder, timestamp };
+    const signature = buildCloudinarySignature(paramsToSign);
+
+    const form = new FormData();
+    const blob = new Blob([buffer], { type: mimetype });
+    form.append('file', blob, fileName);
+    form.append('folder', folder);
+    form.append('timestamp', timestamp);
+    form.append('api_key', CLOUDINARY_API_KEY);
+    form.append('signature', signature);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+      { method: 'POST', body: form }
     );
-  };
-
-  try {
-    await withRetry(async () => {
-      try {
-        await storjClient!.send(new PutObjectCommand({
-          Bucket: STORJ_BUCKET,
-          Key: key,
-          Body: buffer,
-          ContentType: contentType,
-        }));
-      } catch (err: any) {
-        if (isAuthError(err)) {
-          // Mark as non-retryable so withRetry stops immediately.
-          (err as any).noRetry = true;
-        }
-        throw err;
-      }
-    }, 3, 2000, 'Storj-upload');
-  } catch (err: any) {
-    throw err;
-  }
-
-  return `${STORJ_PUBLIC_BASE}/${key}`;
+    const data: any = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || 'Cloudinary retornou erro');
+    return data.secure_url as string;
+  }, 3, 2000, 'Cloudinary-image');
 }
 
 // ─── Notifications module (modular routes) ──────────────────────────────────
@@ -338,14 +295,13 @@ app.get('/api/health', (_req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     services: {
       cloudinary: cloudinaryReady ? 'configured' : 'missing',
-      storj: storjReady ? 'configured' : 'missing',
       openai: !!process.env.OPENAI_API_KEY ? 'configured' : 'missing',
     },
     routing: {
-      videos: 'Cloudinary (todos os tamanhos)',
-      images: 'Storj',
-      thumbnails: 'Storj',
-      frames: 'Storj',
+      videos: 'Cloudinary',
+      images: 'Cloudinary',
+      thumbnails: 'Cloudinary',
+      frames: 'Cloudinary',
     },
   });
 });
@@ -610,7 +566,7 @@ app.get('/api/search-tags/:query', (req: Request, res: Response) => {
   res.json({ related });
 });
 
-// ─── /api/upload-image — server-side image upload to Storj ───────────────────
+// ─── /api/upload-image — server-side image upload to Cloudinary ──────────────
 // Accepts: multipart/form-data with field "file" (image)
 // Returns: { url }
 const imageUploadMiddleware = multer({
@@ -630,62 +586,35 @@ app.post('/api/upload-image', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Apenas imagens são aceitas.' });
     }
 
-    // Prefer Storj; fall back to Cloudinary when Storj is not configured
-    if (storjReady && storjClient) {
-      const ext = req.file.originalname.split('.').pop() || 'jpg';
-      const key = `images/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      try {
-        const url = await uploadToStorj(req.file.buffer, key, req.file.mimetype);
-        console.log(`[upload-image] ✓ Storj: ${url}`);
-        return res.json({ url });
-      } catch (err: any) {
-        console.error('[upload-image] Storj falhou, tentando Cloudinary:', err?.message);
-      }
+    if (!cloudinaryReady) {
+      return res.status(503).json({ error: 'Cloudinary não configurado. Defina as credenciais nos Secrets.' });
     }
 
-    if (cloudinaryReady) {
-      try {
-        const timestamp = String(Math.floor(Date.now() / 1000));
-        const folder = 'images';
-        const paramsToSign: Record<string, string> = { folder, timestamp };
-        const signature = buildCloudinarySignature(paramsToSign);
-
-        const form = new FormData();
-        const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
-        form.append('file', blob, req.file.originalname);
-        form.append('folder', folder);
-        form.append('timestamp', timestamp);
-        form.append('api_key', CLOUDINARY_API_KEY);
-        form.append('signature', signature);
-
-        const response = await fetch(
-          `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-          { method: 'POST', body: form }
-        );
-        const data: any = await response.json();
-        if (!response.ok) throw new Error(data?.error?.message || 'Cloudinary retornou erro');
-        const url = data.secure_url as string;
-        console.log(`[upload-image] ✓ Cloudinary: ${url}`);
-        return res.json({ url });
-      } catch (err: any) {
-        console.error('[upload-image] Cloudinary falhou:', err?.message);
-        return res.status(500).json({ error: 'Falha ao enviar imagem para o Cloudinary.' });
-      }
+    try {
+      const url = await uploadImageToCloudinary(
+        req.file.buffer,
+        req.file.mimetype,
+        req.file.originalname,
+        'images',
+      );
+      console.log(`[upload-image] ✓ Cloudinary: ${url}`);
+      return res.json({ url });
+    } catch (err: any) {
+      console.error('[upload-image] Cloudinary falhou:', err?.message);
+      return res.status(500).json({ error: 'Falha ao enviar imagem para o Cloudinary.' });
     }
-
-    return res.status(503).json({ error: 'Nenhum serviço de armazenamento configurado. Configure Storj ou Cloudinary nos Secrets.' });
   });
 });
 
-// ─── /api/upload-thumbnail — upload base64 thumbnail to Storj ────────────────
+// ─── /api/upload-thumbnail — upload base64 thumbnail to Cloudinary ───────────
 app.post('/api/upload-thumbnail', async (req: Request, res: Response) => {
   const { thumbnail } = req.body as { thumbnail?: string };
   if (!thumbnail || !thumbnail.startsWith('data:image/')) {
     return res.status(400).json({ error: 'Campo "thumbnail" ausente ou inválido.' });
   }
 
-  if (!storjReady || !storjClient) {
-    return res.status(503).json({ error: 'Storj não configurado. Defina as credenciais nos Secrets.' });
+  if (!cloudinaryReady) {
+    return res.status(503).json({ error: 'Cloudinary não configurado. Defina as credenciais nos Secrets.' });
   }
 
   try {
@@ -694,14 +623,14 @@ app.post('/api/upload-thumbnail', async (req: Request, res: Response) => {
     const contentType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
     const ext = contentType.split('/')[1] || 'jpg';
     const buffer = Buffer.from(base64Data, 'base64');
-    const key = `thumbnails/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const fileName = `thumb_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
-    const url = await uploadToStorj(buffer, key, contentType);
+    const url = await uploadImageToCloudinary(buffer, contentType, fileName, 'thumbnails');
     console.log(`[upload-thumbnail] ✓ ${url}`);
     return res.json({ url });
   } catch (err: any) {
     console.error('[upload-thumbnail] Falha:', err?.message);
-    return res.status(500).json({ error: 'Falha ao enviar thumbnail para o Storj.' });
+    return res.status(500).json({ error: 'Falha ao enviar thumbnail para o Cloudinary.' });
   }
 });
 
@@ -766,7 +695,7 @@ app.get('/api/cloudinary-sign', (_req: Request, res: Response) => {
   });
 });
 
-// ─── /api/upload-frames — upload multiple PNG frames to Storj ─────────────────
+// ─── /api/upload-frames — upload multiple PNG frames to Cloudinary ───────────
 const framesUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -787,9 +716,9 @@ app.post('/api/upload-frames', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Nenhum frame recebido.' });
     }
 
-    if (!storjReady || !storjClient) {
+    if (!cloudinaryReady) {
       return res.status(503).json({
-        error: 'Storj não configurado. Defina STORJ_ACCESS_KEY, STORJ_SECRET_KEY e STORJ_BUCKET nos Secrets.',
+        error: 'Cloudinary não configurado. Defina as credenciais nos Secrets.',
       });
     }
 
@@ -805,15 +734,15 @@ app.post('/api/upload-frames', (req: Request, res: Response) => {
     const results: Array<{ name: string; url: string }> = [];
 
     for (const file of files) {
-      const safeName = `frames/frame_${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const safeName = `frame_${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
       try {
-        const url = await uploadToStorj(file.buffer, safeName, file.mimetype);
+        const url = await uploadImageToCloudinary(file.buffer, file.mimetype, safeName, 'frames');
         console.log(`[upload-frames] ✓ ${safeName} → ${url}`);
-        results.push({ name: path.basename(safeName), url });
+        results.push({ name: safeName, url });
       } catch (err: any) {
         console.error(`[upload-frames] ✗ Falha no frame ${safeName}:`, err?.message);
-        results.push({ name: path.basename(safeName), url: '' });
+        results.push({ name: safeName, url: '' });
       }
     }
 
