@@ -374,12 +374,75 @@ function readTagsDb(): Array<{ postId: string; hashtags: string[] }> {
 function saveUserHashtags(postId: string, hashtags: string[]): void {
   const db = readTagsDb();
   const idx = db.findIndex(e => e.postId === postId);
+  const cleaned = hashtags
+    .map(t => t.replace(/^#/, '').trim().toLowerCase())
+    .filter(t => /^[a-z0-9_]+$/.test(t));
+  if (cleaned.length === 0) return;
   if (idx >= 0) {
-    db[idx].hashtags = [...new Set([...db[idx].hashtags, ...hashtags])];
+    db[idx].hashtags = [...new Set([...db[idx].hashtags, ...cleaned])];
   } else {
-    db.push({ postId, hashtags });
+    db.push({ postId, hashtags: cleaned });
   }
   fs.writeFileSync(TAGS_DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
+}
+
+// Levenshtein distance — small dynamic programming implementation used to
+// rank fuzzy hashtag suggestions (e.g. "bigbuobs" → "bigboobs").
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = new Array(b.length + 1);
+  const curr = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+  }
+  return prev[b.length];
+}
+
+// Returns ranked hashtag suggestions for a partial query.
+// Prioritizes: exact prefix → substring → Levenshtein-distance fuzzy match.
+// Only returns hashtags that already exist in the DB (no new ones).
+function suggestHashtags(rawQuery: string, max = 8): Array<{ tag: string; count: number }> {
+  const q = rawQuery.toLowerCase().replace(/^#/, '').trim();
+  if (!q) return [];
+
+  // Build a frequency map of all known hashtags
+  const freq = new Map<string, number>();
+  for (const entry of readTagsDb()) {
+    for (const tag of entry.hashtags) {
+      const t = tag.toLowerCase();
+      freq.set(t, (freq.get(t) ?? 0) + 1);
+    }
+  }
+
+  type Scored = { tag: string; count: number; score: number };
+  const all: Scored[] = [];
+  for (const [tag, count] of freq.entries()) {
+    let score = Infinity;
+    if (tag === q) score = 0;
+    else if (tag.startsWith(q)) score = 1 + (tag.length - q.length) * 0.01;
+    else if (tag.includes(q)) score = 2 + (tag.length - q.length) * 0.01;
+    else {
+      // Fuzzy match — only consider tags within reasonable edit distance
+      const maxDist = Math.max(1, Math.floor(q.length / 3));
+      const dist = levenshtein(q, tag);
+      if (dist <= maxDist) score = 3 + dist;
+    }
+    if (score !== Infinity) {
+      // Subtract a tiny bonus for popularity so common tags surface first when tied
+      all.push({ tag, count, score: score - Math.min(0.5, count * 0.01) });
+    }
+  }
+
+  all.sort((a, b) => a.score - b.score);
+  return all.slice(0, max).map(({ tag, count }) => ({ tag, count }));
 }
 
 // ─── /api/suggest-tags ────────────────────────────────────────────────────────
@@ -548,22 +611,31 @@ app.post('/api/recommend-folder', async (req: Request, res: Response) => {
 });
 
 // ─── /api/search-tags/:query ──────────────────────────────────────────────────
+// Returns ranked existing hashtag matches for a partial query so the client
+// can suggest known hashtags instead of letting the user create typos.
 app.get('/api/search-tags/:query', (req: Request, res: Response) => {
-  const query = (req.params.query ?? '').toLowerCase().replace(/^#/, '');
-  if (!query) return res.json({ related: [] });
+  const suggestions = suggestHashtags(req.params.query ?? '', 8);
+  res.json({
+    suggestions,
+    related: suggestions.map(s => s.tag), // legacy field for older clients
+  });
+});
 
-  const db = readTagsDb();
-  const related: string[] = [];
-
-  for (const entry of db) {
-    for (const tag of entry.hashtags) {
-      if (tag.toLowerCase().includes(query) && !related.includes(tag)) {
-        related.push(tag);
-      }
-    }
+// ─── /api/register-hashtags ───────────────────────────────────────────────────
+// Called by the client right after a post is created so the suggestion pool
+// stays up to date with every new post's hashtags.
+app.post('/api/register-hashtags', (req: Request, res: Response) => {
+  const { postId, hashtags } = req.body as { postId?: string; hashtags?: string[] };
+  if (!postId || !Array.isArray(hashtags)) {
+    return res.status(400).json({ error: 'postId e hashtags são obrigatórios.' });
   }
-
-  res.json({ related });
+  try {
+    saveUserHashtags(postId, hashtags);
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[register-hashtags] Falha ao salvar:', err?.message);
+    res.status(500).json({ error: 'Falha ao registrar hashtags.' });
+  }
 });
 
 // ─── /api/upload-image — server-side image upload to Cloudinary ──────────────

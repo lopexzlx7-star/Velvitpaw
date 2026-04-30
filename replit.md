@@ -8,7 +8,7 @@ A social media app for sharing images, GIFs, and videos with a glassmorphism aes
 - **Backend**: Express (Node.js / tsx) on port 3001 — handles video uploads and AI tag suggestions
 - **Database**: Firebase Firestore (custom database ID in config)
 - **Auth**: Firebase Auth (Email/Password)
-- **Video Storage**: Cloudinary (light videos ≤720p / ≤60s) or ImageKit (heavy videos >720p / >60s)
+- **Media Storage**: Cloudinary (todos os tipos: vídeos, imagens, thumbnails, frames)
 - **Thumbnails**: First frame of video extracted on client (canvas JPEG), saved as `thumbnailUrl` in Firestore
 - **AI**: OpenAI GPT-4o-mini (`/api/suggest-tags`, `/api/generate-tags-multi`) — requires `OPENAI_API_KEY` env var
 - **Hashtag DB**: Local JSON file (`tags_db.json`) storing user hashtags per post for `/api/search-tags`

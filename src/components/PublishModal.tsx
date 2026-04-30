@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Image as ImageIcon, Loader2, AlertTriangle,
@@ -149,6 +149,16 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
   const activeXhrRef = useRef<XMLHttpRequest | null>(null);
   const thumbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = useRef(false);
+  const descRef = useRef<HTMLTextAreaElement>(null);
+  const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hashtag autocomplete — when the caret is inside a `#token`, we fetch
+  // existing matching hashtags and show a dropdown so the user picks an
+  // existing tag instead of creating a typo'd new one.
+  interface ActiveHashtag { start: number; end: number; query: string; }
+  const [activeHashtag, setActiveHashtag] = useState<ActiveHashtag | null>(null);
+  const [hashtagSuggestions, setHashtagSuggestions] = useState<Array<{ tag: string; count: number }>>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
 
   const isMultiImage = images.length > 0;
   const isVideo = !!videoDraft;
@@ -194,6 +204,94 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
   };
 
   const handleClose = () => { resetState(); onClose(); };
+
+  // Identify the hashtag token (if any) under the textarea caret.
+  // Returns { start, end, query } where `query` is the text after `#`,
+  // or null when the caret isn't inside a `#word` token.
+  const findHashtagAtCaret = (text: string, caret: number): ActiveHashtag | null => {
+    let start = caret;
+    while (start > 0 && /[\w]/.test(text[start - 1])) start--;
+    if (start === 0 || text[start - 1] !== '#') return null;
+    let end = caret;
+    while (end < text.length && /[\w]/.test(text[end])) end++;
+    const query = text.slice(start, end);
+    return { start: start - 1, end, query };
+  };
+
+  // Refresh the active hashtag detection from current caret + value.
+  const refreshHashtagContext = (text: string, caret: number) => {
+    const ctx = findHashtagAtCaret(text, caret);
+    setActiveHashtag(ctx);
+    if (!ctx || ctx.query.length === 0) setHashtagSuggestions([]);
+  };
+
+  const handleDescriptionChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    const newText = e.target.value;
+    setDescription(newText);
+    refreshHashtagContext(newText, e.target.selectionStart ?? newText.length);
+  };
+
+  // Replace the active `#token` with the chosen suggestion + trailing space,
+  // then move the caret to right after the inserted hashtag.
+  const applyHashtagSuggestion = (tag: string) => {
+    if (!activeHashtag) return;
+    const before = description.slice(0, activeHashtag.start);
+    const after = description.slice(activeHashtag.end);
+    const insert = `#${tag}`;
+    const next = `${before}${insert}${after.startsWith(' ') ? '' : ' '}${after}`;
+    setDescription(next);
+    setActiveHashtag(null);
+    setHashtagSuggestions([]);
+    requestAnimationFrame(() => {
+      const ta = descRef.current;
+      if (!ta) return;
+      const pos = before.length + insert.length + 1;
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+    });
+  };
+
+  // Debounced fetch of hashtag suggestions whenever the active token changes.
+  useEffect(() => {
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+    if (!activeHashtag || activeHashtag.query.length === 0) {
+      setHashtagSuggestions([]);
+      setSuggestLoading(false);
+      return;
+    }
+    setSuggestLoading(true);
+    const q = activeHashtag.query;
+    suggestTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search-tags/${encodeURIComponent(q)}`);
+        if (!res.ok) { setHashtagSuggestions([]); return; }
+        const data = await res.json();
+        const list: Array<{ tag: string; count: number }> =
+          Array.isArray(data?.suggestions)
+            ? data.suggestions
+            : (Array.isArray(data?.related) ? data.related.map((t: string) => ({ tag: t, count: 0 })) : []);
+        // Hide the suggestion that exactly equals what the user typed
+        const filtered = list.filter(s => s.tag.toLowerCase() !== q.toLowerCase());
+        setHashtagSuggestions(filtered);
+      } catch {
+        setHashtagSuggestions([]);
+      } finally {
+        setSuggestLoading(false);
+      }
+    }, 180);
+    return () => { if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current); };
+  }, [activeHashtag?.query]);
+
+  const registerHashtags = async (postId: string, hashtags: string[]) => {
+    if (hashtags.length === 0) return;
+    try {
+      await fetch('/api/register-hashtags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId, hashtags }),
+      });
+    } catch {}
+  };
 
   const processImages = useCallback(async (files: File[]) => {
     const valid = files.filter(f => f.type.startsWith('image/')).slice(0, MAX_IMAGES);
@@ -464,6 +562,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
         };
 
         const newPostRef = await addDoc(collection(db, 'posts'), postData);
+        // Register hashtags so future posts get suggestions for them
+        void registerHashtags(newPostRef.id, extractedHashtags);
         // Notify followers (best-effort — backend handles dedup + missing creds)
         void fetch('/api/notifications/trigger/new-post', {
           method: 'POST',
@@ -513,6 +613,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
         };
 
         const newVideoRef = await addDoc(collection(db, 'posts'), postData);
+        // Register hashtags so future posts get suggestions for them
+        void registerHashtags(newVideoRef.id, extractedHashtags);
         // Notify followers about the new video (best-effort)
         void fetch('/api/notifications/trigger/new-post', {
           method: 'POST',
@@ -836,13 +938,64 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                     {wordCount}/{MAX_DESCRIPTION_WORDS}
                   </span>
                 </div>
-                <textarea
-                  placeholder="Descreva seu post... use #hashtags"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-all text-sm resize-none"
-                />
+                <div className="relative">
+                  <textarea
+                    ref={descRef}
+                    placeholder="Descreva seu post... use #hashtags"
+                    value={description}
+                    onChange={handleDescriptionChange}
+                    onKeyUp={(e) => refreshHashtagContext((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+                    onClick={(e) => refreshHashtagContext((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+                    onBlur={() => setTimeout(() => setActiveHashtag(null), 150)}
+                    rows={3}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-all text-sm resize-none"
+                  />
+
+                  {/* Hashtag suggestion dropdown — shows existing tags so the user
+                      can pick one instead of accidentally creating a typo'd new one */}
+                  <AnimatePresence>
+                    {activeHashtag && activeHashtag.query.length > 0 && (suggestLoading || hashtagSuggestions.length > 0) && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.12 }}
+                        className="absolute left-0 right-0 top-full mt-1 z-30 rounded-2xl border border-white/10 overflow-hidden"
+                        style={{
+                          background: 'rgba(20,20,20,0.96)',
+                          backdropFilter: 'blur(14px)',
+                          WebkitBackdropFilter: 'blur(14px)',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                        }}
+                      >
+                        <div className="px-4 py-2 text-[9px] uppercase tracking-widest text-white/30 border-b border-white/5">
+                          {suggestLoading ? 'Buscando hashtags...' : 'Hashtags existentes'}
+                        </div>
+                        {hashtagSuggestions.map(({ tag, count }) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onMouseDown={(e) => { e.preventDefault(); applyHashtagSuggestion(tag); }}
+                            className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-white/10 transition-colors"
+                          >
+                            <span className="text-sm text-white">#{tag}</span>
+                            {count > 0 && (
+                              <span className="text-[10px] text-white/30">
+                                {count} {count === 1 ? 'post' : 'posts'}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                        {!suggestLoading && hashtagSuggestions.length === 0 && (
+                          <div className="px-4 py-3 text-xs text-white/40">
+                            Nenhuma hashtag parecida — será criada nova: <span className="text-white/70">#{activeHashtag.query}</span>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </>
           )}
