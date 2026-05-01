@@ -102,6 +102,12 @@
   background: var(--lm-bg) !important;
 }
 
+/* Body background in light mode */
+.light-mode + body,
+body:has(.light-mode) {
+  background: var(--lm-bg) !important;
+}
+
 /* Glass panels become white + blue-tinted border */
 .light-mode .glass-panel {
   background: var(--lm-surface) !important;
@@ -144,14 +150,30 @@
 }
 
 /* Backgrounds — map dark surfaces → light */
-.light-mode .bg-white\/5 {
+.light-mode .bg-white\/5,
+.light-mode .bg-white\/\[0\.05\] {
   background: rgba(0,100,255,0.06) !important;
 }
-.light-mode .bg-white\/10 {
+.light-mode .bg-white\/8,
+.light-mode .hover\:bg-white\/8:hover,
+.light-mode .bg-white\/\[0\.08\] {
+  background: rgba(0,100,255,0.08) !important;
+}
+.light-mode .bg-white\/10,
+.light-mode .hover\:bg-white\/10:hover {
   background: rgba(0,100,255,0.10) !important;
 }
-.light-mode .bg-white\/20 {
+.light-mode .hover\:bg-white\/12:hover,
+.light-mode .bg-white\/12,
+.light-mode .bg-white\/\[0\.12\] {
+  background: rgba(0,100,255,0.12) !important;
+}
+.light-mode .bg-white\/20,
+.light-mode .hover\:bg-white\/20:hover {
   background: rgba(0,100,255,0.16) !important;
+}
+.light-mode .bg-white\/30 {
+  background: rgba(0,100,255,0.20) !important;
 }
 
 /* Borders */
@@ -230,6 +252,77 @@
 }
 .light-mode ::-webkit-scrollbar-thumb:hover {
   background: #60a5fa;
+}
+
+/* FloatingNav — force light surface in light mode */
+.light-mode [class*="bg-black\/30"],
+.light-mode [class*="bg-black\/20"] {
+  background: rgba(255,255,255,0.82) !important;
+  border-color: rgba(0,100,255,0.12) !important;
+}
+
+/* Shadow adjustments in light mode */
+.light-mode [class*="shadow-black"] {
+  box-shadow: 0 8px 32px rgba(0,50,200,0.10) !important;
+}
+
+/* Icon colors — keep icons readable */
+.light-mode svg {
+  color: inherit;
+}
+
+/* Dividers & separators */
+.light-mode [class*="border-white\/"] {
+  border-color: rgba(0,100,255,0.12) !important;
+}
+
+/* Dropdown menus & floating panels */
+.light-mode [style*="rgba(18,18,18"],
+.light-mode [style*="rgba(20,20,20"],
+.light-mode [style*="rgba(12,12,12"] {
+  background: rgba(255,255,255,0.97) !important;
+  border-color: rgba(0,100,255,0.15) !important;
+  color: var(--lm-text) !important;
+}
+
+/* Gradient text on cards — keep visible on light */
+.light-mode .from-black\/80 { --tw-gradient-from: rgba(0,0,0,0.75) !important; }
+.light-mode .from-black\/60 { --tw-gradient-from: rgba(0,0,0,0.55) !important; }
+
+/* Notifications / toasts */
+.light-mode [class*="bg-space-gray"] {
+  background: var(--lm-surface) !important;
+  color: var(--lm-text) !important;
+}
+
+/* Text specifically white on black overlays (card buttons) — keep as-is */
+.light-mode .bg-black\/60 .text-white,
+.light-mode .bg-black\/80 .text-white {
+  color: #ffffff !important;
+}
+
+/* Accent colors in light mode for gold — ensure contrast */
+.light-mode[data-accent="gold"] .accent-primary-btn,
+.light-mode [data-accent="gold"] .accent-primary-btn {
+  color: #000000 !important;
+}
+
+/* Light mode gold blob */
+.light-mode[data-accent="gold"] .liquid-blob,
+.light-mode [data-accent="gold"] .liquid-blob {
+  background: rgba(212,168,0,0.20) !important;
+}
+
+/* Light mode violet blob */
+.light-mode[data-accent="violet"] .liquid-blob,
+.light-mode [data-accent="violet"] .liquid-blob {
+  background: rgba(147,3,197,0.18) !important;
+}
+
+/* Light mode blue blob */
+.light-mode[data-accent="blue"] .liquid-blob,
+.light-mode [data-accent="blue"] .liquid-blob {
+  background: rgba(3,86,197,0.20) !important;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -337,7 +430,6 @@
 
 /* ── Subtle neon glow on accent elements (skip default white) ─────── */
 /* Logo glow removed — was creating a visible "bubble" halo around VELVIT. */
-[data-accent="red"] .accent-primary-btn,
 [data-accent="violet"] .accent-primary-btn,
 [data-accent="blue"] .accent-primary-btn,
 [data-accent="green"] .accent-primary-btn,
@@ -347,7 +439,6 @@
     0 0 24px -6px rgba(var(--accent-rgb), 0.30),
     inset 0 1px 0 rgba(255,255,255,0.25);
 }
-[data-accent="red"] .accent-line,
 [data-accent="violet"] .accent-line,
 [data-accent="blue"] .accent-line,
 [data-accent="green"] .accent-line,
@@ -401,15 +492,11 @@ textarea:focus.accent-focus {
 /* In light mode, accent colors override the blue blob override */
 .light-mode[data-accent="green"] .liquid-blob,
 .light-mode [data-accent="green"] .liquid-blob {
-  background: rgba(34,197,94,0.18) !important;
-}
-.light-mode[data-accent="red"] .liquid-blob,
-.light-mode [data-accent="red"] .liquid-blob {
-  background: rgba(239,68,68,0.18) !important;
+  background: rgba(0,125,16,0.20) !important;
 }
 .light-mode[data-accent="orange"] .liquid-blob,
 .light-mode [data-accent="orange"] .liquid-blob {
-  background: rgba(249,115,22,0.18) !important;
+  background: rgba(252,33,13,0.18) !important;
 }
 /* Blue accent in light mode keeps the existing blue — no override needed */
 

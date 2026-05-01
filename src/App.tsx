@@ -280,7 +280,26 @@ export default function App() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const isDarkMode = true;
+  const [isLightMode, setIsLightMode] = useState<boolean>(() =>
+    localStorage.getItem('velvit_theme') === 'light'
+  );
+  const toggleTheme = () => {
+    setIsLightMode(prev => {
+      const next = !prev;
+      localStorage.setItem('velvit_theme', next ? 'light' : 'dark');
+      // Persist to Firestore best-effort
+      if (auth.currentUser) {
+        import('firebase/firestore').then(({ doc, setDoc }) => {
+          setDoc(
+            doc(db, 'users', auth.currentUser!.uid),
+            { theme: next ? 'light' : 'dark' },
+            { merge: true }
+          ).catch(() => {});
+        });
+      }
+      return next;
+    });
+  };
 
   type AccentColor = 'default' | 'green' | 'gold' | 'blue' | 'orange' | 'violet';
   const ACCENTS: { id: AccentColor; label: string; hex: string }[] = [
@@ -541,6 +560,13 @@ export default function App() {
             if (data.accentColor) {
               setAccentColor(data.accentColor as AccentColor);
               localStorage.setItem('velvit_accent', data.accentColor);
+            }
+
+            // Restore theme preference (cross-device sync)
+            if (data.theme === 'light' || data.theme === 'dark') {
+              const light = data.theme === 'light';
+              setIsLightMode(light);
+              localStorage.setItem('velvit_theme', data.theme);
             }
 
             // Fallback: if no photo in users doc, look for it in the user's posts
@@ -2256,7 +2282,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div
-        className="h-screen relative overflow-hidden"
+        className={`h-screen relative overflow-hidden${isLightMode ? ' light-mode' : ''}`}
         data-accent={accentColor === 'default' ? undefined : accentColor}
       >
       <div className="fixed inset-0 z-[-2] bg-space-gray-900" />
@@ -3260,6 +3286,8 @@ export default function App() {
         onSelectProfilePhoto={(e) => { handleFileSelect(e, 'profile'); }}
         onSelectBackgroundPhoto={(e) => { handleFileSelect(e, 'bg'); }}
         onDeleteAccount={() => { setShowProfileEdit(false); handleDeleteAccount(); }}
+        isLightMode={isLightMode}
+        onToggleTheme={toggleTheme}
       />
 
       <ImageCropperModal
