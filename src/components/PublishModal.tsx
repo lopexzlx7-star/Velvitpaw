@@ -34,9 +34,10 @@ interface ImageItem {
 const MAX_VIDEO_DURATION = 600; // 10 minutes
 const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
-const MAX_FILE_SIZE_MB = 490;
+const MAX_FILE_SIZE_MB = 300;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_IMAGES = 10;
+const CHUNK_SIZE = 50 * 1024 * 1024; // 50 MB per Cloudinary chunk
 
 function captureVideoFrame(file: File): Promise<string> {
   const TARGET_W = 640;
@@ -199,9 +200,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
     setError(null);
     setIsSubmitting(false);
     setIsValidating(false);
-    setPersonTagInput('');
-    setPersonTagSuggestions([]);
-    setSelectedPersonTags([]);
   };
 
   const handleClose = () => { resetState(); onClose(); };
@@ -496,20 +494,76 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
     return data.url as string;
   };
 
+  // Chunked upload: splits large files into CHUNK_SIZE pieces so each request
+  // completes quickly regardless of total video duration, avoiding Cloudinary timeouts.
+  const uploadVideoChunked = async (file: File, sign: any): Promise<string> => {
+    const uploadId = `velvit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const totalSize = file.size;
+    const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+    let bytesConfirmed = 0;
+    let lastResult: any = {};
+
+    for (let i = 0; i < totalChunks; i++) {
+      if (cancelledRef.current) throw new Error('upload_aborted');
+
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, totalSize);
+      const chunkBlob = file.slice(start, end);
+
+      const fd = new FormData();
+      fd.append('file', chunkBlob, file.name);
+      fd.append('timestamp', sign.timestamp);
+      fd.append('folder', sign.folder);
+      fd.append('signature', sign.signature);
+      fd.append('api_key', sign.apiKey);
+
+      const chunkStart = start; // capture for closure
+      const result = await new Promise<any>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        activeXhrRef.current = xhr;
+        xhr.open('POST', `https://api.cloudinary.com/v1_1/${sign.cloudName}/video/upload`);
+        xhr.setRequestHeader('X-Unique-Upload-Id', uploadId);
+        xhr.setRequestHeader('Content-Range', `bytes ${chunkStart}-${end - 1}/${totalSize}`);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const totalLoaded = bytesConfirmed + e.loaded;
+            setUploadProgress(Math.round((totalLoaded / totalSize) * 95));
+          }
+        };
+        xhr.onload = () => {
+          activeXhrRef.current = null;
+          // 200 = final chunk done, 206 = intermediate chunk accepted
+          if (xhr.status === 200 || xhr.status === 206) {
+            setUploadProgress(Math.round((end / totalSize) * 95));
+            let data: any = {};
+            try { data = JSON.parse(xhr.responseText); } catch {}
+            resolve(data);
+          } else {
+            let data: any = {};
+            try { data = JSON.parse(xhr.responseText); } catch {}
+            const msg = data?.error?.message || data?.error || `Erro ${xhr.status}`;
+            reject(new Error(msg));
+          }
+        };
+        xhr.onerror = () => { activeXhrRef.current = null; reject(new Error('network_error')); };
+        xhr.onabort = () => { activeXhrRef.current = null; reject(new Error('upload_aborted')); };
+        xhr.send(fd);
+      });
+
+      bytesConfirmed = end;
+      lastResult = result;
+    }
+
+    if (!lastResult.secure_url) throw new Error('Cloudinary não retornou URL do vídeo.');
+    return lastResult.secure_url as string;
+  };
+
   const uploadVideo = async (file: File): Promise<string> => {
     const sign = await safeFetchJson('/api/cloudinary-sign');
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('timestamp', sign.timestamp);
-    fd.append('folder', sign.folder);
-    fd.append('signature', sign.signature);
-    fd.append('api_key', sign.apiKey);
-    // resource_type is already part of the URL path (/video/upload) — do NOT
-    // append it as a form field because it is not included in the signature and
-    // would cause a Cloudinary "Invalid Signature" error.
-    const data = await xhrDirectUpload(`https://api.cloudinary.com/v1_1/${sign.cloudName}/video/upload`, fd);
-    if (!data.secure_url) throw new Error('Cloudinary não retornou URL do vídeo.');
-    return data.secure_url as string;
+
+    // Use chunked upload for all files to avoid Cloudinary timeout on large videos.
+    // For small files the loop runs once; for large files each 50 MB chunk finishes fast.
+    return uploadVideoChunked(file, sign);
   };
 
 
@@ -580,13 +634,17 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
 
         let hostedThumbnailUrl: string | null = null;
         if (thumbnailUrl) {
+          const thumbCtrl = new AbortController();
+          const thumbTimeout = setTimeout(() => thumbCtrl.abort(), 15000);
           try {
             const res = await fetch('/api/upload-thumbnail', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ thumbnail: thumbnailUrl }),
+              signal: thumbCtrl.signal,
             });
+            clearTimeout(thumbTimeout);
             if (res.ok) { const data = await res.json(); hostedThumbnailUrl = data.url ?? null; }
-          } catch {}
+          } catch { clearTimeout(thumbTimeout); }
         }
 
         const postData: Record<string, unknown> = {
