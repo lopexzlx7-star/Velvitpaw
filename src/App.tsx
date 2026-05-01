@@ -38,6 +38,7 @@ import PublishModal from './components/PublishModal';
 import PostDetailModal from './components/PostDetailModal';
 import UserProfileModal from './components/UserProfileModal';
 import HashtagCategoryCard from './components/HashtagCategoryCard';
+import PersonTagModal from './components/PersonTagModal';
 import SaveToFolderModal from './components/SaveToFolderModal';
 import FolderDetailModal from './components/FolderDetailModal';
 import FolderCover from './components/FolderCover';
@@ -344,6 +345,8 @@ export default function App() {
   });
   const [showHistory, setShowHistory] = useState(false);
   const [userSearchResults, setUserSearchResults] = useState<{ username: string; uid: string; profilePhotoUrl?: string }[]>([]);
+  const [personTagResults, setPersonTagResults] = useState<{ slug: string; name: string; photoUrl?: string }[]>([]);
+  const [openPersonTag, setOpenPersonTag] = useState<string | null>(null);
   const [profileViewUid, setProfileViewUid] = useState<string | null>(null);
   const [showFollowingList, setShowFollowingList] = useState(false);
   const [followingProfiles, setFollowingProfiles] = useState<{ uid: string; username: string; profilePhotoUrl?: string }[]>([]);
@@ -1708,6 +1711,7 @@ export default function App() {
       setItems(globalPosts);
       setHashtagResults([]);
       setUserSearchResults([]);
+      setPersonTagResults([]);
       return;
     }
 
@@ -1730,6 +1734,17 @@ export default function App() {
       tag.includes(qLower)
     );
     setHashtagResults(matchingHashtags.slice(0, 8));
+
+    // Search person tags in Firestore
+    getDocs(collection(db, 'person_tags'))
+      .then(snap => {
+        const hits = snap.docs
+          .map(d => d.data() as { slug: string; name: string; photoUrl?: string })
+          .filter(t => t.name.toLowerCase().includes(qLower))
+          .slice(0, 6);
+        setPersonTagResults(hits);
+      })
+      .catch(() => setPersonTagResults([]));
 
     // Search users — first check posts' authorName (already loaded), then Firestore
     const seenUids = new Set<string>();
@@ -2403,13 +2418,35 @@ export default function App() {
                     </AnimatePresence>
 
                     <AnimatePresence>
-                      {(hashtagResults.length > 0 || userSearchResults.length > 0) && !showHistory && (
+                      {(hashtagResults.length > 0 || userSearchResults.length > 0 || personTagResults.length > 0) && !showHistory && (
                         <motion.div
                           initial={{ opacity: 0, y: -6 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -6 }}
                           className="mt-3 space-y-3"
                         >
+                          {/* Person tag results */}
+                          {personTagResults.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {personTagResults.map(pt => (
+                                <button
+                                  key={pt.slug}
+                                  onClick={() => { setOpenPersonTag(pt.slug); setShowHistory(false); }}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/12 border border-white/20 rounded-full transition-all"
+                                  style={{ boxShadow: '0 0 0 1px rgba(var(--accent-rgb,255 255 255),0.12)' }}
+                                >
+                                  <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/10 text-[8px] font-black text-white/40">
+                                    {pt.photoUrl
+                                      ? <img src={pt.photoUrl} alt={pt.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                      : pt.name.charAt(0).toUpperCase()
+                                    }
+                                  </div>
+                                  <span className="text-[11px] text-white/80 font-semibold">{pt.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
                           {userSearchResults.length > 0 && (
                             <div className="flex flex-wrap gap-2">
                               {userSearchResults.map(u => (
@@ -2656,6 +2693,7 @@ export default function App() {
                           onFollow={handleFollow}
                           onClick={() => { markPostAsSeen(item.id); setSelectedPost(item); }}
                           onHashtagClick={handleHashtagClick}
+                          onPersonTagClick={(slug) => setOpenPersonTag(slug)}
                           isUserPost={isOwnPost}
                           searchQuery={searchQuery}
                         />
@@ -2936,6 +2974,22 @@ export default function App() {
       </main>
 
       <RefreshIndicator visible={isRefreshingFeed} />
+
+      {/* Person Tag profile modal */}
+      <AnimatePresence>
+        {openPersonTag && (
+          <PersonTagModal
+            key={openPersonTag}
+            slug={openPersonTag}
+            onClose={() => setOpenPersonTag(null)}
+            onPostClick={(post) => { setOpenPersonTag(null); setSelectedPost(post); }}
+            likedIds={likedIds}
+            savedIds={savedIds}
+            onLike={handleLike}
+            onHashtagClick={(tag) => { setOpenPersonTag(null); handleHashtagClick(tag); }}
+          />
+        )}
+      </AnimatePresence>
 
       {!publishHasMedia && !selectedPost && (
         <FloatingNav

@@ -12,6 +12,7 @@ A social media app for sharing images, GIFs, and videos with a glassmorphism aes
 - **Thumbnails**: First frame of video extracted on client (canvas JPEG), saved as `thumbnailUrl` in Firestore
 - **AI**: OpenAI GPT-4o-mini (`/api/suggest-tags`, `/api/generate-tags-multi`) — requires `OPENAI_API_KEY` env var
 - **Hashtag DB**: Local JSON file (`tags_db.json`) storing user hashtags per post for `/api/search-tags`
+- **Person Tags**: Firestore `person_tags` collection — auto-criada ao publicar posts com "Marcar pessoa". PersonTagModal agrega todos os posts tagueados.
 
 ## Key Files
 

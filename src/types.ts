@@ -17,6 +17,7 @@ export interface ContentItem {
   duration?: number;
   description?: string;
   hashtags?: string[];
+  personTags?: string[];
 }
 
 export interface Folder {

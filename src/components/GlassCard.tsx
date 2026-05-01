@@ -72,6 +72,7 @@ interface GlassCardProps {
   onDelete?: (id: string) => void;
   onClick?: (item: ContentItem) => void;
   onHashtagClick?: (tag: string) => void;
+  onPersonTagClick?: (slug: string) => void;
   isUserPost?: boolean;
   searchQuery?: string;
 }
@@ -180,6 +181,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
   onDelete, 
   onClick,
   onHashtagClick,
+  onPersonTagClick,
   isUserPost,
   searchQuery = ''
 }) => {
@@ -492,6 +494,26 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   className="text-[9px] text-white/40 hover:text-white transition-colors font-bold tracking-wide"
                 >
                   #{tag}
+                </button>
+              ))}
+            </div>
+          )}
+          {item.personTags && item.personTags.length > 0 && (
+            <div className="flex flex-nowrap overflow-hidden gap-1 mt-1">
+              {item.personTags.slice(0, 3).map(slug => (
+                <button
+                  key={slug}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPersonTagClick?.(slug);
+                  }}
+                  className="flex items-center gap-0.5 text-[9px] font-black tracking-wide rounded-full px-1.5 py-0.5 transition-all"
+                  style={{
+                    color: 'rgba(var(--accent-rgb,255 255 255),0.75)',
+                    background: 'rgba(var(--accent-rgb,255 255 255),0.06)',
+                  }}
+                >
+                  <span className="opacity-50">@</span>{slug.replace(/-/g, ' ')}
                 </button>
               ))}
             </div>
