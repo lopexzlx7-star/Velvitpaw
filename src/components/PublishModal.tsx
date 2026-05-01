@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, Trash2, Camera
 } from 'lucide-react';
 import { db, auth } from '../firebase';
-import { collection, addDoc, getDocs, query, where, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc } from 'firebase/firestore';
 
 interface PublishModalProps {
   isOpen: boolean;
@@ -36,7 +36,7 @@ const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const XHR_TIMEOUT_MS = 30 * 60 * 1000; // 30 min de tolerância para uploads longos
+const XHR_TIMEOUT_MS = 60 * 60 * 1000; // 60 min de tolerância para uploads longos
 const MAX_IMAGES = 10;
 
 function captureVideoFrame(file: File): Promise<string> {
@@ -57,7 +57,7 @@ function captureVideoFrame(file: File): Promise<string> {
       URL.revokeObjectURL(objectUrl);
       fn();
     };
-    const timeout = setTimeout(() => finish(() => reject(new Error('timeout'))), 10_000);
+    const timeout = setTimeout(() => finish(() => reject(new Error('timeout'))), 60_000);
     const capture = () => {
       try {
         const vw = video.videoWidth || TARGET_W;
@@ -160,111 +160,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
   const [hashtagSuggestions, setHashtagSuggestions] = useState<Array<{ tag: string; count: number }>>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
 
-  // ── Person tag system ────────────────────────────────────────────────────
-  interface PersonTagItem { slug: string; name: string; photoUrl?: string; }
-  const [personTagInput, setPersonTagInput] = useState('');
-  const [personTagSuggestions, setPersonTagSuggestions] = useState<PersonTagItem[]>([]);
-  const [selectedPersonTags, setSelectedPersonTags] = useState<PersonTagItem[]>([]);
-  const [personTagLoading, setPersonTagLoading] = useState(false);
-  const personTagTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const toSlug = (name: string) =>
-    name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-áéíóúàãõâêôçüñ]/g, '').trim();
-
-  const searchPersonTags = useCallback(async (q: string) => {
-    if (!q.trim()) { setPersonTagSuggestions([]); return; }
-    setPersonTagLoading(true);
-    try {
-      const qLower = q.toLowerCase();
-      const snap = await getDocs(collection(db, 'person_tags'));
-      const results: PersonTagItem[] = snap.docs
-        .map(d => d.data() as PersonTagItem)
-        .filter(t => t.name.toLowerCase().includes(qLower))
-        .slice(0, 6);
-      setPersonTagSuggestions(results);
-    } catch { setPersonTagSuggestions([]); } finally { setPersonTagLoading(false); }
-  }, []);
-
-  useEffect(() => {
-    if (personTagTimerRef.current) clearTimeout(personTagTimerRef.current);
-    if (!personTagInput.trim()) { setPersonTagSuggestions([]); return; }
-    personTagTimerRef.current = setTimeout(() => searchPersonTags(personTagInput), 280);
-  }, [personTagInput, searchPersonTags]);
-
-  const addPersonTag = async (item: PersonTagItem) => {
-    if (!selectedPersonTags.find(t => t.slug === item.slug)) {
-      setSelectedPersonTags(prev => [...prev, item]);
-      // If tag has no photo yet, fetch one from Wikipedia
-      if (!item.photoUrl) {
-        try {
-          const res = await fetch(`/api/person-tag-photo?name=${encodeURIComponent(item.name)}`);
-          if (res.ok) {
-            const { photoUrl, officialName } = await res.json();
-            if (photoUrl || officialName) {
-              setSelectedPersonTags(prev =>
-                prev.map(t => t.slug === item.slug
-                  ? { ...t, ...(photoUrl ? { photoUrl } : {}), ...(officialName ? { name: officialName } : {}) }
-                  : t
-                )
-              );
-            }
-          }
-        } catch {}
-      }
-    }
-    setPersonTagInput('');
-    setPersonTagSuggestions([]);
-  };
-
-  const createAndAddPersonTag = async () => {
-    const rawName = personTagInput.trim();
-    if (!rawName) return;
-    const slug = toSlug(rawName);
-    if (selectedPersonTags.find(t => t.slug === slug)) {
-      setPersonTagInput(''); setPersonTagSuggestions([]); return;
-    }
-    // Optimistically add with raw name, then enrich with Wikipedia data
-    const provisional: PersonTagItem = { slug, name: rawName };
-    setSelectedPersonTags(prev => [...prev, provisional]);
-    setPersonTagInput('');
-    setPersonTagSuggestions([]);
-    try {
-      const res = await fetch(`/api/person-tag-photo?name=${encodeURIComponent(rawName)}`);
-      if (res.ok) {
-        const { photoUrl, officialName } = await res.json();
-        const finalName = officialName || rawName;
-        const finalSlug = toSlug(finalName);
-        setSelectedPersonTags(prev =>
-          prev.map(t => t.slug === slug
-            ? { slug: finalSlug, name: finalName, ...(photoUrl ? { photoUrl } : {}) }
-            : t
-          )
-        );
-      }
-    } catch {}
-  };
-
-  const removePersonTag = (slug: string) =>
-    setSelectedPersonTags(prev => prev.filter(t => t.slug !== slug));
-
-  const upsertPersonTags = async (postId: string, postImageUrl: string | null) => {
-    for (const pt of selectedPersonTags) {
-      try {
-        const tagDocRef = doc(db, 'person_tags', pt.slug);
-        await setDoc(tagDocRef, {
-          slug: pt.slug,
-          name: pt.name,
-          ...(pt.photoUrl ? { photoUrl: pt.photoUrl } : {}),
-          updatedAt: new Date().toISOString(),
-        }, { merge: true });
-        // Ensure createdAt exists (only written on first creation via merge)
-        const existing = await getDocs(query(collection(db, 'person_tags'), where('slug', '==', pt.slug)));
-        if (existing.empty || !existing.docs[0].data().createdAt) {
-          await setDoc(tagDocRef, { createdAt: new Date().toISOString() }, { merge: true });
-        }
-      } catch {}
-    }
-  };
 
   const isMultiImage = images.length > 0;
   const isVideo = !!videoDraft;
@@ -668,14 +563,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           duration: 0,
           description: description.trim() || '',
           hashtags: extractedHashtags,
-          ...(selectedPersonTags.length > 0 ? { personTags: selectedPersonTags.map(t => t.slug) } : {}),
         };
 
         const newPostRef = await addDoc(collection(db, 'posts'), postData);
         // Register hashtags so future posts get suggestions for them
         void registerHashtags(newPostRef.id, extractedHashtags);
-        // Upsert person tags in Firestore
-        if (selectedPersonTags.length > 0) void upsertPersonTags(newPostRef.id, imageUrls[0] ?? null);
         // Notify followers (best-effort — backend handles dedup + missing creds)
         void fetch('/api/notifications/trigger/new-post', {
           method: 'POST',
@@ -721,15 +613,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           duration: videoDraft.duration || 0,
           description: description.trim() || '',
           hashtags: extractedHashtags,
-          ...(selectedPersonTags.length > 0 ? { personTags: selectedPersonTags.map(t => t.slug) } : {}),
           ...(hostedThumbnailUrl ? { thumbnailUrl: hostedThumbnailUrl } : {}),
         };
 
         const newVideoRef = await addDoc(collection(db, 'posts'), postData);
         // Register hashtags so future posts get suggestions for them
         void registerHashtags(newVideoRef.id, extractedHashtags);
-        // Upsert person tags in Firestore
-        if (selectedPersonTags.length > 0) void upsertPersonTags(newVideoRef.id, hostedThumbnailUrl ?? null);
         // Notify followers about the new video (best-effort)
         void fetch('/api/notifications/trigger/new-post', {
           method: 'POST',
@@ -1113,101 +1002,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                 </div>
               </div>
 
-              {/* ── Person Tags ─────────────────────────────────────────── */}
-              <div>
-                <span className="text-[10px] uppercase tracking-widest text-white/30 mb-2 block">
-                  Marcar pessoa (opcional)
-                </span>
-
-                {/* Selected chips */}
-                {selectedPersonTags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {selectedPersonTags.map(pt => (
-                      <span
-                        key={pt.slug}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-semibold text-white/80 border border-white/10 bg-white/5"
-                      >
-                        <span className="w-5 h-5 rounded-full overflow-hidden shrink-0 bg-white/10 flex items-center justify-center text-[9px] font-black text-white/40">
-                          {pt.photoUrl
-                            ? <img src={pt.photoUrl} alt={pt.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            : pt.name.charAt(0).toUpperCase()
-                          }
-                        </span>
-                        {pt.name}
-                        <button
-                          type="button"
-                          onClick={() => removePersonTag(pt.slug)}
-                          className="text-white/30 hover:text-white transition-colors leading-none"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Ex: Mia Khalifa, Johnny Depp..."
-                    value={personTagInput}
-                    onChange={e => setPersonTagInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { e.preventDefault(); createAndAddPersonTag(); }
-                    }}
-                    onBlur={() => setTimeout(() => setPersonTagSuggestions([]), 200)}
-                    className="w-full h-11 bg-white/5 border border-white/10 rounded-2xl px-4 text-white text-sm placeholder-white/20 focus:outline-none focus:border-white/30 transition-all"
-                  />
-
-                  <AnimatePresence>
-                    {(personTagSuggestions.length > 0 || (personTagLoading && personTagInput.trim())) && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -4 }}
-                        transition={{ duration: 0.12 }}
-                        className="absolute left-0 right-0 top-full mt-1 z-30 rounded-2xl border border-white/10 overflow-hidden"
-                        style={{
-                          background: 'rgba(18,18,18,0.97)',
-                          backdropFilter: 'blur(14px)',
-                          maxHeight: '200px',
-                          overflowY: 'auto',
-                        }}
-                      >
-                        <div className="px-4 py-2 text-[9px] uppercase tracking-widest text-white/30 border-b border-white/5">
-                          {personTagLoading ? 'Buscando...' : 'Pessoas existentes'}
-                        </div>
-                        {personTagSuggestions.map(pt => (
-                          <button
-                            key={pt.slug}
-                            type="button"
-                            onMouseDown={e => { e.preventDefault(); addPersonTag(pt); }}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/10 transition-colors"
-                          >
-                            <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 bg-white/10 flex items-center justify-center text-[10px] font-black text-white/40">
-                              {pt.photoUrl
-                                ? <img src={pt.photoUrl} alt={pt.name} className="w-full h-full object-cover" />
-                                : pt.name.charAt(0).toUpperCase()
-                              }
-                            </div>
-                            <span className="text-sm text-white">{pt.name}</span>
-                          </button>
-                        ))}
-                        {!personTagLoading && personTagSuggestions.length === 0 && personTagInput.trim() && (
-                          <button
-                            type="button"
-                            onMouseDown={e => { e.preventDefault(); createAndAddPersonTag(); }}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-white/10 transition-colors"
-                          >
-                            <span className="text-[11px] text-white/40">Criar tag nova:</span>
-                            <span className="text-sm text-white font-bold">{personTagInput.trim()}</span>
-                          </button>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
             </>
           )}
         </div>

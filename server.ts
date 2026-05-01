@@ -25,7 +25,7 @@ app.options('*', (_req: Request, res: Response) => res.sendStatus(204));
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 const PORT = IS_PROD ? (Number(process.env.PORT) || 3000) : 3001;
-const SERVER_TIMEOUT_MS = 30 * 60 * 1000; // 30 min — acompanha o XHR_TIMEOUT do cliente
+const SERVER_TIMEOUT_MS = 60 * 60 * 1000; // 60 min — acompanha o XHR_TIMEOUT do cliente
 const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024;
 
 // ─── Cloudinary config ────────────────────────────────────────────────────────
