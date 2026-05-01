@@ -1,6 +1,6 @@
 import React, { useState, useEffect, ChangeEvent, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, Image as ImageIcon, Check, ChevronRight, AtSign, Sun, Moon } from 'lucide-react';
+import { X, User, Image as ImageIcon, Check, ChevronRight, AtSign } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -11,8 +11,6 @@ interface Props {
   onSelectProfilePhoto: (e: ChangeEvent<HTMLInputElement>) => void;
   onSelectBackgroundPhoto: (e: ChangeEvent<HTMLInputElement>) => void;
   onDeleteAccount?: () => void;
-  isLightMode?: boolean;
-  onToggleTheme?: () => void;
 }
 
 const ProfileEditModal: React.FC<Props> = ({
@@ -24,8 +22,6 @@ const ProfileEditModal: React.FC<Props> = ({
   onSelectProfilePhoto,
   onSelectBackgroundPhoto,
   onDeleteAccount,
-  isLightMode = false,
-  onToggleTheme,
 }) => {
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(currentUsername);
@@ -73,7 +69,7 @@ const ProfileEditModal: React.FC<Props> = ({
             exit={{ scale: 0.96, opacity: 0, y: 16 }}
             transition={{ type: 'spring', stiffness: 320, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full sm:max-w-md rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden glass-panel modal-dark"
+            className="relative w-full sm:max-w-md rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden glass-panel"
             style={{
               background:
                 'linear-gradient(160deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 45%, rgba(255,255,255,0.06) 100%)',
@@ -250,45 +246,6 @@ const ProfileEditModal: React.FC<Props> = ({
                 className="hidden"
                 onChange={(e) => onSelectBackgroundPhoto(e)}
               />
-
-              {/* Theme toggle */}
-              {onToggleTheme && (
-                <button
-                  type="button"
-                  onClick={onToggleTheme}
-                  className="w-full text-left rounded-2xl p-4 flex items-center gap-3 transition-colors hover:bg-white/[0.06]"
-                  style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                  }}
-                >
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: 'rgba(var(--accent-rgb), 0.15)', border: '1px solid rgba(var(--accent-rgb), 0.3)' }}
-                  >
-                    {isLightMode
-                      ? <Moon size={16} style={{ color: 'rgb(var(--accent-rgb))' }} />
-                      : <Sun size={16} style={{ color: 'rgb(var(--accent-rgb))' }} />
-                    }
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold">Tema</div>
-                    <div className="text-sm font-bold text-white">{isLightMode ? 'Modo Claro ativado' : 'Modo Escuro ativado'}</div>
-                  </div>
-                  {/* Toggle pill */}
-                  <div
-                    className="relative w-12 h-6 rounded-full shrink-0 transition-colors duration-300"
-                    style={{ background: isLightMode ? 'rgb(var(--accent-rgb))' : 'rgba(255,255,255,0.15)' }}
-                  >
-                    <motion.div
-                      layout
-                      animate={{ x: isLightMode ? 24 : 2 }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                      className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-md"
-                    />
-                  </div>
-                </button>
-              )}
 
               {onDeleteAccount && (
                 <div className="w-full pt-2 flex justify-center">
