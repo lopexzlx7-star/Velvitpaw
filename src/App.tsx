@@ -282,17 +282,20 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const isDarkMode = true;
 
-  type AccentColor = 'default' | 'green' | 'red' | 'blue' | 'orange' | 'violet';
+  type AccentColor = 'default' | 'green' | 'gold' | 'blue' | 'orange' | 'violet';
   const ACCENTS: { id: AccentColor; label: string; hex: string }[] = [
     { id: 'default', label: 'Padrão',         hex: '#ffffff' },
-    { id: 'red',     label: 'Crimson Noir',   hex: '#C50337' },
+    { id: 'gold',    label: 'Neon Gold',       hex: '#D4A800' },
     { id: 'violet',  label: 'Royal Violet',   hex: '#9303C5' },
     { id: 'blue',    label: 'Midnight Blue',  hex: '#0356C5' },
     { id: 'green',   label: 'Forest Noir',    hex: '#007D10' },
     { id: 'orange',  label: 'Sunset Glow',    hex: '#FC210D' },
   ];
   const [accentColor, setAccentColor] = useState<AccentColor>(() => {
-    return (localStorage.getItem('velvit_accent') as AccentColor) || 'default';
+    const saved = localStorage.getItem('velvit_accent') as AccentColor;
+    // 'red' foi removido — migra para 'default'
+    if (saved === 'red') { localStorage.setItem('velvit_accent', 'default'); return 'default'; }
+    return saved || 'default';
   });
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [likedIds, setLikedIds] = useState<string[]>(() => {
@@ -2784,13 +2787,15 @@ export default function App() {
                                 className="block w-5 h-5 rounded-full border border-white/20"
                                 style={{
                                   background: a.id === 'default' ? '#ffffff' : a.hex,
-                                  boxShadow: a.id === 'default' ? 'none' : `0 0 8px rgba(${
-                                    a.hex === '#C50337' ? '197,3,55' :
-                                    a.hex === '#9303C5' ? '147,3,197' :
-                                    a.hex === '#0356C5' ? '3,86,197' :
-                                    a.hex === '#007D10' ? '0,125,16' :
-                                    a.hex === '#FC210D' ? '252,33,13' : '255,255,255'
-                                  }, 0.55)`,
+                                  boxShadow: a.id === 'default' ? 'none' :
+                                    a.id === 'gold'
+                                      ? '0 0 10px rgba(212,168,0,0.85), 0 0 22px rgba(255,210,0,0.45)'
+                                      : `0 0 8px rgba(${
+                                          a.hex === '#9303C5' ? '147,3,197' :
+                                          a.hex === '#0356C5' ? '3,86,197' :
+                                          a.hex === '#007D10' ? '0,125,16' :
+                                          a.hex === '#FC210D' ? '252,33,13' : '255,255,255'
+                                        }, 0.55)`,
                                 }}
                               />
                             </button>

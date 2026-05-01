@@ -234,7 +234,7 @@
 
 /* ─────────────────────────────────────────────────────────────────────
    SECONDARY / ACCENT COLOR SYSTEM
-   Applied via data-accent="green|red|blue|orange" on the root wrapper.
+   Applied via data-accent="green|gold|blue|orange|violet" on the root wrapper.
    Default (no attribute or "default") keeps the app's original colors.
    CSS variable --accent cascades down so every accent-aware element
    (blobs, borders, tabs, buttons, nav, inputs focus) updates at once.
@@ -271,19 +271,23 @@
   border-color: rgba(0,125,16,0.20) !important;
 }
 
-/* Crimson Noir */
-[data-accent="red"] {
-  --accent: #C50337;
-  --accent-rgb: 197,3,55;
-  --accent-dim: rgba(197,3,55,0.14);
-  --accent-text: #ffffff;
+/* Neon Gold */
+[data-accent="gold"] {
+  --accent: #D4A800;
+  --accent-rgb: 212,168,0;
+  --accent-dim: rgba(212,168,0,0.14);
+  --accent-text: #000000;
 }
-[data-accent="red"] .liquid-blob {
-  background: rgba(197,3,55,0.22) !important;
-  opacity: 0.26 !important;
+[data-accent="gold"] .liquid-blob {
+  background: rgba(212,168,0,0.28) !important;
+  opacity: 0.32 !important;
 }
-[data-accent="red"] .glass-panel {
-  border-color: rgba(197,3,55,0.20) !important;
+[data-accent="gold"] .glass-panel {
+  border-color: rgba(212,168,0,0.24) !important;
+}
+[data-accent="gold"] .accent-primary-btn,
+[data-accent="gold"] [class*="accent-line"] {
+  box-shadow: 0 0 14px rgba(255,210,0,0.55), 0 0 32px rgba(212,168,0,0.28) !important;
 }
 
 /* Midnight Blue */

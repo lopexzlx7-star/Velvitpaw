@@ -36,7 +36,6 @@ const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 490;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const XHR_TIMEOUT_MS = 60 * 60 * 1000; // 60 min de tolerância para uploads longos
 const MAX_IMAGES = 10;
 
 function captureVideoFrame(file: File): Promise<string> {
@@ -53,11 +52,9 @@ function captureVideoFrame(file: File): Promise<string> {
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
       URL.revokeObjectURL(objectUrl);
       fn();
     };
-    const timeout = setTimeout(() => finish(() => reject(new Error('timeout'))), 60_000);
     const capture = () => {
       try {
         const vw = video.videoWidth || TARGET_W;
@@ -443,7 +440,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       const xhr = new XMLHttpRequest();
       activeXhrRef.current = xhr;
       xhr.open('POST', url);
-      xhr.timeout = XHR_TIMEOUT_MS;
       xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 95)); };
       xhr.onload = () => {
         activeXhrRef.current = null;
@@ -458,7 +454,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           reject(new Error(data?.error || `Erro ${xhr.status}`));
         }
       };
-      xhr.ontimeout = () => { activeXhrRef.current = null; reject(new Error('O upload demorou muito.')); };
       xhr.onerror = () => { activeXhrRef.current = null; reject(new Error('network_error')); };
       xhr.onabort = () => { activeXhrRef.current = null; reject(new Error('upload_aborted')); };
       xhr.send(body);
@@ -469,7 +464,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       const xhr = new XMLHttpRequest();
       activeXhrRef.current = xhr;
       xhr.open(method, url);
-      xhr.timeout = XHR_TIMEOUT_MS;
       if (extraHeaders) for (const [k, v] of Object.entries(extraHeaders)) xhr.setRequestHeader(k, v);
       xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 95)); };
       xhr.onload = () => {
@@ -489,7 +483,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           reject(err);
         }
       };
-      xhr.ontimeout = () => { activeXhrRef.current = null; reject(new Error('O upload demorou muito.')); };
       xhr.onerror = () => { activeXhrRef.current = null; reject(new Error('network_error')); };
       xhr.onabort = () => { activeXhrRef.current = null; reject(new Error('upload_aborted')); };
       xhr.send(body);
@@ -930,8 +923,9 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                   type="text"
                   placeholder="Nome do post..."
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full h-14 bg-white/5 border border-white/10 rounded-2xl px-5 text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-all text-sm"
+                  onChange={(e) => !isSubmitting && setTitle(e.target.value)}
+                  readOnly={isSubmitting}
+                  className={`w-full h-14 bg-white/5 border border-white/10 rounded-2xl px-5 text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-all text-sm ${isSubmitting ? 'opacity-40 cursor-not-allowed select-none' : ''}`}
                 />
               </div>
 
@@ -947,12 +941,13 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                     ref={descRef}
                     placeholder="Descreva seu post... use #hashtags"
                     value={description}
-                    onChange={handleDescriptionChange}
-                    onKeyUp={(e) => refreshHashtagContext((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
-                    onClick={(e) => refreshHashtagContext((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+                    onChange={isSubmitting ? undefined : handleDescriptionChange}
+                    onKeyUp={isSubmitting ? undefined : (e) => refreshHashtagContext((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+                    onClick={isSubmitting ? undefined : (e) => refreshHashtagContext((e.target as HTMLTextAreaElement).value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
                     onBlur={() => setTimeout(() => setActiveHashtag(null), 150)}
+                    readOnly={isSubmitting}
                     rows={3}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-all text-sm resize-none"
+                    className={`w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder-white/20 focus:outline-none focus:border-white/30 transition-all text-sm resize-none ${isSubmitting ? 'opacity-40 cursor-not-allowed select-none' : ''}`}
                   />
 
                   {/* Hashtag suggestion dropdown — shows existing tags so the user
