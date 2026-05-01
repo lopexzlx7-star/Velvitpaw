@@ -638,6 +638,55 @@ app.post('/api/register-hashtags', (req: Request, res: Response) => {
   }
 });
 
+// ─── /api/person-tag-photo — auto-fetch a photo for a person tag via Wikipedia ──
+// GET /api/person-tag-photo?name=Mia+Khalifa
+// Returns: { photoUrl: string|null, officialName: string|null }
+app.get('/api/person-tag-photo', async (req: Request, res: Response) => {
+  const name = String(req.query.name || '').trim();
+  if (!name) return res.json({ photoUrl: null, officialName: null });
+
+  try {
+    // Wikipedia REST v1 page summary — gives thumbnail + canonical title in one call
+    const slug = encodeURIComponent(name.replace(/\s+/g, '_'));
+    const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`;
+    const wikiRes = await fetch(wikiUrl, {
+      headers: { 'User-Agent': 'Velvit/1.0 (social media app)' },
+    });
+    if (wikiRes.ok) {
+      const data: any = await wikiRes.json();
+      const photoUrl: string | null = data?.thumbnail?.source ?? data?.originalimage?.source ?? null;
+      const officialName: string | null = data?.title ?? null;
+      return res.json({ photoUrl, officialName });
+    }
+
+    // Fallback: Wikipedia search API to find the most relevant page
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=1&format=json&origin=*`;
+    const searchRes = await fetch(searchUrl, {
+      headers: { 'User-Agent': 'Velvit/1.0' },
+    });
+    if (searchRes.ok) {
+      const searchData: any = await searchRes.json();
+      const firstResult = searchData?.query?.search?.[0];
+      if (firstResult) {
+        const pageSlug = encodeURIComponent(firstResult.title.replace(/\s+/g, '_'));
+        const pageRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${pageSlug}`, {
+          headers: { 'User-Agent': 'Velvit/1.0' },
+        });
+        if (pageRes.ok) {
+          const pageData: any = await pageRes.json();
+          const photoUrl = pageData?.thumbnail?.source ?? null;
+          return res.json({ photoUrl, officialName: pageData?.title ?? firstResult.title });
+        }
+      }
+    }
+
+    return res.json({ photoUrl: null, officialName: null });
+  } catch (err: any) {
+    console.error('[person-tag-photo]', err?.message);
+    return res.json({ photoUrl: null, officialName: null });
+  }
+});
+
 // ─── /api/upload-image — server-side image upload to Cloudinary ──────────────
 // Accepts: multipart/form-data with field "file" (image)
 // Returns: { url }

@@ -191,23 +191,57 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
     personTagTimerRef.current = setTimeout(() => searchPersonTags(personTagInput), 280);
   }, [personTagInput, searchPersonTags]);
 
-  const addPersonTag = (item: PersonTagItem) => {
+  const addPersonTag = async (item: PersonTagItem) => {
     if (!selectedPersonTags.find(t => t.slug === item.slug)) {
       setSelectedPersonTags(prev => [...prev, item]);
+      // If tag has no photo yet, fetch one from Wikipedia
+      if (!item.photoUrl) {
+        try {
+          const res = await fetch(`/api/person-tag-photo?name=${encodeURIComponent(item.name)}`);
+          if (res.ok) {
+            const { photoUrl, officialName } = await res.json();
+            if (photoUrl || officialName) {
+              setSelectedPersonTags(prev =>
+                prev.map(t => t.slug === item.slug
+                  ? { ...t, ...(photoUrl ? { photoUrl } : {}), ...(officialName ? { name: officialName } : {}) }
+                  : t
+                )
+              );
+            }
+          }
+        } catch {}
+      }
     }
     setPersonTagInput('');
     setPersonTagSuggestions([]);
   };
 
-  const createAndAddPersonTag = () => {
-    const name = personTagInput.trim();
-    if (!name) return;
-    const slug = toSlug(name);
-    if (!selectedPersonTags.find(t => t.slug === slug)) {
-      setSelectedPersonTags(prev => [...prev, { slug, name }]);
+  const createAndAddPersonTag = async () => {
+    const rawName = personTagInput.trim();
+    if (!rawName) return;
+    const slug = toSlug(rawName);
+    if (selectedPersonTags.find(t => t.slug === slug)) {
+      setPersonTagInput(''); setPersonTagSuggestions([]); return;
     }
+    // Optimistically add with raw name, then enrich with Wikipedia data
+    const provisional: PersonTagItem = { slug, name: rawName };
+    setSelectedPersonTags(prev => [...prev, provisional]);
     setPersonTagInput('');
     setPersonTagSuggestions([]);
+    try {
+      const res = await fetch(`/api/person-tag-photo?name=${encodeURIComponent(rawName)}`);
+      if (res.ok) {
+        const { photoUrl, officialName } = await res.json();
+        const finalName = officialName || rawName;
+        const finalSlug = toSlug(finalName);
+        setSelectedPersonTags(prev =>
+          prev.map(t => t.slug === slug
+            ? { slug: finalSlug, name: finalName, ...(photoUrl ? { photoUrl } : {}) }
+            : t
+          )
+        );
+      }
+    } catch {}
   };
 
   const removePersonTag = (slug: string) =>
@@ -1091,13 +1125,19 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                     {selectedPersonTags.map(pt => (
                       <span
                         key={pt.slug}
-                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold text-white border border-white/20 bg-white/8"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-semibold text-white/80 border border-white/10 bg-white/5"
                       >
+                        <span className="w-5 h-5 rounded-full overflow-hidden shrink-0 bg-white/10 flex items-center justify-center text-[9px] font-black text-white/40">
+                          {pt.photoUrl
+                            ? <img src={pt.photoUrl} alt={pt.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            : pt.name.charAt(0).toUpperCase()
+                          }
+                        </span>
                         {pt.name}
                         <button
                           type="button"
                           onClick={() => removePersonTag(pt.slug)}
-                          className="text-white/30 hover:text-white transition-colors"
+                          className="text-white/30 hover:text-white transition-colors leading-none"
                         >
                           ×
                         </button>

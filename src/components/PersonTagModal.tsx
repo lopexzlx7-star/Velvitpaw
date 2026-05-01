@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronLeft, Loader2 } from 'lucide-react';
 import {
-  collection, query, where, getDocs, orderBy
+  collection, query, where, getDocs, orderBy, doc, setDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -71,16 +71,41 @@ const PersonTagModal: React.FC<PersonTagModalProps> = ({
         const fetched = postsSnap.docs.map(d => ({ ...d.data(), id: d.id })) as ContentItem[];
         setPosts(fetched);
 
-        // Derive cover from first post image if tag has no photoUrl
-        if (fetched.length > 0 && !resolved?.photoUrl) {
-          const first = fetched[0];
-          const cover =
-            (first.type === 'image' ? first.url : null) ??
-            (first as any).thumbnailUrl ??
-            null;
-          setCoverUrl(cover);
-        } else if (resolved?.photoUrl) {
+        // If we have a photoUrl already, use it
+        if (resolved?.photoUrl) {
           setCoverUrl(resolved.photoUrl);
+        } else {
+          // Try to auto-fetch from Wikipedia and save to Firestore
+          try {
+            const photoRes = await fetch(
+              `/api/person-tag-photo?name=${encodeURIComponent(resolved?.name ?? slug)}`
+            );
+            if (photoRes.ok) {
+              const { photoUrl, officialName } = await photoRes.json();
+              if (photoUrl) {
+                setCoverUrl(photoUrl);
+                // Persist photo back to Firestore so future loads are instant
+                await setDoc(
+                  doc(db, 'person_tags', slug),
+                  { photoUrl, ...(officialName ? { name: officialName } : {}), updatedAt: new Date().toISOString() },
+                  { merge: true }
+                );
+                if (resolved && officialName) resolved.name = officialName;
+                setTag(prev => prev ? { ...prev, photoUrl, ...(officialName ? { name: officialName } : {}) } : prev);
+              } else if (fetched.length > 0) {
+                // Fallback: derive from first post image
+                const first = fetched[0];
+                const cover = (first.type === 'image' ? first.url : null) ?? (first as any).thumbnailUrl ?? null;
+                setCoverUrl(cover);
+              }
+            }
+          } catch {
+            // Fallback from post image
+            if (fetched.length > 0) {
+              const first = fetched[0];
+              setCoverUrl((first.type === 'image' ? first.url : null) ?? (first as any).thumbnailUrl ?? null);
+            }
+          }
         }
       } catch (err) {
         console.error('PersonTagModal load error', err);

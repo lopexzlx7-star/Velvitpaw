@@ -2425,23 +2425,22 @@ export default function App() {
                           exit={{ opacity: 0, y: -6 }}
                           className="mt-3 space-y-3"
                         >
-                          {/* Person tag results */}
+                          {/* Person tag results — same visual as user chips */}
                           {personTagResults.length > 0 && (
                             <div className="flex flex-wrap gap-2">
                               {personTagResults.map(pt => (
                                 <button
                                   key={pt.slug}
                                   onClick={() => { setOpenPersonTag(pt.slug); setShowHistory(false); }}
-                                  className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/12 border border-white/20 rounded-full transition-all"
-                                  style={{ boxShadow: '0 0 0 1px rgba(var(--accent-rgb,255 255 255),0.12)' }}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/12 border border-white/10 rounded-full transition-all"
                                 >
-                                  <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/10 text-[8px] font-black text-white/40">
+                                  <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center shrink-0 bg-white/10 text-[9px] font-black text-white/40">
                                     {pt.photoUrl
                                       ? <img src={pt.photoUrl} alt={pt.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                       : pt.name.charAt(0).toUpperCase()
                                     }
                                   </div>
-                                  <span className="text-[11px] text-white/80 font-semibold">{pt.name}</span>
+                                  <span className="text-[11px] text-white/70 font-semibold">@{pt.name}</span>
                                 </button>
                               ))}
                             </div>
