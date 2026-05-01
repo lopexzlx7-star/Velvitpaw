@@ -504,10 +504,9 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
     fd.append('folder', sign.folder);
     fd.append('signature', sign.signature);
     fd.append('api_key', sign.apiKey);
-    fd.append('resource_type', 'video');
-    // Sem transformação no upload: arquivo é apenas armazenado (rápido).
-    // A otimização (720p mobile / 1080p desktop) é aplicada na entrega,
-    // via URLs com transformação — o Cloudinary gera e cacheia sob demanda.
+    // resource_type is already part of the URL path (/video/upload) — do NOT
+    // append it as a form field because it is not included in the signature and
+    // would cause a Cloudinary "Invalid Signature" error.
     const data = await xhrDirectUpload(`https://api.cloudinary.com/v1_1/${sign.cloudName}/video/upload`, fd);
     if (!data.secure_url) throw new Error('Cloudinary não retornou URL do vídeo.');
     return data.secure_url as string;
@@ -636,7 +635,10 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       console.error('Error submitting post:', err);
       if (isVideo) {
         setUploadFailed(true);
-        setError('O upload do vídeo falhou ou demorou demais. Escolha o arquivo novamente.');
+        const reason = err?.message && err.message !== 'network_error'
+          ? err.message
+          : 'Verifique sua conexão e tente novamente.';
+        setError(`Upload falhou: ${reason}`);
       } else {
         setError(err?.message === 'network_error' ? 'Sem conexão. Tente novamente.' : err.message || 'Erro ao publicar.');
       }
@@ -685,11 +687,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           }}
         />
 
-        <div className="relative px-6 pt-6 pb-4 flex items-center justify-center">
+        <div className="relative px-6 pt-6 pb-4 flex items-center justify-center z-10">
           <h2 className="text-xl font-semibold tracking-tight text-white">Novo post</h2>
           <button
-            onClick={handleClose}
-            className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full transition-colors text-white/40 hover:text-white hover:bg-white/5"
+            onClick={(e) => { e.stopPropagation(); handleClose(); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-3 rounded-full transition-colors text-white/40 hover:text-white hover:bg-white/5"
           >
             <X size={18} />
           </button>
@@ -875,8 +877,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                   />
                 </motion.div>
                 <button
-                  onClick={() => { setVideoDraft(null); setThumbnailUrl(null); if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; } }}
-                  className="absolute top-3 right-3 p-2.5 bg-black/60 backdrop-blur-sm rounded-2xl text-white hover:bg-red-500 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); setVideoDraft(null); setThumbnailUrl(null); if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; } }}
+                  className="absolute top-3 right-3 p-3 bg-black/60 backdrop-blur-sm rounded-2xl text-white hover:bg-red-500 transition-colors z-10"
                 >
                   <X size={16} />
                 </button>

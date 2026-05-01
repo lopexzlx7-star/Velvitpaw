@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark } from 'lucide-react';
+import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark, RotateCw } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -986,6 +986,27 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                             >
                               {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
                             </button>
+                            {isLandscapeVideo && isFullscreen && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  showControls();
+                                  try {
+                                    const current = (screen.orientation as any)?.type ?? '';
+                                    if (current.startsWith('landscape')) {
+                                      screen.orientation?.unlock?.();
+                                    } else {
+                                      (screen.orientation as any)?.lock?.('landscape').catch?.(() => {});
+                                    }
+                                  } catch {}
+                                }}
+                                className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors"
+                                style={{ background: 'rgba(0,0,0,0.3)' }}
+                                title="Girar para paisagem"
+                              >
+                                <RotateCw size={13} />
+                              </button>
+                            )}
                             <button
                               onClick={(e) => { handleFullscreen(e); showControls(); }}
                               className="p-1.5 rounded-full text-white/60 hover:text-white transition-colors"
