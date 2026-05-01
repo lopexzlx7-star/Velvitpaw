@@ -1735,12 +1735,24 @@ export default function App() {
     );
     setHashtagResults(matchingHashtags.slice(0, 8));
 
-    // Search person tags in Firestore
+    // Search person tags in Firestore — match on name OR slug (partial)
     getDocs(collection(db, 'person_tags'))
       .then(snap => {
         const hits = snap.docs
-          .map(d => d.data() as { slug: string; name: string; photoUrl?: string })
-          .filter(t => t.name.toLowerCase().includes(qLower))
+          .map(d => ({ slug: d.id, ...(d.data() as { name: string; photoUrl?: string }) }))
+          .filter(t =>
+            t.name.toLowerCase().includes(qLower) ||
+            t.slug.toLowerCase().includes(qLower)
+          )
+          .sort((a, b) => {
+            const aNameStarts = a.name.toLowerCase().startsWith(qLower);
+            const bNameStarts = b.name.toLowerCase().startsWith(qLower);
+            const aSlugStarts = a.slug.toLowerCase().startsWith(qLower);
+            const bSlugStarts = b.slug.toLowerCase().startsWith(qLower);
+            const aScore = (aNameStarts || aSlugStarts ? 1 : 0);
+            const bScore = (bNameStarts || bSlugStarts ? 1 : 0);
+            return bScore - aScore;
+          })
           .slice(0, 6);
         setPersonTagResults(hits);
       })
