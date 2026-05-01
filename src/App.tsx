@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus, Users } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus, Users, Download } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { 
   doc, 
@@ -2840,6 +2840,14 @@ export default function App() {
                             <Users size={12} /> Seguidores ({followersUids.length})
                           </button>
                         </div>
+                        <a
+                          href="https://drive.google.com/uc?export=download&id=1_xm9K_nQnQhaECOmLwC5GV35Yd0Sg4bG"
+                          download="velvit.apk"
+                          className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white/50 hover:text-white transition-colors flex items-center justify-center"
+                          title="Baixar APK"
+                        >
+                          <Download size={16} />
+                        </a>
                         <button 
                           onClick={resetBackground}
                           className="p-2 bg-white/5 border border-white/10 rounded-lg text-white/50 hover:text-white transition-colors"
