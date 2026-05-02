@@ -267,6 +267,8 @@ export default function App() {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [userPosts, setUserPosts] = useState<ContentItem[]>([]);
   const [globalPosts, setGlobalPosts] = useState<ContentItem[]>([]);
+  const [pendingNewPosts, setPendingNewPosts] = useState<ContentItem[]>([]);
+  const knownPostIdsRef = useRef<Set<string> | null>(null);
   const videoFeedMemo = useMemo(
     () => globalPosts.filter(p =>
       (p.type === 'video' || p.type === 'gif') &&
@@ -608,15 +610,31 @@ export default function App() {
         const dateA = new Date(a.createdAt || 0).getTime();
         const dateB = new Date(b.createdAt || 0).getTime();
         if (dateB !== dateA) return dateB - dateA;
-        // Tie-breaker: id desc (matches ORDER BY created_at DESC, id DESC)
         return (b.id || '').localeCompare(a.id || '');
       });
 
-      // Store all posts globally so auth callback can re-filter after uid resolves
       (window as any).__allFetchedPosts__ = fetchedPosts;
 
       const visiblePosts = fetchedPosts.filter(p => !(p as any).archived);
-      setGlobalPosts(visiblePosts);
+
+      if (knownPostIdsRef.current === null) {
+        // First snapshot — populate feed immediately
+        knownPostIdsRef.current = new Set(visiblePosts.map(p => p.id));
+        setGlobalPosts(visiblePosts);
+        setItems(visiblePosts);
+      } else {
+        // Subsequent snapshots — collect new posts without touching the visible feed
+        const newOnes = visiblePosts.filter(p => !knownPostIdsRef.current!.has(p.id));
+        visiblePosts.forEach(p => knownPostIdsRef.current!.add(p.id));
+        setGlobalPosts(visiblePosts);
+        if (newOnes.length > 0) {
+          setPendingNewPosts(prev => {
+            const existingIds = new Set(prev.map(p => p.id));
+            const brandNew = newOnes.filter(p => !existingIds.has(p.id));
+            return brandNew.length > 0 ? [...brandNew, ...prev] : prev;
+          });
+        }
+      }
       
       const trending = [...visiblePosts]
         .sort((a: any, b: any) => ((b.likesCount || 0) + (b.savesCount || 0)) - ((a.likesCount || 0) + (a.savesCount || 0)))
@@ -1299,27 +1317,13 @@ export default function App() {
     setActiveHashtag(null);
     setHashtagResults([]);
 
-    // Show the refresh indicator and pull the freshest posts from Firestore.
-    setIsRefreshingFeed(true);
-    const minVisible = new Promise<void>(resolve => setTimeout(resolve, 750));
-    const refresh = (async () => {
-      try {
-        const snap = await getDocs(query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(100)));
-        const fetched = snap.docs.map(d => ({ ...d.data(), id: d.id })) as ContentItem[];
-        fetched.sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0).getTime();
-          const dateB = new Date(b.createdAt || 0).getTime();
-          if (dateB !== dateA) return dateB - dateA;
-          return (b.id || '').localeCompare(a.id || '');
-        });
-        const visible = fetched.filter(p => !(p as any).archived);
-        setGlobalPosts(visible);
-        setItems(visible);
-      } catch {
+    // Merge any pending new posts into the visible feed
+    setPendingNewPosts(pending => {
+      if (pending.length > 0) {
         setItems(globalPosts);
       }
-    })();
-    Promise.all([refresh, minVisible]).finally(() => setIsRefreshingFeed(false));
+      return [];
+    });
   };
 
   // ─── Notifications: delete one + auto-cleanup of older than 7 days ───────
@@ -1966,7 +1970,7 @@ export default function App() {
         className="min-h-screen flex items-center justify-center p-6 bg-space-gray-900 relative overflow-hidden"
         data-accent={accentColor === 'default' ? undefined : accentColor}
       >
-        <Suspense fallback={null}><LoginBackdrop posts={globalPosts} /></Suspense>
+        <Suspense fallback={null}><LoginBackdrop /></Suspense>
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -2692,6 +2696,16 @@ export default function App() {
                   </div>
                 </div>
 
+                {pendingNewPosts.length > 0 && (
+                  <button
+                    onClick={handleHomeClick}
+                    className="w-full mb-4 py-2.5 px-4 rounded-full text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 accent-primary-btn"
+                  >
+                    <Plus size={14} />
+                    {pendingNewPosts.length} novo{pendingNewPosts.length > 1 ? 's' : ''} post{pendingNewPosts.length > 1 ? 's' : ''}
+                  </button>
+                )}
+
                 <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
                   {isGeneratingFeed && items.length === 0 ? (
                     Array.from({ length: 10 }).map((_, i) => (
@@ -2704,7 +2718,8 @@ export default function App() {
                       const isFromFollowed = !!authorUid && followingUids.includes(authorUid);
                       const createdAt = (item as any).createdAt as string | undefined;
                       const isAfterBaseline = !!createdAt && createdAt > seenBaseline;
-                      const isNew = isFromFollowed && !isOwnPost && isAfterBaseline && !seenPostIds.has(item.id);
+                      const isWithin24h = !!createdAt && (Date.now() - new Date(createdAt).getTime()) < 86_400_000;
+                      const isNew = isFromFollowed && !isOwnPost && isAfterBaseline && isWithin24h && !seenPostIds.has(item.id);
                       return (
                         <GlassCard 
                           key={item.id} 

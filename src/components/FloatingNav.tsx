@@ -27,28 +27,33 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[120]">
       <div
-        className="relative dark:bg-black/30 bg-white/30 backdrop-blur-sm px-2 py-2 rounded-full flex items-center shadow-xl dark:shadow-black/50 border dark:border-white/10 border-black/10"
+        className="dark:bg-black/30 bg-white/30 backdrop-blur-sm px-2 py-2 rounded-full shadow-xl dark:shadow-black/50 border dark:border-white/10 border-black/10"
+        style={{ position: 'relative' }}
       >
-        <div className="relative flex items-center">
-          {/* Sliding pill — pure CSS transition */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          {/* Sliding pill — pure CSS transition, no Tailwind transform conflicts */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 left-0 rounded-full accent-primary-btn nav-pill"
+            className="accent-primary-btn"
             style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
               width: SIZE,
               height: SIZE,
-              transform: `translateY(-50%) translateX(${idx * SIZE}px)`,
+              borderRadius: '50%',
+              transform: `translateX(${idx * SIZE}px)`,
               transition: 'transform 220ms cubic-bezier(0.34,1.56,0.64,1)',
-              background: 'rgb(var(--accent-rgb, 255 255 255))',
               boxShadow:
                 '0 4px 14px -4px rgba(var(--accent-rgb, 255 255 255), 0.5)',
+              pointerEvents: 'none',
             }}
           />
 
           {/* Plus tab */}
           <button
             onClick={onAddClick}
-            className="relative z-10 flex items-center justify-center rounded-full transition-colors active:scale-90"
-            style={{ width: SIZE, height: SIZE, color: tabColor('publish') }}
+            style={{ position: 'relative', zIndex: 10, width: SIZE, height: SIZE, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', color: tabColor('publish') }}
+            className="transition-colors active:scale-90"
             aria-label="Publicar"
           >
             <Plus size={24} />
@@ -57,8 +62,8 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
           {/* Home tab */}
           <button
             onClick={onHomeClick}
-            className="relative z-10 flex items-center justify-center rounded-full transition-colors active:scale-90"
-            style={{ width: SIZE, height: SIZE, color: tabColor('feed') }}
+            style={{ position: 'relative', zIndex: 10, width: SIZE, height: SIZE, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', color: tabColor('feed') }}
+            className="transition-colors active:scale-90"
             aria-label="Início"
           >
             <Home size={26} />
@@ -67,8 +72,8 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
           {/* Profile tab */}
           <button
             onClick={onProfileClick}
-            className="relative z-10 flex items-center justify-center rounded-full transition-colors active:scale-90"
-            style={{ width: SIZE, height: SIZE, color: tabColor('profile') }}
+            style={{ position: 'relative', zIndex: 10, width: SIZE, height: SIZE, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', color: tabColor('profile') }}
+            className="transition-colors active:scale-90"
             aria-label="Perfil"
           >
             <User size={24} />

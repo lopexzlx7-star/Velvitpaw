@@ -184,37 +184,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!isNew || !onSeen) return;
-    const el = cardRef.current;
-    if (!el) return;
-
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-            if (!timer) {
-              timer = setTimeout(() => {
-                onSeen(item.id);
-                timer = null;
-              }, 1500);
-            }
-          } else if (timer) {
-            clearTimeout(timer);
-            timer = null;
-          }
-        });
-      },
-      { threshold: [0.5] }
-    );
-    observer.observe(el);
-
-    return () => {
-      if (timer) clearTimeout(timer);
-      observer.disconnect();
-    };
-  }, [isNew, item.id, onSeen]);
+  // "Novo" badge is dismissed only when the user opens the post (onClick) or after 24h.
+  // No auto-dismiss on scroll visibility.
 
   const responsiveVideoUrl = useResponsiveVideoUrl(item.url);
   const [isLoaded, setIsLoaded] = useState(false);
