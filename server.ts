@@ -1097,6 +1097,52 @@ app.post('/api/reset-password', async (req: Request, res: Response) => {
 server.timeout = SERVER_TIMEOUT_MS;
 server.keepAliveTimeout = SERVER_TIMEOUT_MS;
 
+// ─── ApyHub video compression proxy ──────────────────────────────────────────
+// Receives the raw video from the browser, forwards to ApyHub, streams back
+// the compressed mp4. The API key stays on the server and never reaches the client.
+const uploadVideo = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE_BYTES } });
+
+app.post('/api/compress-video', uploadVideo.single('video'), async (req: Request, res: Response) => {
+  const APYHUB_API_KEY = process.env.APYHUB_API_KEY ?? '';
+  if (!APYHUB_API_KEY) {
+    res.status(500).json({ error: 'APYHUB_API_KEY não configurada no servidor.' });
+    return;
+  }
+  if (!req.file) {
+    res.status(400).json({ error: 'Nenhum arquivo de vídeo recebido.' });
+    return;
+  }
+
+  try {
+    const apyForm = new FormData();
+    const blob = new Blob([req.file.buffer], { type: req.file.mimetype || 'video/mp4' });
+    apyForm.append('video', blob, req.file.originalname || 'video.mp4');
+
+    const apyRes = await fetch('https://api.apyhub.com/processor/video/compress/file', {
+      method: 'POST',
+      headers: { 'apy-token': APYHUB_API_KEY },
+      body: apyForm,
+    });
+
+    if (!apyRes.ok) {
+      let errMsg = `ApyHub erro ${apyRes.status}`;
+      try { const j = await apyRes.json(); errMsg = j?.message ?? j?.error ?? errMsg; } catch {}
+      console.error('[ERRO] ApyHub compress-video:', errMsg);
+      res.status(502).json({ error: errMsg });
+      return;
+    }
+
+    const contentType = apyRes.headers.get('content-type') ?? 'video/mp4';
+    const arrayBuffer = await apyRes.arrayBuffer();
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', 'attachment; filename="compressed.mp4"');
+    res.send(Buffer.from(arrayBuffer));
+  } catch (err: any) {
+    console.error('[ERRO] compress-video:', err.message);
+    res.status(500).json({ error: err.message ?? 'Erro interno ao comprimir vídeo.' });
+  }
+});
+
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`[ERRO] Porta ${PORT} ocupada. Reinicie o servidor.`);
