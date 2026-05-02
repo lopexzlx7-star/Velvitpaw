@@ -7,9 +7,10 @@
     "dev": "fuser -k 3001/tcp 5000/tcp 2>/dev/null; sleep 1 && concurrently \"tsx server.ts\" \"vite\"",
     "build": "vite build",
     "start": "NODE_ENV=production tsx server.ts",
-    "preview": "vite preview",
+    "preview": "npm run build && wrangler dev",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
@@ -33,11 +34,13 @@
     "vite": "^6.4.1"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.35.0",
     "@types/express": "^4.17.25",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.19.15",
     "autoprefixer": "^10.4.27",
     "tailwindcss": "^4.2.2",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "wrangler": "^4.87.0"
   }
 }
