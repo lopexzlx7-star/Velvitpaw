@@ -1100,9 +1100,8 @@ server.keepAliveTimeout = SERVER_TIMEOUT_MS;
 // ─── ApyHub video compression proxy ──────────────────────────────────────────
 // Receives the raw video from the browser, forwards to ApyHub, streams back
 // the compressed mp4. The API key stays on the server and never reaches the client.
-const uploadVideo = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE_BYTES } });
-
-app.post('/api/compress-video', uploadVideo.single('video'), async (req: Request, res: Response) => {
+// Uses the existing `upload` multer instance (field name: "video", same as client).
+app.post('/api/compress-video', upload.single('video'), async (req: Request, res: Response) => {
   const APYHUB_API_KEY = process.env.APYHUB_API_KEY ?? '';
   if (!APYHUB_API_KEY) {
     res.status(500).json({ error: 'APYHUB_API_KEY não configurada no servidor.' });
@@ -1113,10 +1112,13 @@ app.post('/api/compress-video', uploadVideo.single('video'), async (req: Request
     return;
   }
 
+  console.log(`[ApyHub] Iniciando compressão: ${req.file.originalname ?? 'video'} (${(req.file.size / 1024 / 1024).toFixed(1)} MB)`);
+
   try {
+    // ApyHub expects the field name "file"
     const apyForm = new FormData();
     const blob = new Blob([req.file.buffer], { type: req.file.mimetype || 'video/mp4' });
-    apyForm.append('video', blob, req.file.originalname || 'video.mp4');
+    apyForm.append('file', blob, req.file.originalname || 'video.mp4');
 
     const apyRes = await fetch('https://api.apyhub.com/processor/video/compress/file', {
       method: 'POST',
@@ -1126,7 +1128,10 @@ app.post('/api/compress-video', uploadVideo.single('video'), async (req: Request
 
     if (!apyRes.ok) {
       let errMsg = `ApyHub erro ${apyRes.status}`;
-      try { const j = await apyRes.json(); errMsg = j?.message ?? j?.error ?? errMsg; } catch {}
+      try {
+        const body = await apyRes.text();
+        try { const j = JSON.parse(body); errMsg = j?.message ?? j?.error ?? errMsg; } catch { errMsg = body || errMsg; }
+      } catch {}
       console.error('[ERRO] ApyHub compress-video:', errMsg);
       res.status(502).json({ error: errMsg });
       return;
@@ -1134,6 +1139,8 @@ app.post('/api/compress-video', uploadVideo.single('video'), async (req: Request
 
     const contentType = apyRes.headers.get('content-type') ?? 'video/mp4';
     const arrayBuffer = await apyRes.arrayBuffer();
+    const compressedMB = (arrayBuffer.byteLength / 1024 / 1024).toFixed(1);
+    console.log(`[ApyHub] Compressão concluída: ${compressedMB} MB — enviando ao cliente`);
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', 'attachment; filename="compressed.mp4"');
     res.send(Buffer.from(arrayBuffer));

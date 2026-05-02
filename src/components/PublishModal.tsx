@@ -561,10 +561,27 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
 
   const uploadVideo = async (file: File): Promise<string> => {
     const sign = await safeFetchJson('/api/cloudinary-sign');
-
-    // Use chunked upload for all files to avoid Cloudinary timeout on large videos.
-    // For small files the loop runs once; for large files each 50 MB chunk finishes fast.
+    // Use chunked upload for all files. For small files the loop runs once;
+    // for large files each 50 MB chunk finishes fast, avoiding Cloudinary timeouts.
     return uploadVideoChunked(file, sign);
+  };
+
+  // Uploads the captured first-frame thumbnail to Cloudinary via the server proxy.
+  // Returns the hosted URL, or null on any failure (non-blocking).
+  const uploadThumbnail = async (dataUrl: string): Promise<string | null> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch('/api/upload-thumbnail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thumbnail: dataUrl }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) { const d = await res.json(); return d.url ?? null; }
+      return null;
+    } catch { clearTimeout(timer); return null; }
   };
 
 
@@ -631,42 +648,55 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       } else if (videoDraft) {
         if (!videoDraft) { setIsSubmitting(false); return; }
 
-        // Compress via ApyHub only for videos longer than 3 min AND larger than 50 MB
-        let fileToUpload = videoDraft.file;
         const durationSec = videoDraft.duration ?? 0;
-        if (shouldCompress(videoDraft.file, durationSec)) {
-          try {
-            fileToUpload = await compressVideoViaApyHub(videoDraft.file);
-          } catch {
-            // Compression failed — proceed with the original file
-            fileToUpload = videoDraft.file;
+        const needsCompression = shouldCompress(videoDraft.file, durationSec);
+        let fileToUpload: File = videoDraft.file;
+        let hostedThumbnailUrl: string | null = null;
+
+        if (needsCompression) {
+          // ── Long video ────────────────────────────────────────────────────────
+          // 1. Run ApyHub compression AND thumbnail upload in parallel.
+          //    The thumbnail finishes in seconds; compression takes much longer.
+          //    Cloudinary is NOT contacted until step 2 below.
+          const [compressionResult, thumbResult] = await Promise.allSettled([
+            compressVideoViaApyHub(videoDraft.file),
+            thumbnailUrl ? uploadThumbnail(thumbnailUrl) : Promise.resolve(null),
+          ]);
+
+          if (compressionResult.status === 'fulfilled') {
+            fileToUpload = compressionResult.value;
+          }
+          // If compression failed, fileToUpload stays as original.
+          // The size guard below will surface an error if it is still too large.
+
+          if (thumbResult.status === 'fulfilled') {
+            hostedThumbnailUrl = thumbResult.value;
+          }
+
+          // Guard: bail out if the file is still too heavy after compression
+          if (fileToUpload.size > POST_COMPRESS_MAX_BYTES) {
+            setIsSubmitting(false);
+            setUploadFailed(true);
+            setError('Vídeo muito pesado mesmo após compressão. Tente um vídeo mais curto.');
+            return;
+          }
+
+          // 2. Only now — after compression is fully done — upload to Cloudinary.
+          //    (sign fetch + chunked XHR upload happens here, not before)
+
+        } else {
+          // ── Short video — no compression needed ──────────────────────────────
+          // Upload thumbnail first (fast, a few seconds) then video to Cloudinary.
+          if (thumbnailUrl) {
+            hostedThumbnailUrl = await uploadThumbnail(thumbnailUrl);
           }
         }
 
-        // Guard: bail out if file is still too heavy after compression
-        if (fileToUpload.size > POST_COMPRESS_MAX_BYTES) {
-          setIsSubmitting(false);
-          setUploadFailed(true);
-          setError('Vídeo muito pesado mesmo após compressão. Tente um vídeo mais curto.');
-          return;
-        }
-
+        // Upload video to Cloudinary — always sequential, always AFTER any compression
         const finalUrl = await uploadVideo(fileToUpload);
 
-        let hostedThumbnailUrl: string | null = null;
-        if (thumbnailUrl) {
-          const thumbCtrl = new AbortController();
-          const thumbTimeout = setTimeout(() => thumbCtrl.abort(), 15000);
-          try {
-            const res = await fetch('/api/upload-thumbnail', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ thumbnail: thumbnailUrl }),
-              signal: thumbCtrl.signal,
-            });
-            clearTimeout(thumbTimeout);
-            if (res.ok) { const data = await res.json(); hostedThumbnailUrl = data.url ?? null; }
-          } catch { clearTimeout(thumbTimeout); }
-        }
+        // For long videos the thumbnail was already uploaded above in parallel.
+        // For short videos it was uploaded above before the video, so nothing to do.
 
         const postData: Record<string, unknown> = {
           title: title.trim() || 'Sem título',
