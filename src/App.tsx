@@ -1317,13 +1317,15 @@ export default function App() {
     setActiveHashtag(null);
     setHashtagResults([]);
 
-    // Merge any pending new posts into the visible feed
+    // Merge any pending new posts into the visible feed + show loading animation
+    setIsRefreshingFeed(true);
     setPendingNewPosts(pending => {
       if (pending.length > 0) {
         setItems(globalPosts);
       }
       return [];
     });
+    setTimeout(() => setIsRefreshingFeed(false), 750);
   };
 
   // ─── Notifications: delete one + auto-cleanup of older than 7 days ───────
