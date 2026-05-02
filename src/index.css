@@ -6,42 +6,29 @@
   --color-space-gray-700: #2d2d2d;
   --color-space-gray-600: #3d3d3d;
   
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
 @layer base {
   body {
     @apply bg-space-gray-900 text-white antialiased overflow-x-hidden;
-    background: radial-gradient(circle at 50% -20%, #2d2d2d 0%, #121212 100%);
+    background: #121212;
   }
 }
 
 @layer components {
   .glass-panel {
-    @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl;
+    @apply bg-white/5 border border-white/10 shadow-xl;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
   
   .liquid-bg {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
-    overflow: hidden;
+    display: none;
   }
 
   .liquid-blob {
-    position: absolute;
-    filter: blur(80px);
-    border-radius: 50%;
-    opacity: 0.15;
-    animation: float 20s infinite alternate;
-  }
-
-  @keyframes float {
-    0% { transform: translate(0, 0) scale(1); }
-    100% { transform: translate(100px, 50px) scale(1.2); }
+    display: none;
   }
 }
 
@@ -57,7 +44,7 @@
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 4px;
 }
 ::-webkit-scrollbar-track {
   background: #121212;
@@ -66,13 +53,36 @@
   background: #3d3d3d;
   border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #4d4d4d;
+
+/* ─── Card fade-in animation (replaces Framer Motion) ──────────────── */
+@keyframes card-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.card-fade-in {
+  animation: card-fade-in 200ms ease-out both;
+}
+
+/* ─── New badge pulse (replaces Framer Motion) ──────────────────────── */
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(1.25); }
+}
+.new-badge-pulse {
+  animation: badge-pulse 1.4s ease-in-out infinite;
+}
+
+/* ─── Refresh shimmer (replaces Framer Motion) ──────────────────────── */
+@keyframes shimmer-slide {
+  from { transform: translateX(-110%); }
+  to   { transform: translateX(210%); }
+}
+.refresh-shimmer {
+  animation: shimmer-slide 0.9s ease-in-out infinite;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
    LIGHT MODE (white + neon blue)
-   Applied when the root wrapper has class "light-mode"
 ───────────────────────────────────────────────────────────────────── */
 .light-mode {
   --lm-bg: #eef4ff;
@@ -85,87 +95,49 @@
   --lm-neon-glow: rgba(0,204,255,0.35);
 }
 
-/* Global inherited text color in light mode */
 .light-mode {
   color: var(--lm-text);
 }
 
-/* Body / fixed background */
 .light-mode body,
 .light-mode .bg-space-gray-900,
 .light-mode [class*="bg-space-gray-"] {
   background: var(--lm-bg) !important;
 }
 
-/* Fixed backdrop layer */
 .light-mode .fixed.inset-0.z-\[-2\] {
   background: var(--lm-bg) !important;
 }
 
-/* Glass panels become white + blue-tinted border */
 .light-mode .glass-panel {
   background: var(--lm-surface) !important;
   border-color: var(--lm-border) !important;
-  box-shadow: 0 8px 32px rgba(0,100,255,0.08) !important;
+  box-shadow: 0 4px 16px rgba(0,100,255,0.07) !important;
 }
 
-/* Text colors — map whites → darks */
-.light-mode .text-white {
-  color: var(--lm-text) !important;
-}
+.light-mode .text-white { color: var(--lm-text) !important; }
 .light-mode .text-white\/80,
 .light-mode .text-white\/85,
-.light-mode .text-white\/90 {
-  color: rgba(6,6,15,0.85) !important;
-}
-.light-mode .text-white\/70 {
-  color: rgba(6,6,15,0.70) !important;
-}
+.light-mode .text-white\/90 { color: rgba(6,6,15,0.85) !important; }
+.light-mode .text-white\/70 { color: rgba(6,6,15,0.70) !important; }
 .light-mode .text-white\/60,
-.light-mode .text-white\/55 {
-  color: rgba(6,6,15,0.60) !important;
-}
-.light-mode .text-white\/50 {
-  color: rgba(6,6,15,0.50) !important;
-}
+.light-mode .text-white\/55 { color: rgba(6,6,15,0.60) !important; }
+.light-mode .text-white\/50 { color: rgba(6,6,15,0.50) !important; }
 .light-mode .text-white\/40,
-.light-mode .text-white\/35 {
-  color: rgba(6,6,15,0.40) !important;
-}
+.light-mode .text-white\/35 { color: rgba(6,6,15,0.40) !important; }
 .light-mode .text-white\/30,
-.light-mode .text-white\/25 {
-  color: rgba(6,6,15,0.30) !important;
-}
-.light-mode .text-white\/20 {
-  color: rgba(6,6,15,0.20) !important;
-}
-.light-mode .text-white\/10 {
-  color: rgba(6,6,15,0.10) !important;
-}
+.light-mode .text-white\/25 { color: rgba(6,6,15,0.30) !important; }
+.light-mode .text-white\/20 { color: rgba(6,6,15,0.20) !important; }
+.light-mode .text-white\/10 { color: rgba(6,6,15,0.10) !important; }
 
-/* Backgrounds — map dark surfaces → light */
-.light-mode .bg-white\/5 {
-  background: rgba(0,100,255,0.06) !important;
-}
-.light-mode .bg-white\/10 {
-  background: rgba(0,100,255,0.10) !important;
-}
-.light-mode .bg-white\/20 {
-  background: rgba(0,100,255,0.16) !important;
-}
+.light-mode .bg-white\/5  { background: rgba(0,100,255,0.06) !important; }
+.light-mode .bg-white\/10 { background: rgba(0,100,255,0.10) !important; }
+.light-mode .bg-white\/20 { background: rgba(0,100,255,0.16) !important; }
 
-/* Borders */
-.light-mode .border-white\/10 {
-  border-color: rgba(0,100,255,0.14) !important;
-}
-.light-mode .border-white\/20 {
-  border-color: rgba(0,100,255,0.22) !important;
-}
-.light-mode .border-white\/5 {
-  border-color: rgba(0,100,255,0.08) !important;
-}
+.light-mode .border-white\/10 { border-color: rgba(0,100,255,0.14) !important; }
+.light-mode .border-white\/20 { border-color: rgba(0,100,255,0.22) !important; }
+.light-mode .border-white\/5  { border-color: rgba(0,100,255,0.08) !important; }
 
-/* VELVIT branding — accent color in light mode (overridden by .accent-logo globally) */
 .light-mode h1.text-white {
   color: var(--accent) !important;
   -webkit-text-fill-color: var(--accent) !important;
@@ -174,7 +146,6 @@
   background-clip: unset !important;
 }
 
-/* Input fields */
 .light-mode input,
 .light-mode textarea {
   background: rgba(0,100,255,0.05) !important;
@@ -182,65 +153,36 @@
   color: var(--lm-text) !important;
 }
 .light-mode input::placeholder,
-.light-mode textarea::placeholder {
-  color: rgba(6,6,15,0.30) !important;
-}
+.light-mode textarea::placeholder { color: rgba(6,6,15,0.30) !important; }
 
-/* Tab underlines → accent color */
 .light-mode .bg-white.h-0\.5,
-.light-mode [class*="bg-white"][class*="h-0"] {
-  background: var(--accent) !important;
-}
+.light-mode [class*="bg-white"][class*="h-0"] { background: var(--accent) !important; }
 
-/* Active tabs text */
-.light-mode button.text-white {
-  color: var(--lm-text) !important;
-}
+.light-mode button.text-white { color: var(--lm-text) !important; }
 
-/* Primary action buttons (white bg, black text) — use accent color */
 .light-mode .bg-white.text-black {
   background: var(--accent) !important;
   color: var(--accent-text) !important;
 }
 
-/* Liquid blobs become neon blue */
 .light-mode .liquid-blob {
   background: rgba(0,150,255,0.15) !important;
   opacity: 0.25 !important;
 }
 
-/* Card backgrounds */
 .light-mode .bg-black\/40,
 .light-mode .bg-black\/60,
-.light-mode .bg-black\/80 {
-  background: rgba(6,6,15,0.4) !important;
-}
+.light-mode .bg-black\/80 { background: rgba(6,6,15,0.4) !important; }
 
-/* Red hearts and other colored elements stay as-is */
-.light-mode .text-red-500 {
-  color: #ef4444 !important;
-}
+.light-mode .text-red-500 { color: #ef4444 !important; }
 
-/* Scrollbar in light mode */
-.light-mode ::-webkit-scrollbar-track {
-  background: #e8f0fe;
-}
-.light-mode ::-webkit-scrollbar-thumb {
-  background: #93c5fd;
-}
-.light-mode ::-webkit-scrollbar-thumb:hover {
-  background: #60a5fa;
-}
+.light-mode ::-webkit-scrollbar-track { background: #e8f0fe; }
+.light-mode ::-webkit-scrollbar-thumb { background: #93c5fd; }
 
 /* ─────────────────────────────────────────────────────────────────────
    SECONDARY / ACCENT COLOR SYSTEM
-   Applied via data-accent="green|gold|blue|orange|violet" on the root wrapper.
-   Default (no attribute or "default") keeps the app's original colors.
-   CSS variable --accent cascades down so every accent-aware element
-   (blobs, borders, tabs, buttons, nav, inputs focus) updates at once.
 ───────────────────────────────────────────────────────────────────── */
 
-/* Default accent (dark mode) */
 :root, [data-accent="default"] {
   --accent: #ffffff;
   --accent-rgb: 255,255,255;
@@ -248,7 +190,6 @@
   --accent-text: #000000;
 }
 
-/* Default accent (light mode) */
 .light-mode {
   --accent: #0066ff;
   --accent-rgb: 0,102,255;
@@ -256,108 +197,65 @@
   --accent-text: #ffffff;
 }
 
-/* Forest Noir */
 [data-accent="green"] {
   --accent: #007D10;
   --accent-rgb: 0,125,16;
   --accent-dim: rgba(0,125,16,0.14);
   --accent-text: #ffffff;
 }
-[data-accent="green"] .liquid-blob {
-  background: rgba(0,125,16,0.22) !important;
-  opacity: 0.28 !important;
-}
-[data-accent="green"] .glass-panel {
-  border-color: rgba(0,125,16,0.20) !important;
-}
+[data-accent="green"] .glass-panel { border-color: rgba(0,125,16,0.20) !important; }
 
-/* Neon Gold */
 [data-accent="gold"] {
   --accent: #D4A800;
   --accent-rgb: 212,168,0;
   --accent-dim: rgba(212,168,0,0.14);
   --accent-text: #000000;
 }
-[data-accent="gold"] .liquid-blob {
-  background: rgba(212,168,0,0.28) !important;
-  opacity: 0.32 !important;
-}
-[data-accent="gold"] .glass-panel {
-  border-color: rgba(212,168,0,0.24) !important;
-}
-[data-accent="gold"] .accent-primary-btn,
-[data-accent="gold"] [class*="accent-line"] {
-  box-shadow: 0 0 14px rgba(255,210,0,0.55), 0 0 32px rgba(212,168,0,0.28) !important;
-}
+[data-accent="gold"] .glass-panel { border-color: rgba(212,168,0,0.24) !important; }
 
-/* Midnight Blue */
 [data-accent="blue"] {
   --accent: #0356C5;
   --accent-rgb: 3,86,197;
   --accent-dim: rgba(3,86,197,0.14);
   --accent-text: #ffffff;
 }
-[data-accent="blue"] .liquid-blob {
-  background: rgba(3,86,197,0.22) !important;
-  opacity: 0.28 !important;
-}
-[data-accent="blue"] .glass-panel {
-  border-color: rgba(3,86,197,0.20) !important;
-}
+[data-accent="blue"] .glass-panel { border-color: rgba(3,86,197,0.20) !important; }
 
-/* Sunset Glow */
 [data-accent="orange"] {
   --accent: #FC210D;
   --accent-rgb: 252,33,13;
   --accent-dim: rgba(252,33,13,0.14);
   --accent-text: #ffffff;
 }
-[data-accent="orange"] .liquid-blob {
-  background: rgba(252,33,13,0.22) !important;
-  opacity: 0.26 !important;
-}
-[data-accent="orange"] .glass-panel {
-  border-color: rgba(252,33,13,0.20) !important;
-}
+[data-accent="orange"] .glass-panel { border-color: rgba(252,33,13,0.20) !important; }
 
-/* Royal Violet */
 [data-accent="violet"] {
   --accent: #9303C5;
   --accent-rgb: 147,3,197;
   --accent-dim: rgba(147,3,197,0.14);
   --accent-text: #ffffff;
 }
-[data-accent="violet"] .liquid-blob {
-  background: rgba(147,3,197,0.22) !important;
-  opacity: 0.28 !important;
-}
-[data-accent="violet"] .glass-panel {
-  border-color: rgba(147,3,197,0.20) !important;
-}
+[data-accent="violet"] .glass-panel { border-color: rgba(147,3,197,0.20) !important; }
 
-/* ── Subtle neon glow on accent elements (skip default white) ─────── */
-/* Logo glow removed — was creating a visible "bubble" halo around VELVIT. */
+/* ── Subtle neon glow on accent elements ────────────────────────── */
 [data-accent="red"] .accent-primary-btn,
 [data-accent="violet"] .accent-primary-btn,
 [data-accent="blue"] .accent-primary-btn,
 [data-accent="green"] .accent-primary-btn,
 [data-accent="orange"] .accent-primary-btn {
   box-shadow:
-    0 0 12px -2px rgba(var(--accent-rgb), 0.55),
-    0 0 24px -6px rgba(var(--accent-rgb), 0.30),
-    inset 0 1px 0 rgba(255,255,255,0.25);
+    0 0 10px -2px rgba(var(--accent-rgb), 0.45),
+    inset 0 1px 0 rgba(255,255,255,0.2);
 }
 [data-accent="red"] .accent-line,
 [data-accent="violet"] .accent-line,
 [data-accent="blue"] .accent-line,
 [data-accent="green"] .accent-line,
 [data-accent="orange"] .accent-line {
-  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.55);
+  box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.45);
 }
 
-/* ── Accent-aware utility classes ───────────────────────────────────── */
-
-/* App logo — follows accent in both dark and light modes */
+/* ── Accent-aware utility classes ───────────────────────────────── */
 .accent-logo {
   color: var(--accent) !important;
   -webkit-text-fill-color: var(--accent) !important;
@@ -366,63 +264,36 @@
   background-clip: unset !important;
 }
 
-/* Tab / section underlines */
-.accent-line {
-  background: var(--accent) !important;
-}
+.accent-line { background: var(--accent) !important; }
 
-/* Primary action buttons (home nav button, CTA buttons) */
 .accent-primary-btn {
   background: var(--accent) !important;
   color: var(--accent-text) !important;
 }
-.accent-primary-btn svg {
-  color: var(--accent-text) !important;
-}
+.accent-primary-btn svg { color: var(--accent-text) !important; }
 
-/* Active nav icon tint */
-.accent-icon {
-  color: var(--accent) !important;
-}
+.accent-icon { color: var(--accent) !important; }
 
-/* Focused input ring */
 input:focus.accent-focus,
 textarea:focus.accent-focus {
   border-color: var(--accent) !important;
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.18) !important;
 }
 
-/* Selected/active item highlight pill */
 .accent-selected {
   background: var(--accent) !important;
   color: var(--accent-text) !important;
 }
 
-/* In light mode, accent colors override the blue blob override */
 .light-mode[data-accent="green"] .liquid-blob,
-.light-mode [data-accent="green"] .liquid-blob {
-  background: rgba(34,197,94,0.18) !important;
-}
+.light-mode [data-accent="green"] .liquid-blob { background: rgba(34,197,94,0.18) !important; }
 .light-mode[data-accent="red"] .liquid-blob,
-.light-mode [data-accent="red"] .liquid-blob {
-  background: rgba(239,68,68,0.18) !important;
-}
+.light-mode [data-accent="red"] .liquid-blob   { background: rgba(239,68,68,0.18) !important; }
 .light-mode[data-accent="orange"] .liquid-blob,
-.light-mode [data-accent="orange"] .liquid-blob {
-  background: rgba(249,115,22,0.18) !important;
-}
-/* Blue accent in light mode keeps the existing blue — no override needed */
+.light-mode [data-accent="orange"] .liquid-blob { background: rgba(249,115,22,0.18) !important; }
 
-/* ─────────────────────────────────────────────────────────────────────
-   DARK-SURFACE MODAL — keep white text/bg inside PublishModal and any
-   other panel that has a dark background even in light mode.
-   Apply class "modal-dark" to the panel's outermost element.
-───────────────────────────────────────────────────────────────────── */
-.light-mode .modal-dark {
-  color: #ffffff;
-}
-
-/* Text utilities */
+/* ─── DARK-SURFACE MODAL ──────────────────────────────────────────── */
+.light-mode .modal-dark { color: #ffffff; }
 .light-mode .modal-dark .text-white { color: #ffffff !important; }
 .light-mode .modal-dark .text-white\/90,
 .light-mode .modal-dark .text-white\/85,
@@ -438,41 +309,28 @@ textarea:focus.accent-focus {
 .light-mode .modal-dark .text-white\/20 { color: rgba(255,255,255,0.20) !important; }
 .light-mode .modal-dark .text-white\/10 { color: rgba(255,255,255,0.10) !important; }
 
-/* Backgrounds */
 .light-mode .modal-dark .bg-white\/5  { background: rgba(255,255,255,0.05)  !important; }
 .light-mode .modal-dark .bg-white\/10 { background: rgba(255,255,255,0.10)  !important; }
 .light-mode .modal-dark .bg-white\/20 { background: rgba(255,255,255,0.15)  !important; }
 
-/* Borders */
 .light-mode .modal-dark .border-white\/5  { border-color: rgba(255,255,255,0.05)  !important; }
 .light-mode .modal-dark .border-white\/8  { border-color: rgba(255,255,255,0.08)  !important; }
 .light-mode .modal-dark .border-white\/10 { border-color: rgba(255,255,255,0.10)  !important; }
 .light-mode .modal-dark .border-white\/20 { border-color: rgba(255,255,255,0.18)  !important; }
 
-/* Inputs & textareas */
 .light-mode .modal-dark input,
 .light-mode .modal-dark textarea {
-  background:    rgba(255,255,255,0.05) !important;
-  border-color:  rgba(255,255,255,0.10) !important;
-  color:         #ffffff !important;
+  background:   rgba(255,255,255,0.05) !important;
+  border-color: rgba(255,255,255,0.10) !important;
+  color:        #ffffff !important;
 }
 .light-mode .modal-dark input::placeholder,
-.light-mode .modal-dark textarea::placeholder {
-  color: rgba(255,255,255,0.25) !important;
-}
+.light-mode .modal-dark textarea::placeholder { color: rgba(255,255,255,0.25) !important; }
 
-/* Tab underlines in modal stay as accent */
 .light-mode .modal-dark .bg-white.h-0\.5,
-.light-mode .modal-dark [class*="bg-white"][class*="h-0"] {
-  background: var(--accent) !important;
-}
+.light-mode .modal-dark [class*="bg-white"][class*="h-0"] { background: var(--accent) !important; }
 
-/* ─── Accent-based text adaptation in dark mode ──────────────────────
-   When a non-white accent is active in dark mode, key muted texts gain
-   a subtle tint of the accent color so they feel more visible/themed.
-   We override the lowest-opacity white texts to use the accent color at
-   a similar opacity instead of near-invisible white.                  */
-
+/* ─── Accent-based text adaptation in dark mode ──────────────────── */
 [data-accent]:not([data-accent="default"]):not(.light-mode) .accent-muted-text {
   color: rgba(var(--accent-rgb), 0.55) !important;
 }
@@ -480,25 +338,12 @@ textarea:focus.accent-focus {
   color: rgba(var(--accent-rgb), 0.35) !important;
 }
 
-/* ─── Mobile perf optimizations ──────────────────────────────────────
-   On mobile, heavy backdrop-blur and animations are expensive.
-   Reduce them on small screens. */
-@media (max-width: 768px) {
-  .glass-panel {
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
-  }
-
-  /* Reduce liquid blob animations */
-  .liquid-blob {
-    animation-duration: 40s !important;
-    filter: blur(60px) !important;
-  }
-
-  /* Prevent content from causing unnecessary repaints */
-  .group-hover\:shadow-white\/5:hover {
-    box-shadow: none !important;
-  }
+/* ─── Respect prefers-reduced-motion ────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .card-fade-in        { animation: none; }
+  .new-badge-pulse     { animation: none; }
+  .refresh-shimmer     { animation: none; }
+  *                    { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 
 @keyframes velvit-spin {

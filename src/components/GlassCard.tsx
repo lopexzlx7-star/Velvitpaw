@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from "motion/react";
 import { 
   Heart, Trash2,
   Images, ExternalLink
@@ -26,7 +25,6 @@ function getVideoThumb(url: string, thumbnailUrl?: string): string | null {
   return getCloudinaryThumb(url) || getImageKitThumb(url);
 }
 
-// Detect if a URL is a playable video (direct file link)
 function isDirectVideoUrl(url: string): boolean {
   const lower = url.toLowerCase().split('?')[0];
   return (
@@ -38,7 +36,6 @@ function isDirectVideoUrl(url: string): boolean {
   );
 }
 
-// Detect if a URL is an external embed (YouTube, Drive, etc.)
 function isExternalEmbedUrl(url: string): boolean {
   return (
     url.includes('youtube.com') ||
@@ -218,11 +215,10 @@ const GlassCard: React.FC<GlassCardProps> = ({
       observer.disconnect();
     };
   }, [isNew, item.id, onSeen]);
+
   const responsiveVideoUrl = useResponsiveVideoUrl(item.url);
   const [isLoaded, setIsLoaded] = useState(false);
   const [videoError, setVideoError] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
-  const isMuted = true;
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -240,13 +236,11 @@ const GlassCard: React.FC<GlassCardProps> = ({
     }
   };
 
-  // Auto-delete post if it's an external URL video that fails to load
   const handleVideoError = () => {
     setVideoError(true);
     setIsLoaded(true);
     unregisterVideo(item.id);
 
-    // Auto-delete posts with broken external URLs from Firestore
     if (item.type === 'video' && !isDirectVideoUrl(item.url)) {
       deleteDoc(doc(db, 'posts', item.id)).catch(() => {});
       onDelete?.(item.id);
@@ -284,13 +278,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
   const aspectStyle = getAspectRatioStyle(item.aspectRatio);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-      className="group mb-6 break-inside-avoid"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+    <div
+      className="card-fade-in group mb-6 break-inside-avoid"
       style={{
         contentVisibility: 'auto',
         containIntrinsicSize: '300px 400px',
@@ -298,48 +287,39 @@ const GlassCard: React.FC<GlassCardProps> = ({
     >
       <div 
         ref={cardRef}
-        className="relative rounded-[2rem] overflow-hidden bg-white/5 border border-white/10 shadow-xl transition-transform duration-300 group-hover:-translate-y-1 cursor-pointer"
+        className="relative rounded-[2rem] overflow-hidden bg-white/5 border border-white/10 shadow-xl transition-transform duration-200 active:scale-[0.98] cursor-pointer"
         onClick={handleTap}
         onContextMenu={(e) => e.preventDefault()}
-        style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', willChange: 'transform' }}
+        style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
       >
-        {/* New post badge — shown only for unseen posts from followed users */}
-        <AnimatePresence>
-          {isNew && (
-            <motion.div
-              key="new-badge"
-              initial={{ opacity: 0, y: -6, scale: 0.85 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.85 }}
-              transition={{ duration: 0.25 }}
-              className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full backdrop-blur-md"
-              style={{
-                background: 'rgba(0,0,0,0.55)',
-                boxShadow:
-                  '0 4px 14px -3px rgba(var(--accent-rgb, 255 255 255), 0.45), inset 0 0 0 1px rgba(var(--accent-rgb, 255 255 255), 0.6)',
-              }}
-            >
-              <motion.span
-                className="block w-1.5 h-1.5 rounded-full"
-                style={{ background: 'rgb(var(--accent-rgb, 255 255 255))' }}
-                animate={{ opacity: [1, 0.35, 1], scale: [1, 1.25, 1] }}
-                transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
-              />
-              <span className="text-[9px] font-black uppercase tracking-widest text-white">
-                Novo
-              </span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* New post badge */}
+        {isNew && (
+          <div
+            className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+            style={{
+              background: 'rgba(0,0,0,0.55)',
+              boxShadow:
+                'inset 0 0 0 1px rgba(var(--accent-rgb, 255 255 255), 0.6)',
+            }}
+          >
+            <span
+              className="block w-1.5 h-1.5 rounded-full new-badge-pulse"
+              style={{ background: 'rgb(var(--accent-rgb, 255 255 255))' }}
+            />
+            <span className="text-[9px] font-black uppercase tracking-widest text-white">
+              Novo
+            </span>
+          </div>
+        )}
 
         {/* Media Container */}
         <div className="relative overflow-hidden">
           {!isLoaded && !getVideoThumb(item.url, item.thumbnailUrl) && (
             <div 
-              className="absolute inset-0 bg-white/5 animate-pulse flex items-center justify-center"
+              className="absolute inset-0 bg-white/5 flex items-center justify-center"
               style={{ height: item.height || 300 }}
             >
-              <div className="w-10 h-10 rounded-full border-2 border-white/10 border-t-white/30 animate-spin" />
+              <div className="w-8 h-8 rounded-full border-2 border-white/10 border-t-white/40 animate-spin" />
             </div>
           )}
 
@@ -351,7 +331,6 @@ const GlassCard: React.FC<GlassCardProps> = ({
                     <span className="text-white/20 text-[9px] uppercase tracking-widest font-bold">Vídeo indisponível</span>
                   </div>
                 ) : isExternalEmbedUrl(item.url) ? (
-                  // External embed URL — show thumbnail with external link
                   <div className="relative w-full h-full" style={aspectStyle}>
                     {item.thumbnailUrl ? (
                       <img
@@ -388,7 +367,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                     <video
                       ref={videoRef}
                       src={responsiveVideoUrl}
-                      muted={isMuted}
+                      muted
                       playsInline
                       loop
                       preload="none"
@@ -398,7 +377,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                       onLoadedData={() => setIsLoaded(true)}
                       onEnded={() => advanceToNext(item.id)}
                       onError={handleVideoError}
-                      className={`w-full h-full bg-black transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                      className={`w-full h-full bg-black transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                       style={{ objectFit: 'contain' }}
                     />
                   </>
@@ -410,14 +389,14 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   loading="lazy"
                   decoding="async"
                   onLoad={() => setIsLoaded(true)}
-                  className={`w-full h-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                  className={`w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 />
               )}
               {isUserPost && onDelete && (
                 <button 
                   onClick={handleDeleteClick}
-                  className={`absolute top-4 right-4 p-2.5 backdrop-blur-xl rounded-2xl text-white transition-all z-20 ${
-                    isConfirmingDelete ? 'bg-red-600 px-4' : 'bg-black/40 hover:bg-red-500'
+                  className={`absolute top-4 right-4 p-2.5 rounded-2xl text-white transition-all z-20 ${
+                    isConfirmingDelete ? 'bg-red-600 px-4' : 'bg-black/50 active:bg-red-500'
                   }`}
                 >
                   <Trash2 size={16} />
@@ -434,7 +413,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                   loading="lazy"
                   decoding="async"
                   onLoad={() => setIsLoaded(true)}
-                  className={`w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                  className={`w-full h-full object-cover transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 />
               </div>
             ) : (
@@ -445,7 +424,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                 loading="lazy"
                 decoding="async"
                 onLoad={() => setIsLoaded(true)}
-                className={`w-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                className={`w-full object-cover transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
                 style={{ 
                   minHeight: '150px', 
                   height: isLoaded ? 'auto' : (item.height || 300),
@@ -458,8 +437,8 @@ const GlassCard: React.FC<GlassCardProps> = ({
           {isUserPost && onDelete && item.type === 'image' && (
             <button 
               onClick={handleDeleteClick}
-              className={`absolute top-4 right-4 p-2.5 backdrop-blur-xl rounded-2xl text-white transition-all z-20 ${
-                isConfirmingDelete ? 'bg-red-600 px-4' : 'bg-black/40 hover:bg-red-500'
+              className={`absolute top-4 right-4 p-2.5 rounded-2xl text-white transition-all z-20 ${
+                isConfirmingDelete ? 'bg-red-600 px-4' : 'bg-black/50 active:bg-red-500'
               }`}
             >
               <Trash2 size={16} />
@@ -467,19 +446,18 @@ const GlassCard: React.FC<GlassCardProps> = ({
           )}
 
           {item.type === 'image' && item.images && item.images.length > 1 && (
-            <div className="absolute top-3 left-3 flex items-center gap-1 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-full z-20 pointer-events-none">
+            <div className="absolute top-3 left-3 flex items-center gap-1 px-2 py-1 bg-black/60 rounded-full z-20 pointer-events-none">
               <Images size={9} className="text-white/80" />
               <span className="text-[9px] font-bold text-white/80">{item.images.length}</span>
             </div>
           )}
-
         </div>
       </div>
 
       {/* Title & Hashtags Below Post */}
       <div className="mt-3 px-2 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <h3 className="text-[11px] font-black text-white uppercase tracking-wider truncate group-hover:text-white/80 transition-colors">
+          <h3 className="text-[11px] font-black text-white uppercase tracking-wider truncate">
             {highlightText(item.title, searchQuery)}
           </h3>
           {item.hashtags && item.hashtags.length > 0 && (
@@ -491,7 +469,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
                     e.stopPropagation();
                     onHashtagClick?.(tag);
                   }}
-                  className="text-[9px] text-white/40 hover:text-white transition-colors font-bold tracking-wide"
+                  className="text-[9px] text-white/40 active:text-white transition-colors font-bold tracking-wide"
                 >
                   #{tag}
                 </button>
@@ -531,7 +509,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
           </button>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 

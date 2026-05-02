@@ -1,6 +1,17 @@
 # Velvit
 
-A social media app for sharing images, GIFs, and videos with a glassmorphism aesthetic.
+A social media app for sharing images, GIFs, and videos — optimized for low-end devices.
+
+## Performance Optimizations (2026-05-02)
+
+- **Lazy loading**: All 13 modals/heavy components loaded on demand via `React.lazy` + `Suspense`
+- **Vendor chunk splitting**: Firebase (134KB gz), Framer Motion (48KB gz), React loaded as separate cached chunks
+- **No liquid blobs**: Removed animated blur blobs (`display: none`) — were GPU-intensive
+- **No backdrop-blur on glass panels**: Removed `backdrop-filter` from `.glass-panel` globally
+- **System font**: Replaced Inter (network request) with `ui-sans-serif, system-ui` (zero cost)
+- **CSS-only animations**: FloatingNav, GlassCard, RefreshIndicator now use CSS transitions/keyframes instead of Framer Motion
+- **`prefers-reduced-motion`**: All animations disabled when OS requests it
+- **Bundle result**: Main JS 995KB → 285KB (84KB gzipped) — 70% reduction in initial load
 
 ## Architecture
 

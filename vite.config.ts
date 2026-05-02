@@ -14,6 +14,19 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      target: 'es2015',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+            'vendor-motion': ['framer-motion'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 600,
+    },
     server: {
       port: 5000,
       strictPort: true,

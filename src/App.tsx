@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
 import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus, Users, Download } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { 
@@ -34,20 +34,26 @@ import GlassCard from './components/GlassCard';
 import { useResponsiveVideoUrl, getResponsiveVideoUrl } from './utils/videoUrl';
 import FloatingNav from './components/FloatingNav';
 import RefreshIndicator from './components/RefreshIndicator';
-import PublishModal from './components/PublishModal';
-import PostDetailModal from './components/PostDetailModal';
-import UserProfileModal from './components/UserProfileModal';
-import HashtagCategoryCard from './components/HashtagCategoryCard';
-import PersonTagModal from './components/PersonTagModal';
-import SaveToFolderModal from './components/SaveToFolderModal';
-import FolderDetailModal from './components/FolderDetailModal';
-import FolderCover from './components/FolderCover';
-import ProfileEditModal from './components/ProfileEditModal';
-import ImageCropperModal from './components/ImageCropperModal';
-import PhotoViewerModal from './components/PhotoViewerModal';
-import LoginBackdrop from './components/LoginBackdrop';
 import OfflineIndicator from './components/OfflineIndicator';
-import SwipeableNotification from './components/SwipeableNotification';
+
+// ─── Lazy-loaded modals & heavy components ────────────────────────────────────
+// These are only downloaded when the user first opens them, keeping the initial
+// bundle small for low-end devices.
+const PublishModal        = lazy(() => import('./components/PublishModal'));
+const PostDetailModal     = lazy(() => import('./components/PostDetailModal'));
+const UserProfileModal    = lazy(() => import('./components/UserProfileModal'));
+const HashtagCategoryCard = lazy(() => import('./components/HashtagCategoryCard'));
+const PersonTagModal      = lazy(() => import('./components/PersonTagModal'));
+const SaveToFolderModal   = lazy(() => import('./components/SaveToFolderModal'));
+const FolderDetailModal   = lazy(() => import('./components/FolderDetailModal'));
+const FolderCover         = lazy(() => import('./components/FolderCover'));
+const ProfileEditModal    = lazy(() => import('./components/ProfileEditModal'));
+const ImageCropperModal   = lazy(() => import('./components/ImageCropperModal'));
+const PhotoViewerModal    = lazy(() => import('./components/PhotoViewerModal'));
+const LoginBackdrop       = lazy(() => import('./components/LoginBackdrop'));
+const SwipeableNotification = lazy(() => import('./components/SwipeableNotification'));
+
+const ModalFallback = () => null;
 
 // Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
 function getCloudinaryThumb(videoUrl: string): string | null {
@@ -1960,7 +1966,7 @@ export default function App() {
         className="min-h-screen flex items-center justify-center p-6 bg-space-gray-900 relative overflow-hidden"
         data-accent={accentColor === 'default' ? undefined : accentColor}
       >
-        <LoginBackdrop posts={globalPosts} />
+        <Suspense fallback={null}><LoginBackdrop posts={globalPosts} /></Suspense>
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -2420,14 +2426,15 @@ export default function App() {
                                   ))
                                 ) : (
                                   hashtagCategories.map(cat => (
-                                    <HashtagCategoryCard
-                                      key={`search-cat-${cat.name}`}
-                                      category={cat}
-                                      onClick={() => {
-                                        setShowHistory(false);
-                                        handleHashtagClick(cat.name);
-                                      }}
-                                    />
+                                    <Suspense key={`search-cat-${cat.name}`} fallback={<div className="shrink-0 w-24 h-32 rounded-xl bg-white/5" />}>
+                                      <HashtagCategoryCard
+                                        category={cat}
+                                        onClick={() => {
+                                          setShowHistory(false);
+                                          handleHashtagClick(cat.name);
+                                        }}
+                                      />
+                                    </Suspense>
                                   ))
                                 )}
                               </div>
@@ -2583,8 +2590,8 @@ export default function App() {
                                   return new Date(ms).toLocaleDateString();
                                 })();
                                 return (
+                                  <Suspense key={n.id} fallback={<div className="border-b border-white/5 h-16" />}>
                                   <SwipeableNotification
-                                    key={n.id}
                                     onDelete={() => handleDeleteNotification(n.id)}
                                     onClick={() => { handleNotificationClick(n); }}
                                     className={`border-b border-white/5 cursor-pointer hover:bg-white/[0.07] transition-colors ${!n.read ? 'bg-white/5' : ''}`}
@@ -2632,6 +2639,7 @@ export default function App() {
                                       )}
                                     </div>
                                   </SwipeableNotification>
+                                  </Suspense>
                                 );
                               })
                             )}
@@ -2944,7 +2952,9 @@ export default function App() {
                               className="group text-left"
                             >
                               <div className="relative aspect-square group-hover:opacity-90 transition-opacity">
-                                <FolderCover folder={f} allPosts={globalPosts} rounded="rounded-2xl" />
+                                <Suspense fallback={<div className="absolute inset-0 rounded-2xl bg-white/5" />}>
+                                  <FolderCover folder={f} allPosts={globalPosts} rounded="rounded-2xl" />
+                                </Suspense>
                                 <div className="pointer-events-none absolute inset-0 rounded-2xl" style={{ background: 'linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.55) 100%)' }} />
                               </div>
                               <div className="mt-2 px-1">
@@ -3004,20 +3014,22 @@ export default function App() {
       <RefreshIndicator visible={isRefreshingFeed} />
 
       {/* Person Tag profile modal */}
-      <AnimatePresence>
-        {openPersonTag && (
-          <PersonTagModal
-            key={openPersonTag}
-            slug={openPersonTag}
-            onClose={() => setOpenPersonTag(null)}
-            onPostClick={(post) => { setOpenPersonTag(null); setSelectedPost(post); }}
-            likedIds={likedIds}
-            savedIds={savedIds}
-            onLike={handleLike}
-            onHashtagClick={(tag) => { setOpenPersonTag(null); handleHashtagClick(tag); }}
-          />
-        )}
-      </AnimatePresence>
+      <Suspense fallback={<ModalFallback />}>
+        <AnimatePresence>
+          {openPersonTag && (
+            <PersonTagModal
+              key={openPersonTag}
+              slug={openPersonTag}
+              onClose={() => setOpenPersonTag(null)}
+              onPostClick={(post) => { setOpenPersonTag(null); setSelectedPost(post); }}
+              likedIds={likedIds}
+              savedIds={savedIds}
+              onLike={handleLike}
+              onHashtagClick={(tag) => { setOpenPersonTag(null); handleHashtagClick(tag); }}
+            />
+          )}
+        </AnimatePresence>
+      </Suspense>
 
       {!publishHasMedia && !selectedPost && (
         <FloatingNav
@@ -3063,99 +3075,105 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <PublishModal 
-        isOpen={showPublishModal} 
-        onClose={() => setShowPublishModal(false)}
-        onHasMediaChange={setPublishHasMedia}
-        onSuccess={() => {
-          setShowPublishModal(false);
-        }}
-      />
+      <Suspense fallback={<ModalFallback />}>
+        <PublishModal 
+          isOpen={showPublishModal} 
+          onClose={() => setShowPublishModal(false)}
+          onHasMediaChange={setPublishHasMedia}
+          onSuccess={() => {
+            setShowPublishModal(false);
+          }}
+        />
+      </Suspense>
 
-      <AnimatePresence>
-        {selectedPost && (() => {
-          const videoFeed = videoFeedMemo;
-          const curIdx = videoFeed.findIndex(v => v.id === selectedPost.id);
-          // No wrap-around: at the very first/last video, the corresponding neighbor
-          // is undefined so PostDetailModal can show "you reached the end" instead.
-          const prevItem = curIdx > 0 ? videoFeed[curIdx - 1] : undefined;
-          const nextItem = curIdx >= 0 && curIdx < videoFeed.length - 1 ? videoFeed[curIdx + 1] : undefined;
-          return (
-          <PostDetailModal 
-            item={selectedPost}
-            prevItem={prevItem}
-            nextItem={nextItem}
-            onClose={() => setSelectedPost(null)}
-            onLike={handleLike}
-            onDelete={handleDeletePost}
-            isLiked={likedIds.includes(selectedPost.id)}
-            isSaved={savedIds.includes(selectedPost.id)}
-            onSave={(id) => openSavePicker(id)}
-            currentUserUid={auth.currentUser?.uid}
-            onNavigate={(dir) => {
-              if (videoFeed.length === 0 || curIdx === -1) return;
-              if (dir === 'next' && curIdx >= videoFeed.length - 1) return;
-              if (dir === 'prev' && curIdx <= 0) return;
-              const nextIdx = dir === 'next' ? curIdx + 1 : curIdx - 1;
-              setSelectedPost(videoFeed[nextIdx]);
-            }}
-            onHashtagClick={(tag) => {
-              setSelectedPost(null);
-              handleHashtagClick(tag);
-            }}
-            onAuthorClick={(uid) => {
-              setSelectedPost(null);
-              if (uid && uid === auth.currentUser?.uid) {
-                setCurrentTab('profile');
-                setProfileTab('posts');
-              } else {
-                setProfileViewUid(uid);
-              }
-            }}
-          />
-          );
-        })()}
-      </AnimatePresence>
+      <Suspense fallback={<ModalFallback />}>
+        <AnimatePresence>
+          {selectedPost && (() => {
+            const videoFeed = videoFeedMemo;
+            const curIdx = videoFeed.findIndex(v => v.id === selectedPost.id);
+            const prevItem = curIdx > 0 ? videoFeed[curIdx - 1] : undefined;
+            const nextItem = curIdx >= 0 && curIdx < videoFeed.length - 1 ? videoFeed[curIdx + 1] : undefined;
+            return (
+            <PostDetailModal 
+              item={selectedPost}
+              prevItem={prevItem}
+              nextItem={nextItem}
+              onClose={() => setSelectedPost(null)}
+              onLike={handleLike}
+              onDelete={handleDeletePost}
+              isLiked={likedIds.includes(selectedPost.id)}
+              isSaved={savedIds.includes(selectedPost.id)}
+              onSave={(id) => openSavePicker(id)}
+              currentUserUid={auth.currentUser?.uid}
+              onNavigate={(dir) => {
+                if (videoFeed.length === 0 || curIdx === -1) return;
+                if (dir === 'next' && curIdx >= videoFeed.length - 1) return;
+                if (dir === 'prev' && curIdx <= 0) return;
+                const nextIdx = dir === 'next' ? curIdx + 1 : curIdx - 1;
+                setSelectedPost(videoFeed[nextIdx]);
+              }}
+              onHashtagClick={(tag) => {
+                setSelectedPost(null);
+                handleHashtagClick(tag);
+              }}
+              onAuthorClick={(uid) => {
+                setSelectedPost(null);
+                if (uid && uid === auth.currentUser?.uid) {
+                  setCurrentTab('profile');
+                  setProfileTab('posts');
+                } else {
+                  setProfileViewUid(uid);
+                }
+              }}
+            />
+            );
+          })()}
+        </AnimatePresence>
+      </Suspense>
 
-      <AnimatePresence>
-        {profileViewUid && (
-          <UserProfileModal
-            targetUid={profileViewUid}
-            currentUserUid={auth.currentUser?.uid}
-            isFollowing={followingUids.includes(profileViewUid)}
-            onFollow={handleFollow}
-            onClose={() => setProfileViewUid(null)}
-            onPostClick={(post) => {
-              setProfileViewUid(null);
-              setSelectedPost(post);
-            }}
-            onOpenUser={(uid) => {
-              if (uid && uid === auth.currentUser?.uid) {
+      <Suspense fallback={<ModalFallback />}>
+        <AnimatePresence>
+          {profileViewUid && (
+            <UserProfileModal
+              targetUid={profileViewUid}
+              currentUserUid={auth.currentUser?.uid}
+              isFollowing={followingUids.includes(profileViewUid)}
+              onFollow={handleFollow}
+              onClose={() => setProfileViewUid(null)}
+              onPostClick={(post) => {
                 setProfileViewUid(null);
-                setCurrentTab('profile');
-                setProfileTab('posts');
-              } else {
-                setProfileViewUid(uid);
-              }
-            }}
-            likedIds={likedIds}
-            onLike={handleLike}
-            onHashtagClick={(tag) => {
-              setProfileViewUid(null);
-              handleHashtagClick(tag);
-            }}
-            onPhotoClick={(url, name) => setPhotoViewer({ url, username: name })}
-          />
-        )}
-      </AnimatePresence>
+                setSelectedPost(post);
+              }}
+              onOpenUser={(uid) => {
+                if (uid && uid === auth.currentUser?.uid) {
+                  setProfileViewUid(null);
+                  setCurrentTab('profile');
+                  setProfileTab('posts');
+                } else {
+                  setProfileViewUid(uid);
+                }
+              }}
+              likedIds={likedIds}
+              onLike={handleLike}
+              onHashtagClick={(tag) => {
+                setProfileViewUid(null);
+                handleHashtagClick(tag);
+              }}
+              onPhotoClick={(url, name) => setPhotoViewer({ url, username: name })}
+            />
+          )}
+        </AnimatePresence>
+      </Suspense>
 
-      <SaveToFolderModal
-        open={!!saveToFolderTarget}
-        post={saveToFolderTarget}
-        folders={folders}
-        onClose={() => setSaveToFolderTarget(null)}
-        onAddToFolder={handleAddToFolder}
-      />
+      <Suspense fallback={<ModalFallback />}>
+        <SaveToFolderModal
+          open={!!saveToFolderTarget}
+          post={saveToFolderTarget}
+          folders={folders}
+          onClose={() => setSaveToFolderTarget(null)}
+          onAddToFolder={handleAddToFolder}
+        />
+      </Suspense>
 
       <AnimatePresence>
         {creatingFolder && (
@@ -3255,45 +3273,51 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <ProfileEditModal
-        open={showProfileEdit}
-        currentUsername={username}
-        currentProfilePic={profilePic}
-        onClose={() => setShowProfileEdit(false)}
-        onUpdateUsername={async (n) => { await handleUpdateUsername(n); }}
-        onSelectProfilePhoto={(e) => { handleFileSelect(e, 'profile'); }}
-        onSelectBackgroundPhoto={(e) => { handleFileSelect(e, 'bg'); }}
-        onDeleteAccount={() => { setShowProfileEdit(false); handleDeleteAccount(); }}
-      />
+      <Suspense fallback={<ModalFallback />}>
+        <ProfileEditModal
+          open={showProfileEdit}
+          currentUsername={username}
+          currentProfilePic={profilePic}
+          onClose={() => setShowProfileEdit(false)}
+          onUpdateUsername={async (n) => { await handleUpdateUsername(n); }}
+          onSelectProfilePhoto={(e) => { handleFileSelect(e, 'profile'); }}
+          onSelectBackgroundPhoto={(e) => { handleFileSelect(e, 'bg'); }}
+          onDeleteAccount={() => { setShowProfileEdit(false); handleDeleteAccount(); }}
+        />
+      </Suspense>
 
-      <ImageCropperModal
-        open={cropperState.open}
-        imageSrc={cropperState.src}
-        shape={cropperState.target === 'profile' ? 'circle' : 'rect'}
-        aspect={cropperState.target === 'profile' ? 1 : 16 / 9}
-        outputWidth={cropperState.target === 'profile' ? 512 : 1920}
-        outputHeight={cropperState.target === 'profile' ? 512 : 1080}
-        outputType={cropperState.target === 'profile' ? 'image/png' : 'image/jpeg'}
-        outputQuality={0.92}
-        title={cropperState.target === 'profile' ? 'Foto de perfil' : 'Imagem de fundo'}
-        onCancel={() => setCropperState({ open: false, src: null, target: null })}
-        onConfirm={(dataUrl) => {
-          if (cropperState.target === 'profile') {
-            updateProfilePic(dataUrl);
-          } else if (cropperState.target === 'bg') {
-            updateBackground(dataUrl);
-          }
-          setCropperState({ open: false, src: null, target: null });
-          setShowProfileEdit(false);
-        }}
-      />
+      <Suspense fallback={<ModalFallback />}>
+        <ImageCropperModal
+          open={cropperState.open}
+          imageSrc={cropperState.src}
+          shape={cropperState.target === 'profile' ? 'circle' : 'rect'}
+          aspect={cropperState.target === 'profile' ? 1 : 16 / 9}
+          outputWidth={cropperState.target === 'profile' ? 512 : 1920}
+          outputHeight={cropperState.target === 'profile' ? 512 : 1080}
+          outputType={cropperState.target === 'profile' ? 'image/png' : 'image/jpeg'}
+          outputQuality={0.92}
+          title={cropperState.target === 'profile' ? 'Foto de perfil' : 'Imagem de fundo'}
+          onCancel={() => setCropperState({ open: false, src: null, target: null })}
+          onConfirm={(dataUrl) => {
+            if (cropperState.target === 'profile') {
+              updateProfilePic(dataUrl);
+            } else if (cropperState.target === 'bg') {
+              updateBackground(dataUrl);
+            }
+            setCropperState({ open: false, src: null, target: null });
+            setShowProfileEdit(false);
+          }}
+        />
+      </Suspense>
 
-      <PhotoViewerModal
-        open={!!photoViewer}
-        photoUrl={photoViewer?.url ?? null}
-        username={photoViewer?.username}
-        onClose={() => setPhotoViewer(null)}
-      />
+      <Suspense fallback={<ModalFallback />}>
+        <PhotoViewerModal
+          open={!!photoViewer}
+          photoUrl={photoViewer?.url ?? null}
+          username={photoViewer?.username}
+          onClose={() => setPhotoViewer(null)}
+        />
+      </Suspense>
 
       <AnimatePresence>
         {showFollowingList && (
@@ -3468,31 +3492,33 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <FolderDetailModal
-        open={!!openFolder}
-        folder={openFolder ? (folders.find(f => f.id === openFolder.id) || openFolder) : null}
-        allPosts={[...globalPosts, ...userPosts, ...likedItems]}
-        likedIds={likedIds}
-        savedIds={savedIds}
-        followingUids={followingUids}
-        currentUid={auth.currentUser?.uid}
-        onClose={() => setOpenFolder(null)}
-        onOpenPost={(p) => { setOpenFolder(null); setSelectedPost(p); }}
-        onLike={handleLike}
-        onSave={openSavePicker}
-        onFollow={handleFollow}
-        onDelete={handleDeletePost}
-        onHashtagClick={(tag) => { setOpenFolder(null); handleHashtagClick(tag); }}
-        onRemoveFromFolder={handleRemoveFromFolder}
-        onDeleteFolder={handleDeleteFolder}
-        onUpdateFolder={async (folderId, updates) => {
-          const clean: Record<string, string> = {};
-          if (typeof updates.name === 'string') clean.name = updates.name;
-          if (typeof updates.description === 'string') clean.description = updates.description;
-          if (Object.keys(clean).length === 0) return;
-          await updateDoc(doc(db, 'folders', folderId), clean);
-        }}
-      />
+      <Suspense fallback={<ModalFallback />}>
+        <FolderDetailModal
+          open={!!openFolder}
+          folder={openFolder ? (folders.find(f => f.id === openFolder.id) || openFolder) : null}
+          allPosts={[...globalPosts, ...userPosts, ...likedItems]}
+          likedIds={likedIds}
+          savedIds={savedIds}
+          followingUids={followingUids}
+          currentUid={auth.currentUser?.uid}
+          onClose={() => setOpenFolder(null)}
+          onOpenPost={(p) => { setOpenFolder(null); setSelectedPost(p); }}
+          onLike={handleLike}
+          onSave={openSavePicker}
+          onFollow={handleFollow}
+          onDelete={handleDeletePost}
+          onHashtagClick={(tag) => { setOpenFolder(null); handleHashtagClick(tag); }}
+          onRemoveFromFolder={handleRemoveFromFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onUpdateFolder={async (folderId, updates) => {
+            const clean: Record<string, string> = {};
+            if (typeof updates.name === 'string') clean.name = updates.name;
+            if (typeof updates.description === 'string') clean.description = updates.description;
+            if (Object.keys(clean).length === 0) return;
+            await updateDoc(doc(db, 'folders', folderId), clean);
+          }}
+        />
+      </Suspense>
 
       <AnimatePresence>
         {showEmailPopup && (

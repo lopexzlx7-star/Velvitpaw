@@ -1,5 +1,4 @@
 import { Home, Plus, User } from 'lucide-react';
-import { motion } from 'framer-motion';
 import React from 'react';
 
 export type NavTab = 'feed' | 'publish' | 'profile';
@@ -28,56 +27,52 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[120]">
       <div
-        className="relative dark:bg-black/30 bg-white/30 backdrop-blur-2xl px-2 py-2 rounded-full flex items-center shadow-2xl dark:shadow-black/50 border dark:border-white/10 border-black/10"
+        className="relative dark:bg-black/30 bg-white/30 backdrop-blur-sm px-2 py-2 rounded-full flex items-center shadow-xl dark:shadow-black/50 border dark:border-white/10 border-black/10"
       >
         <div className="relative flex items-center">
-          {/* Sliding pill */}
-          <motion.div
-            initial={false}
-            animate={{ x: idx * SIZE }}
-            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-            className="absolute top-1/2 -translate-y-1/2 left-0 rounded-full accent-primary-btn"
+          {/* Sliding pill — pure CSS transition */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 left-0 rounded-full accent-primary-btn nav-pill"
             style={{
               width: SIZE,
               height: SIZE,
+              transform: `translateY(-50%) translateX(${idx * SIZE}px)`,
+              transition: 'transform 220ms cubic-bezier(0.34,1.56,0.64,1)',
               background: 'rgb(var(--accent-rgb, 255 255 255))',
               boxShadow:
-                '0 8px 24px -6px rgba(var(--accent-rgb, 255 255 255), 0.55), inset 0 1px 0 rgba(255,255,255,0.35)',
+                '0 4px 14px -4px rgba(var(--accent-rgb, 255 255 255), 0.5)',
             }}
           />
 
           {/* Plus tab */}
-          <motion.button
-            whileTap={{ scale: 0.92 }}
+          <button
             onClick={onAddClick}
-            className="relative z-10 flex items-center justify-center rounded-full transition-colors"
+            className="relative z-10 flex items-center justify-center rounded-full transition-colors active:scale-90"
             style={{ width: SIZE, height: SIZE, color: tabColor('publish') }}
             aria-label="Publicar"
           >
             <Plus size={24} />
-          </motion.button>
+          </button>
 
           {/* Home tab */}
-          <motion.button
-            whileTap={{ scale: 0.92 }}
+          <button
             onClick={onHomeClick}
-            className="relative z-10 flex items-center justify-center rounded-full transition-colors"
+            className="relative z-10 flex items-center justify-center rounded-full transition-colors active:scale-90"
             style={{ width: SIZE, height: SIZE, color: tabColor('feed') }}
             aria-label="Início"
           >
             <Home size={26} />
-          </motion.button>
+          </button>
 
           {/* Profile tab */}
-          <motion.button
-            whileTap={{ scale: 0.92 }}
+          <button
             onClick={onProfileClick}
-            className="relative z-10 flex items-center justify-center rounded-full transition-colors"
+            className="relative z-10 flex items-center justify-center rounded-full transition-colors active:scale-90"
             style={{ width: SIZE, height: SIZE, color: tabColor('profile') }}
             aria-label="Perfil"
           >
             <User size={24} />
-          </motion.button>
+          </button>
         </div>
       </div>
     </div>
