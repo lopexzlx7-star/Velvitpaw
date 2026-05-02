@@ -7,10 +7,12 @@ interface RefreshIndicatorProps {
 const RefreshIndicator: React.FC<RefreshIndicatorProps> = ({ visible }) => {
   return (
     <div
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] pointer-events-none"
+      className="fixed z-[200] pointer-events-none"
       style={{
+        top: '1rem',
+        left: '50%',
         opacity: visible ? 1 : 0,
-        transform: `translateX(-50%) translateY(${visible ? '0' : '-28px'})`,
+        transform: `translateX(-50%) translateY(${visible ? '0px' : '-28px'})`,
         transition: 'opacity 200ms ease, transform 200ms cubic-bezier(0.34,1.56,0.64,1)',
       }}
     >
