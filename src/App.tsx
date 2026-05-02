@@ -262,7 +262,11 @@ export default function App() {
   const [userPosts, setUserPosts] = useState<ContentItem[]>([]);
   const [globalPosts, setGlobalPosts] = useState<ContentItem[]>([]);
   const videoFeedMemo = useMemo(
-    () => globalPosts.filter(p => p.type === 'video' || p.type === 'gif'),
+    () => globalPosts.filter(p =>
+      (p.type === 'video' || p.type === 'gif') &&
+      p.aspectRatio !== 'landscape' &&
+      p.aspectRatio !== 'wide'
+    ),
     [globalPosts]
   );
   const [loading, setLoading] = useState(false);

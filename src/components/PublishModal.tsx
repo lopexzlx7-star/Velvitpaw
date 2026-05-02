@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
+import { compressVideo, POST_COMPRESS_MAX_BYTES } from '../utils/videoCompress';
 
 interface PublishModalProps {
   isOpen: boolean;
@@ -140,6 +141,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
   const [uploadFailed, setUploadFailed] = useState(false);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionProgress, setCompressionProgress] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
@@ -200,6 +203,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
     setError(null);
     setIsSubmitting(false);
     setIsValidating(false);
+    setIsCompressing(false);
+    setCompressionProgress(0);
   };
 
   const handleClose = () => { resetState(); onClose(); };
@@ -630,7 +635,31 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       } else if (videoDraft) {
         if (!videoDraft) { setIsSubmitting(false); return; }
 
-        const finalUrl = await uploadVideo(videoDraft.file);
+        // Step 1: compress the video in-browser to reduce Cloudinary storage usage
+        let fileToUpload = videoDraft.file;
+        setIsCompressing(true);
+        setCompressionProgress(0);
+        try {
+          fileToUpload = await compressVideo(
+            videoDraft.file,
+            () => {},
+            (pct) => setCompressionProgress(pct),
+          );
+        } catch {
+          // If compression fails for any reason, fall back to the original file
+          fileToUpload = videoDraft.file;
+        }
+        setIsCompressing(false);
+
+        // Guard: if even after compression the file is over the free-plan threshold, bail out
+        if (fileToUpload.size > POST_COMPRESS_MAX_BYTES) {
+          setIsSubmitting(false);
+          setUploadFailed(true);
+          setError('Vídeo muito pesado mesmo após compressão. Tente um vídeo mais curto.');
+          return;
+        }
+
+        const finalUrl = await uploadVideo(fileToUpload);
 
         let hostedThumbnailUrl: string | null = null;
         if (thumbnailUrl) {
@@ -1068,21 +1097,31 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs text-white/50">
                   <span>
-                    {isMultiImage && uploadingIdx !== null
-                      ? `Enviando imagem ${uploadingIdx + 1} de ${images.length}...`
-                      : 'Enviando...'}
+                    {isCompressing
+                      ? compressionProgress < 5
+                        ? 'Carregando compressor...'
+                        : `Comprimindo vídeo...`
+                      : isMultiImage && uploadingIdx !== null
+                        ? `Enviando imagem ${uploadingIdx + 1} de ${images.length}...`
+                        : 'Enviando...'}
                   </span>
-                  <span>{uploadProgress}%</span>
+                  <span>{isCompressing ? compressionProgress : uploadProgress}%</span>
                 </div>
                 <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <motion.div className="h-full bg-white rounded-full" animate={{ width: `${uploadProgress}%` }} transition={{ duration: 0.3 }} />
+                  <motion.div
+                    className="h-full bg-white rounded-full"
+                    animate={{ width: `${isCompressing ? compressionProgress : uploadProgress}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
                 </div>
-                <button
-                  onClick={() => { cancelledRef.current = true; if (activeXhrRef.current) activeXhrRef.current.abort(); setIsSubmitting(false); setError('Upload cancelado.'); }}
-                  className="w-full py-3 text-white/30 hover:text-white/60 text-xs uppercase tracking-widest transition-colors"
-                >
-                  Cancelar
-                </button>
+                {!isCompressing && (
+                  <button
+                    onClick={() => { cancelledRef.current = true; if (activeXhrRef.current) activeXhrRef.current.abort(); setIsSubmitting(false); setError('Upload cancelado.'); }}
+                    className="w-full py-3 text-white/30 hover:text-white/60 text-xs uppercase tracking-widest transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                )}
               </div>
             ) : (
               <div className="flex gap-3">
