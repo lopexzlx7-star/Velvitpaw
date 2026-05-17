@@ -18,7 +18,9 @@
 
 @layer components {
   .glass-panel {
-    @apply bg-white/5 border border-white/10 shadow-xl;
+    background: rgba(18, 18, 18, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.50), inset 0 1px 0 rgba(255, 255, 255, 0.04);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }

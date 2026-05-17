@@ -72,6 +72,7 @@ const FIREBASE_PRIVATE_KEY_ENV = stripWrappingQuotes(process.env.FIREBASE_PRIVAT
   .replace(/\\n/g, '\n');
 
 let adminAuth: admin.auth.Auth | null = null;
+let adminDb: admin.firestore.Firestore | null = null;
 
 if (FIREBASE_CLIENT_EMAIL_ENV && FIREBASE_PRIVATE_KEY_ENV) {
   try {
@@ -84,12 +85,29 @@ if (FIREBASE_CLIENT_EMAIL_ENV && FIREBASE_PRIVATE_KEY_ENV) {
       projectId: FIREBASE_PROJECT_ID,
     });
     adminAuth = adminApp.auth();
-    console.log('[OK] Firebase Admin (Auth) pronto');
+    adminDb = adminApp.firestore();
+    console.log('[OK] Firebase Admin (Auth + Firestore) pronto');
   } catch (e: any) {
     console.error('[ERRO] Firebase Admin:', e.message);
   }
 } else {
   console.warn('[AVISO] Firebase Admin não configurado — FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY ausentes.');
+}
+
+// ─── Autopopulator API key ─────────────────────────────────────────────────────
+const VELVIT_API_KEY = process.env.VELVIT_API_KEY ?? '';
+if (VELVIT_API_KEY) {
+  console.log(`[OK] API key do autopopulator configurada (${VELVIT_API_KEY.slice(0, 8)}...)`);
+} else {
+  console.warn('[AVISO] VELVIT_API_KEY não definida — endpoint /api/v1/* desabilitado.');
+}
+
+function requireApiKey(req: Request, res: Response, next: NextFunction) {
+  const key = req.headers['x-api-key'] as string | undefined;
+  if (!VELVIT_API_KEY || key !== VELVIT_API_KEY) {
+    return res.status(401).json({ error: 'API key inválida ou ausente. Envie o header x-api-key.' });
+  }
+  next();
 }
 
 // ─── Firestore REST (public read via API key — same as the client SDK) ────────
@@ -1150,6 +1168,128 @@ app.post('/api/compress-video', upload.single('video'), async (req: Request, res
   } catch (err: any) {
     console.error('[ERRO] compress-video:', err.message);
     res.status(500).json({ error: err.message ?? 'Erro interno ao comprimir vídeo.' });
+  }
+});
+
+// ─── /api/v1/status — verifica se a API do autopopulator está ok ──────────────
+app.get('/api/v1/status', requireApiKey, (_req: Request, res: Response) => {
+  res.json({
+    ok: true,
+    version: '1',
+    services: {
+      cloudinary: cloudinaryReady ? 'ok' : 'missing_credentials',
+      firestore_admin: adminDb ? 'ok' : 'missing_credentials (adicione FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY)',
+    },
+    endpoints: {
+      upload_media: 'POST /api/v1/upload  (multipart, campo: file)',
+      create_post:  'POST /api/v1/posts   (JSON)',
+    },
+  });
+});
+
+// ─── /api/v1/upload — faz upload de mídia para o Cloudinary ──────────────────
+// Header: x-api-key: <VELVIT_API_KEY>
+// Body: multipart/form-data, campo "file" (imagem ou vídeo)
+// Retorna: { url, type }
+app.post('/api/v1/upload', requireApiKey, (req: Request, res: Response) => {
+  upload.single('file')(req, res, async (multerErr) => {
+    if (multerErr) {
+      const isTooBig = (multerErr as any).code === 'LIMIT_FILE_SIZE';
+      return res.status(isTooBig ? 413 : 400).json({ error: isTooBig
+        ? `Arquivo muito grande. Limite: ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB.`
+        : multerErr.message
+      });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado. Use o campo "file".' });
+    if (!cloudinaryReady) return res.status(503).json({ error: 'Cloudinary não configurado.' });
+
+    const isVideo = req.file.mimetype.startsWith('video/');
+    const isImage = req.file.mimetype.startsWith('image/');
+    if (!isVideo && !isImage) return res.status(400).json({ error: 'Tipo inválido. Envie imagem ou vídeo.' });
+
+    const sizeMB = (req.file.size / 1024 / 1024).toFixed(1);
+    console.log(`[api/v1/upload] ${isVideo ? 'vídeo' : 'imagem'} ${req.file.originalname} (${sizeMB}MB)`);
+
+    try {
+      const url = isVideo
+        ? await uploadToCloudinary(req.file.buffer, req.file.mimetype, req.file.originalname)
+        : await uploadImageToCloudinary(req.file.buffer, req.file.mimetype, req.file.originalname, 'images');
+      console.log(`[api/v1/upload] ✓ ${url}`);
+      return res.json({ url, type: isVideo ? 'video' : 'image' });
+    } catch (err: any) {
+      console.error('[api/v1/upload] Falha:', err?.message);
+      return res.status(500).json({ error: err?.message || 'Falha no upload para o Cloudinary.' });
+    }
+  });
+});
+
+// ─── /api/v1/posts — cria um post no Firestore via Admin SDK ─────────────────
+// Header: x-api-key: <VELVIT_API_KEY>
+// Body (JSON):
+//   title        string  obrigatório
+//   url          string  obrigatório (URL Cloudinary do mídia principal)
+//   type         string  obrigatório — "image" | "gif" | "video"
+//   authorUid    string  obrigatório — UID do Firebase do autor
+//   authorName   string  obrigatório
+//   description  string  opcional
+//   authorPhotoUrl string opcional
+//   aspectRatio  string  opcional ("portrait"|"landscape"|"square"|"wide")
+//   thumbnailUrl string  opcional (para vídeos)
+//   hashtags     string[] opcional (extraído da description se omitido)
+//   duration     number  opcional (segundos, para vídeos)
+//   images       string[] opcional (URLs extras para posts multi-imagem)
+app.post('/api/v1/posts', requireApiKey, async (req: Request, res: Response) => {
+  if (!adminDb) {
+    return res.status(503).json({
+      error: 'Firebase Admin não configurado. Adicione FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY nos Secrets do projeto.',
+      hint: 'Console Firebase → Configurações → Contas de serviço → Gerar nova chave privada',
+    });
+  }
+
+  const {
+    title, description, url, type, authorUid, authorName,
+    authorPhotoUrl, aspectRatio, thumbnailUrl, hashtags, duration, images,
+  } = req.body as Record<string, any>;
+
+  if (!url || !title || !type || !authorUid || !authorName) {
+    return res.status(400).json({ error: 'Campos obrigatórios: url, title, type, authorUid, authorName' });
+  }
+  if (!['image', 'gif', 'video'].includes(type)) {
+    return res.status(400).json({ error: 'type deve ser "image", "gif" ou "video"' });
+  }
+
+  const extractedHashtags: string[] = hashtags && Array.isArray(hashtags)
+    ? hashtags
+    : Array.from(new Set(((description || '').match(/\B#(\w+)/g) || []).map((t: string) => t.slice(1).toLowerCase())));
+
+  const postData: Record<string, unknown> = {
+    title: String(title).trim() || 'Sem título',
+    url: String(url),
+    type: String(type),
+    height: type === 'video' ? 600 : 450,
+    aspectRatio: aspectRatio || 'portrait',
+    authorUid: String(authorUid),
+    authorName: String(authorName),
+    authorPhotoUrl: authorPhotoUrl || null,
+    createdAt: new Date().toISOString(),
+    likesCount: 0,
+    savesCount: 0,
+    viewsCount: 0,
+    duration: Number(duration) || 0,
+    description: String(description || '').trim(),
+    hashtags: extractedHashtags,
+    ...(thumbnailUrl ? { thumbnailUrl: String(thumbnailUrl) } : {}),
+    ...(images && Array.isArray(images) ? { images } : {}),
+  };
+
+  try {
+    const docRef = await adminDb.collection('posts').add(postData);
+    if (extractedHashtags.length > 0) saveUserHashtags(docRef.id, extractedHashtags);
+    console.log(`[api/v1/posts] ✓ Post criado: ${docRef.id} por @${authorName}`);
+    return res.status(201).json({ postId: docRef.id, url: String(url) });
+  } catch (err: any) {
+    console.error('[api/v1/posts] Erro Firestore:', err?.message);
+    return res.status(500).json({ error: 'Erro ao salvar post no Firestore.' });
   }
 });
 

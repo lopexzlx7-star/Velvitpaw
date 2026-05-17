@@ -569,19 +569,27 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
   // Uploads the captured first-frame thumbnail to Cloudinary via the server proxy.
   // Returns the hosted URL, or null on any failure (non-blocking).
   const uploadThumbnail = async (dataUrl: string): Promise<string | null> => {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 15000);
-    try {
-      const res = await fetch('/api/upload-thumbnail', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ thumbnail: dataUrl }),
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      if (res.ok) { const d = await res.json(); return d.url ?? null; }
-      return null;
-    } catch { clearTimeout(timer); return null; }
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 45000);
+      try {
+        const res = await fetch('/api/upload-thumbnail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ thumbnail: dataUrl }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        if (res.ok) { const d = await res.json(); return d.url ?? null; }
+        if (attempt < 3) { await new Promise(r => setTimeout(r, 1500 * attempt)); continue; }
+        return null;
+      } catch {
+        clearTimeout(timer);
+        if (attempt < 3) { await new Promise(r => setTimeout(r, 1500 * attempt)); continue; }
+        return null;
+      }
+    }
+    return null;
   };
 
 
