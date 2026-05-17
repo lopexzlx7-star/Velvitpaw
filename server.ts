@@ -295,7 +295,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     services: {
       cloudinary: cloudinaryReady ? 'configured' : 'missing',
-      openai: !!process.env.OPENAI_API_KEY ? 'configured' : 'missing',
+      openai: !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY) ? 'configured' : 'missing',
     },
     routing: {
       videos: 'Cloudinary',
@@ -356,8 +356,11 @@ app.post('/api/thumbnail', (req: Request, res: Response) => {
   });
 });
 
-// ─── OpenAI client ────────────────────────────────────────────────────────────
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
+// ─── OpenAI client (uses Replit AI Integrations — no personal API key needed) ─
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
+  ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL } : {}),
+});
 
 // ─── Tags DB — file-based JSON store for user hashtags ───────────────────────
 const TAGS_DB_PATH = path.join(process.cwd(), 'tags_db.json');
@@ -447,8 +450,8 @@ function suggestHashtags(rawQuery: string, max = 8): Array<{ tag: string; count:
 
 // ─── /api/suggest-tags ────────────────────────────────────────────────────────
 app.post('/api/suggest-tags', async (req: Request, res: Response) => {
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor.' });
+  if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OpenAI não configurado no servidor.' });
   }
 
   const { title, mediaType } = req.body as { title?: string; mediaType?: string };
@@ -496,7 +499,7 @@ app.post('/api/generate-tags-multi', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Envie um array de posts em { posts: [...] }.' });
   }
 
-  const hasOpenAI = !!process.env.OPENAI_API_KEY;
+  const hasOpenAI = !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
   const results = [];
 
   for (const post of posts) {
@@ -556,8 +559,8 @@ app.post('/api/recommend-folder', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'folderName e candidates são obrigatórios.' });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(503).json({ error: 'OPENAI_API_KEY não configurada.', ids: [] });
+  if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
+    return res.status(503).json({ error: 'OpenAI não configurado.', ids: [] });
   }
 
   const trimmedCandidates = candidates.slice(0, 120).map(c => ({
