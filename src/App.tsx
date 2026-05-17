@@ -1977,6 +1977,7 @@ export default function App() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="glass-panel max-w-md w-full p-10 rounded-[40px] text-center relative z-10"
+          style={{ background: 'transparent', boxShadow: 'none', border: 'none' }}
         >
           <h1 className="text-5xl font-black tracking-tighter text-white mb-10 accent-logo">VELVIT</h1>
 
