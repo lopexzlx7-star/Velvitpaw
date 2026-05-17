@@ -199,62 +199,52 @@
   --accent-text: #ffffff;
 }
 
-[data-accent="green"] {
-  --accent: #007D10;
-  --accent-rgb: 0,125,16;
-  --accent-dim: rgba(0,125,16,0.14);
-  --accent-text: #ffffff;
-}
-[data-accent="green"] .glass-panel { border-color: rgba(0,125,16,0.20) !important; }
-
 [data-accent="gold"] {
   --accent: #D4A800;
   --accent-rgb: 212,168,0;
   --accent-dim: rgba(212,168,0,0.14);
   --accent-text: #000000;
 }
-[data-accent="gold"] .glass-panel { border-color: rgba(212,168,0,0.24) !important; }
+[data-accent="gold"] .glass-panel { border-color: rgba(212,168,0,0.28) !important; }
 
-[data-accent="blue"] {
-  --accent: #0356C5;
-  --accent-rgb: 3,86,197;
-  --accent-dim: rgba(3,86,197,0.14);
-  --accent-text: #ffffff;
+[data-accent="neon_yellow"] {
+  --accent: #E8FF00;
+  --accent-rgb: 232,255,0;
+  --accent-dim: rgba(232,255,0,0.14);
+  --accent-text: #000000;
 }
-[data-accent="blue"] .glass-panel { border-color: rgba(3,86,197,0.20) !important; }
+[data-accent="neon_yellow"] .glass-panel { border-color: rgba(232,255,0,0.28) !important; }
 
-[data-accent="orange"] {
-  --accent: #FC210D;
-  --accent-rgb: 252,33,13;
-  --accent-dim: rgba(252,33,13,0.14);
-  --accent-text: #ffffff;
-}
-[data-accent="orange"] .glass-panel { border-color: rgba(252,33,13,0.20) !important; }
-
-[data-accent="violet"] {
-  --accent: #9303C5;
-  --accent-rgb: 147,3,197;
-  --accent-dim: rgba(147,3,197,0.14);
-  --accent-text: #ffffff;
-}
-[data-accent="violet"] .glass-panel { border-color: rgba(147,3,197,0.20) !important; }
-
-/* ── Subtle neon glow on accent elements ────────────────────────── */
-[data-accent="red"] .accent-primary-btn,
-[data-accent="violet"] .accent-primary-btn,
-[data-accent="blue"] .accent-primary-btn,
-[data-accent="green"] .accent-primary-btn,
-[data-accent="orange"] .accent-primary-btn {
+/* ── Neon glow em todos os accents (inclusive default branco) ────── */
+[data-accent="default"] .accent-primary-btn,
+:root .accent-primary-btn {
   box-shadow:
-    0 0 10px -2px rgba(var(--accent-rgb), 0.45),
-    inset 0 1px 0 rgba(255,255,255,0.2);
+    0 0 10px -2px rgba(255,255,255,0.40),
+    0 0 22px -4px rgba(255,255,255,0.15),
+    inset 0 1px 0 rgba(255,255,255,0.30);
 }
-[data-accent="red"] .accent-line,
-[data-accent="violet"] .accent-line,
-[data-accent="blue"] .accent-line,
-[data-accent="green"] .accent-line,
-[data-accent="orange"] .accent-line {
-  box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.45);
+[data-accent="gold"] .accent-primary-btn {
+  box-shadow:
+    0 0 12px -2px rgba(212,168,0,0.65),
+    0 0 26px -4px rgba(255,210,0,0.30),
+    inset 0 1px 0 rgba(255,255,255,0.20);
+}
+[data-accent="neon_yellow"] .accent-primary-btn {
+  box-shadow:
+    0 0 12px -2px rgba(232,255,0,0.70),
+    0 0 26px -4px rgba(232,255,0,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.20);
+}
+
+[data-accent="default"] .accent-line,
+:root .accent-line {
+  box-shadow: 0 0 6px rgba(255,255,255,0.45), 0 0 14px rgba(255,255,255,0.15);
+}
+[data-accent="gold"] .accent-line {
+  box-shadow: 0 0 8px rgba(212,168,0,0.65), 0 0 18px rgba(255,210,0,0.30);
+}
+[data-accent="neon_yellow"] .accent-line {
+  box-shadow: 0 0 8px rgba(232,255,0,0.70), 0 0 18px rgba(232,255,0,0.35);
 }
 
 /* ── Accent-aware utility classes ───────────────────────────────── */
@@ -287,12 +277,10 @@ textarea:focus.accent-focus {
   color: var(--accent-text) !important;
 }
 
-.light-mode[data-accent="green"] .liquid-blob,
-.light-mode [data-accent="green"] .liquid-blob { background: rgba(34,197,94,0.18) !important; }
-.light-mode[data-accent="red"] .liquid-blob,
-.light-mode [data-accent="red"] .liquid-blob   { background: rgba(239,68,68,0.18) !important; }
-.light-mode[data-accent="orange"] .liquid-blob,
-.light-mode [data-accent="orange"] .liquid-blob { background: rgba(249,115,22,0.18) !important; }
+.light-mode[data-accent="gold"] .liquid-blob,
+.light-mode [data-accent="gold"] .liquid-blob       { background: rgba(212,168,0,0.18) !important; }
+.light-mode[data-accent="neon_yellow"] .liquid-blob,
+.light-mode [data-accent="neon_yellow"] .liquid-blob { background: rgba(232,255,0,0.18) !important; }
 
 /* ─── DARK-SURFACE MODAL ──────────────────────────────────────────── */
 .light-mode .modal-dark { color: #ffffff; }

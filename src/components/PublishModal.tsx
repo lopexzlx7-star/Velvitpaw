@@ -487,9 +487,10 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       xhr.send(body);
     });
 
-  const uploadSingleImage = async (file: File): Promise<string> => {
+  const uploadSingleImage = async (previewDataUrl: string): Promise<string> => {
+    const blob = await fetch(previewDataUrl).then(r => r.blob());
     const fd = new FormData();
-    fd.append('file', file);
+    fd.append('file', blob, 'image.jpg');
     const data = await xhrPost('/api/upload-image', fd);
     if (!data.url) throw new Error('Servidor não retornou URL da imagem.');
     return data.url as string;
@@ -613,7 +614,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           if (cancelledRef.current) throw new Error('upload_aborted');
           setUploadingIdx(i);
           setUploadProgress(0);
-          const url = await uploadSingleImage(images[i].file);
+          const url = await uploadSingleImage(images[i].preview);
           imageUrls.push(url);
         }
         setUploadingIdx(null);

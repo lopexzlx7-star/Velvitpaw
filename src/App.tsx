@@ -294,20 +294,17 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const isDarkMode = true;
 
-  type AccentColor = 'default' | 'green' | 'gold' | 'blue' | 'orange' | 'violet';
+  type AccentColor = 'default' | 'gold' | 'neon_yellow';
   const ACCENTS: { id: AccentColor; label: string; hex: string }[] = [
-    { id: 'default', label: 'Padrão',         hex: '#ffffff' },
-    { id: 'gold',    label: 'Neon Gold',       hex: '#D4A800' },
-    { id: 'violet',  label: 'Royal Violet',   hex: '#9303C5' },
-    { id: 'blue',    label: 'Midnight Blue',  hex: '#0356C5' },
-    { id: 'green',   label: 'Forest Noir',    hex: '#007D10' },
-    { id: 'orange',  label: 'Sunset Glow',    hex: '#FC210D' },
+    { id: 'default',     label: 'Original',    hex: '#ffffff' },
+    { id: 'gold',        label: 'Neon Gold',   hex: '#D4A800' },
+    { id: 'neon_yellow', label: 'Neon Yellow', hex: '#E8FF00' },
   ];
+  const VALID_ACCENTS: AccentColor[] = ['default', 'gold', 'neon_yellow'];
   const [accentColor, setAccentColor] = useState<AccentColor>(() => {
     const saved = localStorage.getItem('velvit_accent') as AccentColor;
-    // 'red' foi removido — migra para 'default'
-    if (saved === 'red') { localStorage.setItem('velvit_accent', 'default'); return 'default'; }
-    return saved || 'default';
+    if (!VALID_ACCENTS.includes(saved)) { localStorage.setItem('velvit_accent', 'default'); return 'default'; }
+    return saved;
   });
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [likedIds, setLikedIds] = useState<string[]>(() => {
@@ -551,8 +548,10 @@ export default function App() {
 
             // Restore accent color from user profile (cross-device sync)
             if (data.accentColor) {
-              setAccentColor(data.accentColor as AccentColor);
-              localStorage.setItem('velvit_accent', data.accentColor);
+              const validAccents: AccentColor[] = ['default', 'gold', 'neon_yellow'];
+              const c = validAccents.includes(data.accentColor) ? data.accentColor as AccentColor : 'default';
+              setAccentColor(c);
+              localStorage.setItem('velvit_accent', c);
             }
 
             // Fallback: if no photo in users doc, look for it in the user's posts
@@ -1977,7 +1976,7 @@ export default function App() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="glass-panel max-w-md w-full p-10 rounded-[40px] text-center relative z-10"
-          style={{ background: 'transparent', boxShadow: 'none', border: 'none' }}
+          style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', boxShadow: '0 0 32px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.07)' }}
         >
           <h1 className="text-5xl font-black tracking-tighter text-white mb-10 accent-logo">VELVIT</h1>
 
@@ -2817,15 +2816,11 @@ export default function App() {
                                 className="block w-5 h-5 rounded-full border border-white/20"
                                 style={{
                                   background: a.id === 'default' ? '#ffffff' : a.hex,
-                                  boxShadow: a.id === 'default' ? 'none' :
-                                    a.id === 'gold'
-                                      ? '0 0 10px rgba(212,168,0,0.85), 0 0 22px rgba(255,210,0,0.45)'
-                                      : `0 0 8px rgba(${
-                                          a.hex === '#9303C5' ? '147,3,197' :
-                                          a.hex === '#0356C5' ? '3,86,197' :
-                                          a.hex === '#007D10' ? '0,125,16' :
-                                          a.hex === '#FC210D' ? '252,33,13' : '255,255,255'
-                                        }, 0.55)`,
+                                  boxShadow: a.id === 'default'
+                                    ? '0 0 8px rgba(255,255,255,0.55), 0 0 18px rgba(255,255,255,0.2)'
+                                    : a.id === 'gold'
+                                    ? '0 0 10px rgba(212,168,0,0.9), 0 0 22px rgba(255,210,0,0.45)'
+                                    : '0 0 10px rgba(232,255,0,0.95), 0 0 22px rgba(232,255,0,0.5)',
                                 }}
                               />
                             </button>
