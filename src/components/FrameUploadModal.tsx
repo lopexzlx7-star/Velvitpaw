@@ -15,7 +15,7 @@ interface FramePreview {
 
 interface UploadResult {
   name: string;
-  /** ImageKit URL returned by the backend — empty string means failure */
+  /** Cloudinary URL returned by the backend — empty string means failure */
   url: string;
 }
 
@@ -139,14 +139,12 @@ const FrameUploadModal: React.FC<FrameUploadModalProps> = ({ onClose }) => {
     setUploading(true);
     setError(null);
     setResults([]);
-    setStatusMsg('Enviando frames para ImageKit...');
+    setStatusMsg('Enviando frames para Cloudinary...');
 
     try {
       const formData = new FormData();
 
       previews.forEach(({ file, blob }) => {
-        // Use the original video filename (with .png extension) so ImageKit keeps
-        // a meaningful name. The backend adds a timestamp prefix automatically.
         const frameName = file.name.replace(/\.[^.]+$/, '') + '.png';
         formData.append('frames', blob, frameName);
       });

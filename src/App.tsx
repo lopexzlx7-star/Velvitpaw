@@ -63,23 +63,15 @@ function getCloudinaryThumb(videoUrl: string): string | null {
     .replace(/\.[^./]+$/, '.jpg');
 }
 
-// Generates an ImageKit video thumbnail by appending /ik-thumbnail.jpg
-function getImageKitThumb(videoUrl: string): string | null {
-  if (!videoUrl.includes('ik.imagekit.io')) return null;
-  // Strip any existing query params, append ImageKit thumbnail suffix
-  const base = videoUrl.split('?')[0];
-  return `${base}/ik-thumbnail.jpg`;
-}
-
 // Returns the best available thumbnail URL for any video.
 function getVideoThumb(item: { url: string; thumbnailUrl?: string }): string | null {
   if (item.thumbnailUrl) return item.thumbnailUrl;
-  return getCloudinaryThumb(item.url) || getImageKitThumb(item.url);
+  return getCloudinaryThumb(item.url);
 }
 
 // ─── RecommendationCard ───────────────────────────────────────────────────────
 // Renders a single recommendation card in the search dropdown.
-// • Videos: static ImageKit/Cloudinary thumbnail → plays Cloudinary video on hover
+// • Videos: static Cloudinary thumbnail → plays Cloudinary video on hover
 // • Images: standard <img> rendering
 interface RecCardProps {
   key?: string | number;

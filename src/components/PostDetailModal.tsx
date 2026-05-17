@@ -44,10 +44,7 @@ function isDirectVideoUrl(url: string): boolean {
   const lower = url.toLowerCase().split('?')[0];
   return (
     /\.(mp4|webm|mov|avi|mkv|ogg|ogv|m4v|3gp)$/.test(lower) ||
-    lower.includes('res.cloudinary.com') ||
-    lower.includes('ik.imagekit.io') ||
-    lower.includes('storjshare.io') ||
-    lower.includes('link.storjshare.io')
+    lower.includes('res.cloudinary.com')
   );
 }
 
