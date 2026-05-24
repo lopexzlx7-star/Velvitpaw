@@ -374,12 +374,15 @@ app.post('/api/thumbnail', (req: Request, res: Response) => {
   });
 });
 
-// ─── OpenAI client (uses Replit AI Integrations — no personal API key needed) ─
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
-  ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL } : {}),
-});
-
+// ─── OpenAI client (lazy — only initialised when a key is available) ──────────
+function getOpenAI(): OpenAI | null {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY ?? '';
+  if (!apiKey) return null;
+  return new OpenAI({
+    apiKey,
+    ...(process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ? { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL } : {}),
+  });
+}
 // ─── Tags DB — file-based JSON store for user hashtags ───────────────────────
 const TAGS_DB_PATH = path.join(process.cwd(), 'tags_db.json');
 
@@ -478,7 +481,9 @@ app.post('/api/suggest-tags', async (req: Request, res: Response) => {
   }
 
   try {
-    const completion = await openai.chat.completions.create({
+    const openaiClient = getOpenAI();
+    if (!openaiClient) return res.status(500).json({ error: 'OpenAI não configurado no servidor.' });
+    const completion = await openaiClient.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
@@ -536,7 +541,8 @@ app.post('/api/generate-tags-multi', async (req: Request, res: Response) => {
 
     if (hasOpenAI) {
       try {
-        const completion = await openai.chat.completions.create({
+        const openaiClient = getOpenAI();
+        const completion = await openaiClient!.chat.completions.create({
           model: 'gpt-4o-mini',
           messages: [
             {
@@ -593,7 +599,9 @@ app.post('/api/recommend-folder', async (req: Request, res: Response) => {
   }));
 
   try {
-    const completion = await openai.chat.completions.create({
+    const openaiClient = getOpenAI();
+    if (!openaiClient) return res.status(503).json({ error: 'OpenAI não configurado.', ids: [] });
+    const completion = await openaiClient.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
