@@ -54,7 +54,10 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && username == request.resource.data.username;
-      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && isValidUser(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid && (
+        isValidUser(request.resource.data) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['verifiedPhone', 'phoneVerifiedAt'])
+      );
       allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
     }
     
@@ -110,6 +113,24 @@ service cloud.firestore {
         allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
         allow create: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants && request.resource.data.senderId == request.auth.uid;
         allow update: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      }
+    }
+
+    match /groups/{groupId} {
+      allow read: if isAuthenticated() && (
+        resource.data.isPublic == true || request.auth.uid in resource.data.members
+      );
+      allow list: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.adminUid == request.auth.uid && request.auth.uid in request.resource.data.members;
+      allow update: if isAuthenticated() && (
+        resource.data.adminUid == request.auth.uid ||
+        (request.auth.uid in resource.data.members && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt', 'members']))
+      );
+      allow delete: if isAuthenticated() && resource.data.adminUid == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members;
+        allow create: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members && request.resource.data.senderId == request.auth.uid;
       }
     }
 
