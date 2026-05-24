@@ -436,7 +436,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       }
 
       container.requestFullscreen().then(() => {
-        // Device rotation is handled automatically by the OS/browser
+        // Lock to landscape for landscape/wide videos
+        if (item.aspectRatio === 'landscape' || item.aspectRatio === 'wide') {
+          try {
+            (screen.orientation as any)?.lock?.('landscape').catch(() => {});
+          } catch {}
+        }
       }).catch(() => {
         // Last-resort fallback for browsers without Fullscreen API
         if (videoRef.current) {

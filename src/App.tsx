@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus, Users, Download } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus, Users, Download, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { 
   doc, 
@@ -52,6 +52,7 @@ const ImageCropperModal   = lazy(() => import('./components/ImageCropperModal'))
 const PhotoViewerModal    = lazy(() => import('./components/PhotoViewerModal'));
 const LoginBackdrop       = lazy(() => import('./components/LoginBackdrop'));
 const SwipeableNotification = lazy(() => import('./components/SwipeableNotification'));
+const ChatModal = lazy(() => import('./components/ChatModal'));
 
 const ModalFallback = () => null;
 
@@ -477,6 +478,10 @@ export default function App() {
   const [resetError, setResetError] = useState<string | null>(null);
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [hasRecoveryEmail, setHasRecoveryEmail] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [chatWithUid, setChatWithUid] = useState<string | null>(null);
+  const [chatWithName, setChatWithName] = useState<string | null>(null);
+  const [chatWithPhoto, setChatWithPhoto] = useState<string | null>(null);
   
   const feedScrollRef = useRef<HTMLDivElement>(null);
   const profileScrollRef = useRef<HTMLDivElement>(null);
@@ -2303,7 +2308,8 @@ export default function App() {
         }}
         className="fixed top-0 inset-x-0 z-50 px-6 py-8"
       >
-        <div className="max-w-7xl mx-auto flex items-center justify-center">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="w-10" />
           <motion.h1
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -2312,6 +2318,18 @@ export default function App() {
           >
             VELVIT
           </motion.h1>
+          <button
+            onClick={() => {
+              setChatWithUid(null);
+              setChatWithName(null);
+              setChatWithPhoto(null);
+              setShowChat(true);
+            }}
+            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors relative"
+            aria-label="Mensagens"
+          >
+            <MessageCircle size={22} className="text-white" />
+          </button>
         </div>
       </motion.header>
 
@@ -3165,6 +3183,13 @@ export default function App() {
                 handleHashtagClick(tag);
               }}
               onPhotoClick={(url, name) => setPhotoViewer({ url, username: name })}
+              onMessageUser={(uid, name, photo) => {
+                setProfileViewUid(null);
+                setChatWithUid(uid);
+                setChatWithName(name);
+                setChatWithPhoto(photo);
+                setShowChat(true);
+              }}
             />
           )}
         </AnimatePresence>
@@ -3588,6 +3613,31 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Chat Modal ──────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showChat && authedUid && (
+          <Suspense fallback={null}>
+            <ChatModal
+              currentUser={{
+                uid: authedUid,
+                displayName: username,
+                photoURL: profilePic,
+              }}
+              onClose={() => {
+                setShowChat(false);
+                setChatWithUid(null);
+                setChatWithName(null);
+                setChatWithPhoto(null);
+              }}
+              initialChatWithUid={chatWithUid}
+              initialChatWithName={chatWithName}
+              initialChatWithPhoto={chatWithPhoto}
+            />
+          </Suspense>
+        )}
+      </AnimatePresence>
+
       </div>
     </ErrorBoundary>
   );
