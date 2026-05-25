@@ -4,7 +4,7 @@ import {
   X, Send, ArrowLeft, Search, Video, VideoOff, Mic, MicOff,
   PhoneOff, Lock, CheckCheck, Check, ImageIcon, Plus, Phone,
   Users, Globe, Copy, UserPlus, Crown, LogOut, MessageSquare, Hash,
-  ChevronRight, Link2, Globe2, EyeOff, ScanFace, ShieldCheck, ShieldX
+  ChevronRight, Link2, Globe2, EyeOff, ShieldCheck, ShieldX
 } from 'lucide-react';
 import {
   collection, query, where, orderBy, onSnapshot, addDoc,
@@ -17,7 +17,7 @@ import { getOrCreateKeyPair, deriveSharedKey, encryptText, decryptText } from '.
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ChatView =
-  | 'phone_phone' | 'phone_age' | 'phone_pending'
+  | 'phone_phone' | 'phone_pending'
   | 'list'
   | 'dm_search' | 'dm_convo'
   | 'group_search' | 'group_create' | 'group_convo' | 'group_detail';
@@ -114,9 +114,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const [phoneError, setPhoneError] = useState('');
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [phoneRequestId, setPhoneRequestId] = useState('');
-  const [ageVerifying, setAgeVerifying] = useState(false);
-  const [ageFallback, setAgeFallback] = useState(false);
-  const [ageChecked, setAgeChecked] = useState(false);
   const [incomingPhoneRequests, setIncomingPhoneRequests] = useState<PhoneLinkRequest[]>([]);
 
   // ── Navigation
@@ -264,9 +261,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
         setPhoneRequestId(reqRef.id);
         setView('phone_pending');
       } else {
-        // Phone is free — proceed to Face ID age verification
-        setAgeFallback(false); setAgeChecked(false); setPhoneError('');
-        setView('phone_age');
+        // Phone is free — save directly
+        await savePhone();
       }
     } catch (e: any) {
       setPhoneError(e.message || 'Erro ao verificar número. Tente novamente.');
@@ -278,45 +274,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
     const snap = await getDocs(query(collection(db, 'users'), where('uid', '==', currentUser.uid)));
     if (!snap.empty) await updateDoc(snap.docs[0].ref, { verifiedPhone: fullPhone, phoneVerifiedAt: new Date().toISOString() });
     setPhoneVerified(true);
-  };
-
-  const verifyAge = async () => {
-    if (ageFallback) {
-      if (!ageChecked) { setPhoneError('Confirme que você tem 18 anos ou mais.'); return; }
-      await savePhone(); return;
-    }
-    setAgeVerifying(true); setPhoneError('');
-    try {
-      if (!navigator.credentials || !window.PublicKeyCredential) throw new Error('not-supported');
-      const challenge = new Uint8Array(32);
-      crypto.getRandomValues(challenge);
-      await navigator.credentials.create({
-        publicKey: {
-          challenge,
-          rp: { name: 'Velvit', id: window.location.hostname },
-          user: {
-            id: new TextEncoder().encode(currentUser.uid),
-            name: currentUser.displayName || currentUser.uid,
-            displayName: currentUser.displayName || 'Usuário',
-          },
-          pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
-          authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
-          timeout: 60000,
-        },
-      });
-      await savePhone();
-    } catch (e: any) {
-      if (e.message === 'not-supported' || e.name === 'NotSupportedError') {
-        setAgeFallback(true);
-      } else if (e.name === 'InvalidStateError') {
-        // Credential already exists — still valid, proceed
-        await savePhone();
-      } else if (e.name === 'NotAllowedError') {
-        setPhoneError('Verificação cancelada ou negada. Tente novamente.');
-      } else {
-        setAgeFallback(true);
-      }
-    } finally { setAgeVerifying(false); }
   };
 
   // Listen for approval/denial of our pending phone link request
@@ -657,17 +614,23 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
   // ── Popup panel ────────────────────────────────────────────────────────────
   const panelStyle: React.CSSProperties = isMobile
-    ? { position: 'fixed', inset: 0, zIndex: 200, borderRadius: 0 }
-    : { position: 'fixed', top: 76, right: 16, width: 378, height: Math.min(600, window.innerHeight - 150), zIndex: 200, borderRadius: 16 };
+    ? { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 300, height: '84svh', borderRadius: '1.25rem 1.25rem 0 0' }
+    : { position: 'fixed', top: 72, right: 14, width: 384, height: Math.min(620, window.innerHeight - 120), zIndex: 300, borderRadius: 20 };
 
   return (
     <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50"
+        style={{ zIndex: 299 }}
+        onClick={onClose}
+      />
       <motion.div
-        initial={{ opacity: 0, scale: 0.94, y: -6, transformOrigin: 'top right' }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.94, y: -6 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 350 }}
-        className="bg-[#0e0e0e] shadow-2xl flex flex-col overflow-hidden border border-white/8"
+        initial={isMobile ? { y: '100%' } : { opacity: 0, scale: 0.95, y: -8 }}
+        animate={isMobile ? { y: 0 } : { opacity: 1, scale: 1, y: 0 }}
+        exit={isMobile ? { y: '100%' } : { opacity: 0, scale: 0.95, y: -8 }}
+        transition={{ type: 'spring', damping: 30, stiffness: 340 }}
+        className="glass-panel flex flex-col overflow-hidden"
         style={panelStyle}
       >
         {/* ── Loading ──────────────────────────────────────────────────── */}
@@ -680,7 +643,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
         {/* ── Enter phone number ──────────────────────────────────────── */}
         {!phoneLoading && !phoneVerified && view === 'phone_phone' && (
           <div className="flex-1 flex flex-col">
-            <div className="flex items-center gap-3 px-4 pt-5 pb-4 bg-[#161616] border-b border-white/5">
+            {isMobile && <div className="flex justify-center pt-3 pb-1"><div className="w-9 h-1 rounded-full bg-white/20" /></div>}
+            <div className="flex items-center gap-3 px-4 pt-4 pb-4 border-b border-white/8">
               <div className="flex-1">
                 <h2 className="text-white font-semibold text-base">Número de Telefone</h2>
                 <p className="text-white/40 text-xs mt-0.5">Necessário apenas na primeira vez</p>
@@ -720,49 +684,11 @@ const ChatModal: React.FC<ChatModalProps> = ({
           </div>
         )}
 
-        {/* ── Face ID / Age verification ───────────────────────────────── */}
-        {!phoneLoading && !phoneVerified && view === 'phone_age' && (
-          <div className="flex-1 flex flex-col">
-            <div className="flex items-center gap-3 px-4 pt-5 pb-4 bg-[#161616] border-b border-white/5">
-              <button onClick={() => { setView('phone_phone'); setAgeFallback(false); setAgeChecked(false); setPhoneError(''); }} className="p-1.5 rounded-full hover:bg-white/10"><ArrowLeft size={18} className="text-white/60" /></button>
-              <div className="flex-1">
-                <h2 className="text-white font-semibold text-base">Verificação de idade</h2>
-                <p className="text-white/40 text-xs mt-0.5">Apenas para maiores de 18 anos</p>
-              </div>
-              <button onClick={onClose} className="p-1.5 rounded-full hover:bg-white/10"><X size={18} className="text-white/60" /></button>
-            </div>
-            <div className="flex-1 flex flex-col justify-center px-5 py-6 gap-5">
-              <div className="w-20 h-20 rounded-full bg-purple-600/20 flex items-center justify-center mx-auto">
-                <ScanFace size={38} className="text-purple-400" />
-              </div>
-              <div className="text-center">
-                <h3 className="text-white font-bold text-lg">Confirme sua identidade</h3>
-                <p className="text-white/50 text-sm mt-2">
-                  {ageFallback
-                    ? 'Biometria não disponível neste dispositivo. Confirme que você tem 18 anos ou mais.'
-                    : 'Use o Face ID ou impressão digital do seu dispositivo para confirmar que você tem 18 anos ou mais.'}
-                </p>
-              </div>
-              {phoneError && <p className="text-red-400 text-xs text-center bg-red-500/10 rounded-xl py-2 px-3">{phoneError}</p>}
-              {ageFallback && (
-                <label className="flex items-center gap-3 bg-white/5 rounded-xl p-4 cursor-pointer border border-white/8">
-                  <input type="checkbox" checked={ageChecked} onChange={e => setAgeChecked(e.target.checked)} className="w-5 h-5 rounded" style={{ accentColor: '#9333ea' }} />
-                  <span className="text-white/70 text-sm">Confirmo que tenho 18 anos ou mais</span>
-                </label>
-              )}
-              <button onClick={verifyAge} disabled={ageVerifying || (ageFallback && !ageChecked)} className="w-full h-12 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
-                {ageVerifying
-                  ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  : ageFallback ? 'Confirmar' : <><ScanFace size={16} /> Verificar com Face ID</>}
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* ── Waiting for phone owner approval ─────────────────────────── */}
         {!phoneLoading && !phoneVerified && view === 'phone_pending' && (
           <div className="flex-1 flex flex-col">
-            <div className="flex items-center gap-3 px-4 pt-5 pb-4 bg-[#161616] border-b border-white/5">
+            {isMobile && <div className="flex justify-center pt-3 pb-1"><div className="w-9 h-1 rounded-full bg-white/20" /></div>}
+            <div className="flex items-center gap-3 px-4 pt-4 pb-4 border-b border-white/8">
               <button onClick={() => { setView('phone_phone'); setPhoneRequestId(''); setPhoneError(''); }} className="p-1.5 rounded-full hover:bg-white/10"><ArrowLeft size={18} className="text-white/60" /></button>
               <div className="flex-1">
                 <h2 className="text-white font-semibold text-base">Aguardando aprovação</h2>
@@ -789,7 +715,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
           <>
             {/* ── Panel header (changes with view) ─── */}
             {view === 'list' && (
-              <div className="flex flex-col bg-[#161616] border-b border-white/5 flex-shrink-0">
+              <div className="flex flex-col border-b border-white/8 flex-shrink-0">
+                {isMobile && <div className="flex justify-center pt-3 pb-0"><div className="w-9 h-1 rounded-full bg-white/20" /></div>}
                 <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
                   <span className="flex-1 text-white font-semibold text-base">Mensagens</span>
                   <button onClick={() => { setDmSearch(''); setView('dm_search'); }} className="p-1.5 rounded-full hover:bg-white/10" title="Nova mensagem"><Search size={17} className="text-white/60" /></button>
@@ -808,7 +735,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
             {/* Back-header for sub-views */}
             {(view === 'dm_search' || view === 'group_search' || view === 'group_create') && (
-              <div className="flex items-center gap-2 px-4 pt-4 pb-3 bg-[#161616] border-b border-white/5 flex-shrink-0">
+              <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-white/8 flex-shrink-0">
                 <button onClick={() => setView('list')} className="p-1.5 rounded-full hover:bg-white/10"><ArrowLeft size={18} className="text-white/60" /></button>
                 <span className="flex-1 text-white font-semibold text-sm">
                   {view === 'dm_search' && 'Nova conversa'}
@@ -820,7 +747,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
             )}
 
             {view === 'dm_convo' && activeConvo && (
-              <div className="flex items-center gap-2 px-3 pt-3 pb-3 bg-[#161616] border-b border-white/5 flex-shrink-0">
+              <div className="flex items-center gap-2 px-3 pt-3 pb-3 border-b border-white/8 flex-shrink-0">
                 <button onClick={() => { uns.current.msgs?.(); setView('list'); setTab('dms'); }} className="p-1.5 rounded-full hover:bg-white/10"><ArrowLeft size={18} className="text-white/60" /></button>
                 <Avatar src={activeConvo.otherPhoto} name={activeConvo.otherName} size={32} />
                 <div className="flex-1 min-w-0">
@@ -833,7 +760,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
             )}
 
             {(view === 'group_convo' || view === 'group_detail') && activeGroup && (
-              <div className="flex items-center gap-2 px-3 pt-3 pb-3 bg-[#161616] border-b border-white/5 flex-shrink-0">
+              <div className="flex items-center gap-2 px-3 pt-3 pb-3 border-b border-white/8 flex-shrink-0">
                 <button onClick={() => { if (view === 'group_detail') { setView('group_convo'); } else { uns.current.grpMsgs?.(); setView('list'); setTab('groups'); } }} className="p-1.5 rounded-full hover:bg-white/10"><ArrowLeft size={18} className="text-white/60" /></button>
                 <div className="w-8 h-8 rounded-full bg-blue-600/30 flex items-center justify-center flex-shrink-0"><Hash size={16} className="text-blue-400" /></div>
                 <div className="flex-1 min-w-0">
