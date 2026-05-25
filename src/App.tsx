@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bell, Bookmark, UserPlus, UserMinus, FolderPlus, Users, Download, MessageCircle } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bookmark, UserPlus, UserMinus, FolderPlus, Users, Download, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { 
   doc, 
@@ -29,7 +29,7 @@ import {
   updateEmail
 } from 'firebase/auth';
 import { db, auth } from './firebase';
-import { ContentItem, Notification, Folder, HashtagCategory } from './types';
+import { ContentItem, Folder, HashtagCategory } from './types';
 import GlassCard from './components/GlassCard';
 import { useResponsiveVideoUrl, getResponsiveVideoUrl } from './utils/videoUrl';
 import FloatingNav from './components/FloatingNav';
@@ -51,7 +51,6 @@ const ProfileEditModal    = lazy(() => import('./components/ProfileEditModal'));
 const ImageCropperModal   = lazy(() => import('./components/ImageCropperModal'));
 const PhotoViewerModal    = lazy(() => import('./components/PhotoViewerModal'));
 const LoginBackdrop       = lazy(() => import('./components/LoginBackdrop'));
-const SwipeableNotification = lazy(() => import('./components/SwipeableNotification'));
 const ChatModal = lazy(() => import('./components/ChatModal'));
 
 const ModalFallback = () => null;
@@ -437,19 +436,9 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, [showFollowingList, followingUids]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [trendingPosts, setTrendingPosts] = useState<ContentItem[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [currentTab, setCurrentTab] = useState<'feed' | 'profile'>('feed');
   const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
-  // Auto-close the notifications panel whenever the user navigates away
-  // (changes tabs, opens the publish modal, opens a post, etc).
-  useEffect(() => {
-    if (currentTab !== 'feed') setShowNotifications(false);
-  }, [currentTab]);
-  useEffect(() => {
-    if (showPublishModal) setShowNotifications(false);
-  }, [showPublishModal]);
   const [selectedPost, setSelectedPost] = useState<ContentItem | null>(null);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
@@ -589,9 +578,7 @@ export default function App() {
       } else {
         resolvedUid = null;
         setFollowingUids([]);
-        setNotifications([]);
         unsubscribeFollowing();
-        unsubscribeNotifications();
       }
     });
 
@@ -651,7 +638,6 @@ export default function App() {
 
     let unsubscribeFollowing = () => {};
     let unsubscribeFollowers = () => {};
-    let unsubscribeNotifications = () => {};
 
     const setupAuthListeners = (uid: string) => {
       const followQ = query(collection(db, 'following'), where('followerUid', '==', uid));
@@ -664,15 +650,6 @@ export default function App() {
         setFollowersUids(snapshot.docs.map(doc => doc.data().followerUid));
       });
 
-      const notifQ = query(
-        collection(db, 'notifications'), 
-        where('userId', '==', uid),
-        orderBy('createdAt', 'desc'),
-        limit(20)
-      );
-      unsubscribeNotifications = onSnapshot(notifQ, (snapshot) => {
-        setNotifications(snapshot.docs.map(doc => ({ ...(doc.data() as any), id: doc.id })) as any);
-      });
     };
 
 
@@ -681,7 +658,6 @@ export default function App() {
       unsubscribePosts();
       unsubscribeFollowing();
       unsubscribeFollowers();
-      unsubscribeNotifications();
     };
   }, []);
 
@@ -1324,102 +1300,6 @@ export default function App() {
     setTimeout(() => setIsRefreshingFeed(false), 750);
   };
 
-  // ─── Notifications: delete one + auto-cleanup of older than 7 days ───────
-  const handleDeleteNotification = async (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-    try {
-      await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
-    } catch {
-      // best-effort: snapshot listener will eventually re-sync if it fails
-    }
-  };
-
-  // Abre a tela correta para a notificação clicada
-  const handleNotificationClick = async (n: Notification) => {
-    const anyN = n as any;
-
-    // Marca como lida (best-effort)
-    if (!n.read) {
-      fetch(`/api/notifications/${n.id}/read`, { method: 'PATCH' }).catch(() => {});
-      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } as Notification : x));
-    }
-
-    // Fecha o painel de notificações
-    setShowNotifications(false);
-
-    const type = anyN.type as string | undefined;
-
-    // Notificação de novo seguidor → abrir perfil do usuário
-    if (type === 'new_follower') {
-      const fromUid = anyN.fromUserId as string | undefined;
-      if (!fromUid) return;
-      if (auth.currentUser && fromUid === auth.currentUser.uid) {
-        setCurrentTab('profile');
-        setProfileTab('posts');
-      } else {
-        setSelectedPost(null);
-        setOpenFolder(null);
-        setProfileViewUid(fromUid);
-      }
-      return;
-    }
-
-    // Demais tipos (new_post, like, comment, recommended) → abrir o post
-    const postId = anyN.postId as string | undefined;
-    if (!postId) return;
-
-    // Tenta achar o post entre os já carregados
-    const cached = [...globalPosts, ...userPosts].find(p => p.id === postId);
-    if (cached) {
-      setProfileViewUid(null);
-      setOpenFolder(null);
-      setSelectedPost(cached);
-      return;
-    }
-
-    // Caso não esteja em cache, busca no Firestore
-    try {
-      const snap = await getDoc(doc(db, 'posts', postId));
-      if (snap.exists()) {
-        const data = snap.data() as any;
-        const post: ContentItem = { id: snap.id, ...data };
-        setProfileViewUid(null);
-        setOpenFolder(null);
-        setSelectedPost(post);
-      } else {
-        alert('Esse post não está mais disponível.');
-      }
-    } catch (err) {
-      console.error('Erro ao abrir post da notificação:', err);
-    }
-  };
-
-  // Hide notifications older than one week from the UI immediately, and tell
-  // the backend to permanently delete them (best-effort, runs at most once
-  // per session per user).
-  const cleanupRanRef = useRef<string | null>(null);
-  useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    if (cleanupRanRef.current === uid) return;
-    cleanupRanRef.current = uid;
-    fetch(`/api/notifications/${uid}/old?days=7`, { method: 'DELETE' }).catch(() => {});
-  }, [notifications.length]);
-
-  const visibleNotifications = useMemo(() => {
-    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return notifications.filter(n => {
-      const raw: any = (n as any).createdAt;
-      if (!raw) return true;
-      const ms =
-        typeof raw === 'string' ? Date.parse(raw) :
-        raw?.seconds ? raw.seconds * 1000 :
-        typeof raw?.toDate === 'function' ? raw.toDate().getTime() :
-        NaN;
-      if (isNaN(ms)) return true;
-      return ms >= cutoff;
-    });
-  }, [notifications]);
 
   // ─── Swipe navigation between Publish ◀ Feed ▶ Profile ─────────────────
   const TAB_ORDER: Array<'publish' | 'feed' | 'profile'> = ['publish', 'feed', 'profile'];
@@ -2525,145 +2405,12 @@ export default function App() {
                     </AnimatePresence>
                   </div>
 
-                  <div className="relative">
-                    <button 
-                      onClick={() => setShowNotifications(!showNotifications)}
-                      className="relative p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/50 hover:text-white transition-all"
-                    >
-                      <Bell size={20} />
-                      {notifications.some(n => !n.read) && (
-                        <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full" />
-                      )}
-                    </button>
-
-                    <AnimatePresence>
-                      {showNotifications && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          data-no-swipe="true"
-                          style={{ isolation: 'isolate', WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}
-                          className="fixed sm:absolute top-20 sm:top-full left-2 right-2 sm:left-auto sm:right-0 sm:mt-4 sm:w-96 glass-panel rounded-3xl z-[60] border border-white/10 overflow-hidden shadow-2xl"
-                        >
-                          <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                            <span className="text-xs font-bold uppercase tracking-widest text-white">Notificações</span>
-                            <div className="flex items-center gap-3">
-                              {visibleNotifications.some(n => !n.read) && auth.currentUser && (
-                                <button
-                                  onClick={() => {
-                                    fetch(`/api/notifications/${auth.currentUser!.uid}/read-all`, { method: 'PATCH' }).catch(() => {});
-                                  }}
-                                  className="text-[10px] uppercase tracking-widest text-white/40 hover:text-white"
-                                >
-                                  Marcar todas
-                                </button>
-                              )}
-                              <button onClick={() => setShowNotifications(false)} className="text-white/30 hover:text-white"><X size={16} /></button>
-                            </div>
-                          </div>
-                          <div className="max-h-[28rem] overflow-y-auto overflow-x-hidden">
-                            {visibleNotifications.length === 0 ? (
-                              <div className="p-8 text-center text-white/20 text-xs uppercase tracking-widest">Nenhuma notificação</div>
-                            ) : (
-                              visibleNotifications.map(n => {
-                                const anyN = n as any;
-                                const name = anyN.fromUserName || 'Alguém';
-                                const photo = anyN.fromUserPhotoUrl as string | null | undefined;
-                                const thumb = anyN.postThumbnailUrl as string | null | undefined;
-                                const postIdFromN = anyN.postId as string | undefined;
-                                const post = postIdFromN
-                                  ? [...globalPosts, ...userPosts].find(p => p.id === postIdFromN)
-                                  : null;
-                                const postUrl = (post as any)?.url as string | undefined;
-                                const postType = (post as any)?.type as string | undefined;
-                                const isVideo = postType === 'video';
-                                const previewSrc = thumb || (!isVideo ? postUrl : undefined);
-                                const verb = (() => {
-                                  switch (anyN.type) {
-                                    case 'new_follower': return 'começou a seguir você.';
-                                    case 'new_post':     return 'publicou um novo post.';
-                                    case 'like':         return 'curtiu seu post.';
-                                    case 'comment':      return 'comentou no seu post.';
-                                    case 'recommended':  return 'recomendado para você.';
-                                    default:             return '';
-                                  }
-                                })();
-                                const ts = (() => {
-                                  const raw: any = anyN.createdAt;
-                                  if (!raw) return '';
-                                  const ms =
-                                    typeof raw === 'string' ? Date.parse(raw) :
-                                    raw?.seconds ? raw.seconds * 1000 :
-                                    typeof raw?.toDate === 'function' ? raw.toDate().getTime() :
-                                    NaN;
-                                  if (isNaN(ms)) return '';
-                                  const diffSec = Math.max(1, Math.floor((Date.now() - ms) / 1000));
-                                  if (diffSec < 60) return `${diffSec}s`;
-                                  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}min`;
-                                  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h`;
-                                  if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d`;
-                                  return new Date(ms).toLocaleDateString();
-                                })();
-                                return (
-                                  <Suspense key={n.id} fallback={<div className="border-b border-white/5 h-16" />}>
-                                  <SwipeableNotification
-                                    onDelete={() => handleDeleteNotification(n.id)}
-                                    onClick={() => { handleNotificationClick(n); }}
-                                    className={`border-b border-white/5 cursor-pointer hover:bg-white/[0.07] transition-colors ${!n.read ? 'bg-white/5' : ''}`}
-                                  >
-                                    <div className="p-3 flex items-center gap-3">
-                                      <div className="relative shrink-0">
-                                        {photo ? (
-                                          <img src={photo} alt={name} className="w-11 h-11 rounded-full object-cover border border-white/10" />
-                                        ) : (
-                                          <div className="w-11 h-11 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/60">
-                                            <User size={18} />
-                                          </div>
-                                        )}
-                                        {!n.read && (
-                                          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black" />
-                                        )}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-xs text-white/80 leading-snug">
-                                          <span className="font-bold text-white">{name}</span>
-                                          {verb ? ' ' : ''}{verb || n.message}
-                                        </p>
-                                        {ts && <span className="text-[10px] text-white/30 mt-1 block">{ts}</span>}
-                                      </div>
-                                      {(previewSrc || (isVideo && postUrl)) && (
-                                        <div className="w-10 h-10 rounded-md overflow-hidden shrink-0 border border-white/10 bg-white/5">
-                                          {isVideo && postUrl && !thumb ? (
-                                            <video
-                                              src={`${getResponsiveVideoUrl(postUrl, true)}#t=0.1`}
-                                              muted
-                                              playsInline
-                                              preload="metadata"
-                                              className="w-full h-full object-cover"
-                                            />
-                                          ) : previewSrc ? (
-                                            <img
-                                              src={previewSrc}
-                                              alt=""
-                                              referrerPolicy="no-referrer"
-                                              className="w-full h-full object-cover"
-                                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                                            />
-                                          ) : null}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </SwipeableNotification>
-                                  </Suspense>
-                                );
-                              })
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                  <button
+                    onClick={() => setShowChat(true)}
+                    className="relative p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/50 hover:text-white transition-all"
+                  >
+                    <MessageCircle size={20} />
+                  </button>
                 </div>
 
                 <AnimatePresence>

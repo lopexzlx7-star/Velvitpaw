@@ -11,7 +11,6 @@ import {
   updateDoc, doc, setDoc, getDoc, getDocs, serverTimestamp,
   arrayUnion, arrayRemove
 } from 'firebase/firestore';
-import { RecaptchaVerifier, linkWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { getOrCreateKeyPair, deriveSharedKey, encryptText, decryptText } from '../utils/crypto';
 
@@ -104,10 +103,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const [phoneSending, setPhoneSending] = useState(false);
   const [phoneVerifying, setPhoneVerifying] = useState(false);
   const [phoneError, setPhoneError] = useState('');
-  const [confirmResult, setConfirmResult] = useState<ConfirmationResult | null>(null);
+  const [sessionId, setSessionId] = useState('');
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
-  const recaptchaId = `rcap-${currentUser.uid.slice(0, 8)}`;
 
   // ── Navigation
   const [view, setView] = useState<ChatView>('list');
@@ -221,40 +218,42 @@ const ChatModal: React.FC<ChatModalProps> = ({
     if (initialChatWithUid) openDM(initialChatWithUid, initialChatWithName || 'Usuário', initialChatWithPhoto || null);
   }, [currentUser, initialChatWithUid, initialChatWithName, initialChatWithPhoto]);
 
-  // ── Phone verification ────────────────────────────────────────────────────
+  // ── Phone verification via WhatsApp ──────────────────────────────────────
   const sendCode = async () => {
     const phone = phoneCountry + phoneInput.replace(/\D/g, '');
-    if (phone.length < 10) { setPhoneError('Número inválido'); return; }
+    if (phone.replace(/\D/g, '').length < 10) { setPhoneError('Número inválido. Ex: 11 99999-9999'); return; }
     setPhoneSending(true); setPhoneError('');
     try {
-      if (!recaptchaRef.current) recaptchaRef.current = new RecaptchaVerifier(auth, recaptchaId, { size: 'invisible' });
-      const res = await linkWithPhoneNumber(auth.currentUser!, phone, recaptchaRef.current);
-      setConfirmResult(res); setView('phone_code');
+      const res = await fetch('/api/whatsapp-otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.sessionId) throw new Error(data.error || 'Erro ao enviar código.');
+      setSessionId(data.sessionId);
+      setView('phone_code');
     } catch (e: any) {
-      if (e.code === 'auth/provider-already-linked') {
-        const snap = await getDocs(query(collection(db, 'users'), where('uid', '==', currentUser.uid)));
-        if (!snap.empty) await updateDoc(snap.docs[0].ref, { verifiedPhone: phoneCountry + phoneInput.replace(/\D/g, ''), phoneVerifiedAt: new Date().toISOString() });
-        setPhoneVerified(true);
-      } else if (e.code === 'auth/invalid-phone-number') {
-        setPhoneError('Número inválido. Inclua o código do país, ex: 11 99999-9999');
-      } else {
-        setPhoneError('Erro ao enviar SMS. Verifique o número e tente novamente.');
-        recaptchaRef.current = null;
-      }
+      setPhoneError(e.message || 'Erro ao enviar código via WhatsApp. Verifique o número e tente novamente.');
     } finally { setPhoneSending(false); }
   };
 
   const confirmCode = async () => {
-    if (!confirmResult || !codeInput.trim()) return;
+    if (!sessionId || !codeInput.trim()) return;
     setPhoneVerifying(true); setPhoneError('');
     try {
-      await confirmResult.confirm(codeInput.trim());
-      const phone = phoneCountry + phoneInput.replace(/\D/g, '');
+      const res = await fetch('/api/whatsapp-otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, code: codeInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Código incorreto.');
       const snap = await getDocs(query(collection(db, 'users'), where('uid', '==', currentUser.uid)));
-      if (!snap.empty) await updateDoc(snap.docs[0].ref, { verifiedPhone: phone, phoneVerifiedAt: new Date().toISOString() });
+      if (!snap.empty) await updateDoc(snap.docs[0].ref, { verifiedPhone: data.phone, phoneVerifiedAt: new Date().toISOString() });
       setPhoneVerified(true);
-    } catch {
-      setPhoneError('Código incorreto. Tente novamente.');
+    } catch (e: any) {
+      setPhoneError(e.message || 'Código incorreto. Tente novamente.');
     } finally { setPhoneVerifying(false); }
   };
 
@@ -573,7 +572,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
   return (
     <>
-      <div id={recaptchaId} className="hidden" />
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: -6, transformOrigin: 'top right' }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -605,8 +603,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
                 <Phone size={28} className="text-blue-400" />
               </div>
               <div className="text-center">
-                <h3 className="text-white font-bold text-lg">Seu número real</h3>
-                <p className="text-white/50 text-sm mt-1">Enviaremos um SMS com o código de verificação. Isso é feito apenas uma vez.</p>
+                <h3 className="text-white font-bold text-lg">Seu número de WhatsApp</h3>
+                <p className="text-white/50 text-sm mt-1">Enviaremos um código de verificação para o seu WhatsApp. Isso é feito apenas uma vez.</p>
               </div>
               {phoneError && <p className="text-red-400 text-xs text-center bg-red-500/10 rounded-xl py-2 px-3">{phoneError}</p>}
               <div className="flex gap-2">
@@ -628,7 +626,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                 <input value={phoneInput} onChange={e => setPhoneInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') sendCode(); }} placeholder="11 99999-9999" className="flex-1 h-12 bg-white/8 border border-white/10 rounded-xl px-4 text-white text-sm outline-none focus:border-blue-500/50 placeholder-white/20" inputMode="tel" />
               </div>
               <button onClick={sendCode} disabled={phoneSending || !phoneInput.trim()} className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
-                {phoneSending ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Phone size={16} /> Enviar código SMS</>}
+                {phoneSending ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Phone size={16} /> Enviar código via WhatsApp</>}
               </button>
             </div>
           </div>
@@ -645,7 +643,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
               <button onClick={onClose} className="p-1.5 rounded-full hover:bg-white/10"><X size={18} className="text-white/60" /></button>
             </div>
             <div className="flex-1 flex flex-col justify-center px-5 py-6 gap-4">
-              <p className="text-white/60 text-sm text-center">Digite o código recebido por SMS</p>
+              <p className="text-white/60 text-sm text-center">Digite o código recebido pelo WhatsApp</p>
               {phoneError && <p className="text-red-400 text-xs text-center bg-red-500/10 rounded-xl py-2 px-3">{phoneError}</p>}
               <input value={codeInput} onChange={e => setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))} onKeyDown={e => { if (e.key === 'Enter') confirmCode(); }} placeholder="000000" className="w-full h-14 bg-white/8 border border-white/10 rounded-xl px-4 text-white text-2xl text-center outline-none focus:border-blue-500/50 tracking-[0.4em] placeholder-white/20" inputMode="numeric" maxLength={6} autoFocus />
               <button onClick={confirmCode} disabled={phoneVerifying || codeInput.length < 4} className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
