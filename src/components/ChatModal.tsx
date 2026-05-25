@@ -4,7 +4,7 @@ import {
   X, Send, ArrowLeft, Search, Video, VideoOff, Mic, MicOff,
   PhoneOff, Lock, CheckCheck, Check, ImageIcon, Plus, Phone,
   Users, Globe, Copy, UserPlus, Crown, LogOut, MessageSquare, Hash,
-  ChevronRight, Link2, Globe2, EyeOff
+  ChevronRight, Link2, Globe2, EyeOff, ScanFace, ShieldCheck, ShieldX
 } from 'lucide-react';
 import {
   collection, query, where, orderBy, onSnapshot, addDoc,
@@ -17,7 +17,7 @@ import { getOrCreateKeyPair, deriveSharedKey, encryptText, decryptText } from '.
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ChatView =
-  | 'phone_phone' | 'phone_code'
+  | 'phone_phone' | 'phone_age' | 'phone_pending'
   | 'list'
   | 'dm_search' | 'dm_convo'
   | 'group_search' | 'group_create' | 'group_convo' | 'group_detail';
@@ -56,6 +56,17 @@ interface GroupMsg {
 }
 
 interface SearchUser { uid: string; username: string; profilePhotoUrl: string | null; }
+
+interface PhoneLinkRequest {
+  id: string;
+  requestingUid: string;
+  requestingUsername: string;
+  requestingPhoto: string | null;
+  phone: string;
+  ownerUid: string;
+  status: 'pending' | 'approved' | 'denied';
+  createdAt: number;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -99,12 +110,14 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [phoneCountry, setPhoneCountry] = useState('+55');
   const [phoneInput, setPhoneInput] = useState('');
-  const [codeInput, setCodeInput] = useState('');
   const [phoneSending, setPhoneSending] = useState(false);
-  const [phoneVerifying, setPhoneVerifying] = useState(false);
   const [phoneError, setPhoneError] = useState('');
-  const [sessionId, setSessionId] = useState('');
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [phoneRequestId, setPhoneRequestId] = useState('');
+  const [ageVerifying, setAgeVerifying] = useState(false);
+  const [ageFallback, setAgeFallback] = useState(false);
+  const [ageChecked, setAgeChecked] = useState(false);
+  const [incomingPhoneRequests, setIncomingPhoneRequests] = useState<PhoneLinkRequest[]>([]);
 
   // ── Navigation
   const [view, setView] = useState<ChatView>('list');
@@ -160,7 +173,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const msgsEnd = useRef<HTMLDivElement>(null);
   const grpMsgsEnd = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const uns = useRef<Record<string, (() => void) | null>>({ convos: null, msgs: null, groups: null, grpMsgs: null, call: null, incoming: null });
+  const uns = useRef<Record<string, (() => void) | null>>({ convos: null, msgs: null, groups: null, grpMsgs: null, call: null, incoming: null, phoneReqs: null });
 
   // ── Check phone verification ──────────────────────────────────────────────
   useEffect(() => {
@@ -215,46 +228,123 @@ const ChatModal: React.FC<ChatModalProps> = ({
       }
     );
 
+    uns.current.phoneReqs = onSnapshot(
+      query(collection(db, 'phone_link_requests'), where('ownerUid', '==', currentUser.uid), where('status', '==', 'pending')),
+      snap => {
+        const reqs: PhoneLinkRequest[] = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+        setIncomingPhoneRequests(reqs);
+      }
+    );
+
     if (initialChatWithUid) openDM(initialChatWithUid, initialChatWithName || 'Usuário', initialChatWithPhoto || null);
   }, [currentUser, initialChatWithUid, initialChatWithName, initialChatWithPhoto]);
 
-  // ── Phone verification via WhatsApp ──────────────────────────────────────
-  const sendCode = async () => {
-    const phone = phoneCountry + phoneInput.replace(/\D/g, '');
-    if (phone.replace(/\D/g, '').length < 10) { setPhoneError('Número inválido. Ex: 11 99999-9999'); return; }
+  // ── Phone number uniqueness + request flow ───────────────────────────────
+  const submitPhone = async () => {
+    const fullPhone = phoneCountry + phoneInput.replace(/\D/g, '');
+    if (fullPhone.replace(/\D/g, '').length < 10) { setPhoneError('Número inválido. Ex: 11 99999-9999'); return; }
     setPhoneSending(true); setPhoneError('');
     try {
-      const res = await fetch('/api/whatsapp-otp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.sessionId) throw new Error(data.error || 'Erro ao enviar código.');
-      setSessionId(data.sessionId);
-      setView('phone_code');
+      const snap = await getDocs(query(collection(db, 'users'), where('verifiedPhone', '==', fullPhone)));
+      if (!snap.empty) {
+        const existing = snap.docs[0].data();
+        if (existing.uid === currentUser.uid) { setPhoneVerified(true); return; }
+        // Phone belongs to another user — request approval
+        const mySnap = await getDocs(query(collection(db, 'users'), where('uid', '==', currentUser.uid)));
+        const myData = mySnap.docs[0]?.data() || {};
+        const reqRef = await addDoc(collection(db, 'phone_link_requests'), {
+          requestingUid: currentUser.uid,
+          requestingUsername: myData.username || currentUser.displayName || 'Usuário',
+          requestingPhoto: myData.profilePhotoUrl || currentUser.photoURL || null,
+          phone: fullPhone,
+          ownerUid: existing.uid,
+          status: 'pending',
+          createdAt: Date.now(),
+        });
+        setPhoneRequestId(reqRef.id);
+        setView('phone_pending');
+      } else {
+        // Phone is free — proceed to Face ID age verification
+        setAgeFallback(false); setAgeChecked(false); setPhoneError('');
+        setView('phone_age');
+      }
     } catch (e: any) {
-      setPhoneError(e.message || 'Erro ao enviar código via WhatsApp. Verifique o número e tente novamente.');
+      setPhoneError(e.message || 'Erro ao verificar número. Tente novamente.');
     } finally { setPhoneSending(false); }
   };
 
-  const confirmCode = async () => {
-    if (!sessionId || !codeInput.trim()) return;
-    setPhoneVerifying(true); setPhoneError('');
+  const savePhone = async () => {
+    const fullPhone = phoneCountry + phoneInput.replace(/\D/g, '');
+    const snap = await getDocs(query(collection(db, 'users'), where('uid', '==', currentUser.uid)));
+    if (!snap.empty) await updateDoc(snap.docs[0].ref, { verifiedPhone: fullPhone, phoneVerifiedAt: new Date().toISOString() });
+    setPhoneVerified(true);
+  };
+
+  const verifyAge = async () => {
+    if (ageFallback) {
+      if (!ageChecked) { setPhoneError('Confirme que você tem 18 anos ou mais.'); return; }
+      await savePhone(); return;
+    }
+    setAgeVerifying(true); setPhoneError('');
     try {
-      const res = await fetch('/api/whatsapp-otp/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, code: codeInput.trim() }),
+      if (!navigator.credentials || !window.PublicKeyCredential) throw new Error('not-supported');
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: 'Velvit', id: window.location.hostname },
+          user: {
+            id: new TextEncoder().encode(currentUser.uid),
+            name: currentUser.displayName || currentUser.uid,
+            displayName: currentUser.displayName || 'Usuário',
+          },
+          pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
+          authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+          timeout: 60000,
+        },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Código incorreto.');
-      const snap = await getDocs(query(collection(db, 'users'), where('uid', '==', currentUser.uid)));
-      if (!snap.empty) await updateDoc(snap.docs[0].ref, { verifiedPhone: data.phone, phoneVerifiedAt: new Date().toISOString() });
-      setPhoneVerified(true);
+      await savePhone();
     } catch (e: any) {
-      setPhoneError(e.message || 'Código incorreto. Tente novamente.');
-    } finally { setPhoneVerifying(false); }
+      if (e.message === 'not-supported' || e.name === 'NotSupportedError') {
+        setAgeFallback(true);
+      } else if (e.name === 'InvalidStateError') {
+        // Credential already exists — still valid, proceed
+        await savePhone();
+      } else if (e.name === 'NotAllowedError') {
+        setPhoneError('Verificação cancelada ou negada. Tente novamente.');
+      } else {
+        setAgeFallback(true);
+      }
+    } finally { setAgeVerifying(false); }
+  };
+
+  // Listen for approval/denial of our pending phone link request
+  useEffect(() => {
+    if (view !== 'phone_pending' || !phoneRequestId) return;
+    const unsub = onSnapshot(doc(db, 'phone_link_requests', phoneRequestId), async d => {
+      if (!d.exists()) return;
+      const status = d.data().status as string;
+      if (status === 'approved') {
+        await savePhone();
+      } else if (status === 'denied') {
+        setPhoneError('O dono do número negou o acesso. Tente um número diferente.');
+        setView('phone_phone'); setPhoneRequestId('');
+      }
+    });
+    return () => unsub();
+  }, [view, phoneRequestId]);
+
+  const approvePhoneRequest = async (req: PhoneLinkRequest) => {
+    await updateDoc(doc(db, 'phone_link_requests', req.id), { status: 'approved' });
+    const reqUserSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', req.requestingUid)));
+    if (!reqUserSnap.empty) {
+      await updateDoc(reqUserSnap.docs[0].ref, { verifiedPhone: req.phone, phoneVerifiedAt: new Date().toISOString() });
+    }
+  };
+
+  const denyPhoneRequest = async (req: PhoneLinkRequest) => {
+    await updateDoc(doc(db, 'phone_link_requests', req.id), { status: 'denied' });
   };
 
   // ── DM ────────────────────────────────────────────────────────────────────
@@ -587,13 +677,12 @@ const ChatModal: React.FC<ChatModalProps> = ({
           </div>
         )}
 
-        {/* ── Phone verification ─────────────────────────────────────── */}
+        {/* ── Enter phone number ──────────────────────────────────────── */}
         {!phoneLoading && !phoneVerified && view === 'phone_phone' && (
           <div className="flex-1 flex flex-col">
-            {/* Header */}
             <div className="flex items-center gap-3 px-4 pt-5 pb-4 bg-[#161616] border-b border-white/5">
               <div className="flex-1">
-                <h2 className="text-white font-semibold text-base">Verificar Telefone</h2>
+                <h2 className="text-white font-semibold text-base">Número de Telefone</h2>
                 <p className="text-white/40 text-xs mt-0.5">Necessário apenas na primeira vez</p>
               </div>
               <button onClick={onClose} className="p-1.5 rounded-full hover:bg-white/10"><X size={18} className="text-white/60" /></button>
@@ -603,12 +692,11 @@ const ChatModal: React.FC<ChatModalProps> = ({
                 <Phone size={28} className="text-blue-400" />
               </div>
               <div className="text-center">
-                <h3 className="text-white font-bold text-lg">Seu número de WhatsApp</h3>
-                <p className="text-white/50 text-sm mt-1">Enviaremos um código de verificação para o seu WhatsApp. Isso é feito apenas uma vez.</p>
+                <h3 className="text-white font-bold text-lg">Seu número de telefone</h3>
+                <p className="text-white/50 text-sm mt-1">Cada número é único por conta. Se já estiver em uso, o dono será notificado para aprovar.</p>
               </div>
               {phoneError && <p className="text-red-400 text-xs text-center bg-red-500/10 rounded-xl py-2 px-3">{phoneError}</p>}
               <div className="flex gap-2">
-                {/* Country picker */}
                 <div className="relative">
                   <button onClick={() => setShowCountryPicker(v => !v)} className="h-12 px-3 rounded-xl bg-white/8 border border-white/10 text-white text-sm flex items-center gap-1 whitespace-nowrap">
                     {COUNTRIES.find(c => c.code === phoneCountry)?.flag} {phoneCountry}
@@ -623,33 +711,75 @@ const ChatModal: React.FC<ChatModalProps> = ({
                     </div>
                   )}
                 </div>
-                <input value={phoneInput} onChange={e => setPhoneInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') sendCode(); }} placeholder="11 99999-9999" className="flex-1 h-12 bg-white/8 border border-white/10 rounded-xl px-4 text-white text-sm outline-none focus:border-blue-500/50 placeholder-white/20" inputMode="tel" />
+                <input value={phoneInput} onChange={e => setPhoneInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitPhone(); }} placeholder="11 99999-9999" className="flex-1 h-12 bg-white/8 border border-white/10 rounded-xl px-4 text-white text-sm outline-none focus:border-blue-500/50 placeholder-white/20" inputMode="tel" />
               </div>
-              <button onClick={sendCode} disabled={phoneSending || !phoneInput.trim()} className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
-                {phoneSending ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Phone size={16} /> Enviar código via WhatsApp</>}
+              <button onClick={submitPhone} disabled={phoneSending || !phoneInput.trim()} className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+                {phoneSending ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Phone size={16} /> Continuar</>}
               </button>
             </div>
           </div>
         )}
 
-        {!phoneLoading && !phoneVerified && view === 'phone_code' && (
+        {/* ── Face ID / Age verification ───────────────────────────────── */}
+        {!phoneLoading && !phoneVerified && view === 'phone_age' && (
           <div className="flex-1 flex flex-col">
             <div className="flex items-center gap-3 px-4 pt-5 pb-4 bg-[#161616] border-b border-white/5">
-              <button onClick={() => setView('phone_phone')} className="p-1.5 rounded-full hover:bg-white/10"><ArrowLeft size={18} className="text-white/60" /></button>
+              <button onClick={() => { setView('phone_phone'); setAgeFallback(false); setAgeChecked(false); setPhoneError(''); }} className="p-1.5 rounded-full hover:bg-white/10"><ArrowLeft size={18} className="text-white/60" /></button>
               <div className="flex-1">
-                <h2 className="text-white font-semibold text-base">Código de verificação</h2>
+                <h2 className="text-white font-semibold text-base">Verificação de idade</h2>
+                <p className="text-white/40 text-xs mt-0.5">Apenas para maiores de 18 anos</p>
+              </div>
+              <button onClick={onClose} className="p-1.5 rounded-full hover:bg-white/10"><X size={18} className="text-white/60" /></button>
+            </div>
+            <div className="flex-1 flex flex-col justify-center px-5 py-6 gap-5">
+              <div className="w-20 h-20 rounded-full bg-purple-600/20 flex items-center justify-center mx-auto">
+                <ScanFace size={38} className="text-purple-400" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-white font-bold text-lg">Confirme sua identidade</h3>
+                <p className="text-white/50 text-sm mt-2">
+                  {ageFallback
+                    ? 'Biometria não disponível neste dispositivo. Confirme que você tem 18 anos ou mais.'
+                    : 'Use o Face ID ou impressão digital do seu dispositivo para confirmar que você tem 18 anos ou mais.'}
+                </p>
+              </div>
+              {phoneError && <p className="text-red-400 text-xs text-center bg-red-500/10 rounded-xl py-2 px-3">{phoneError}</p>}
+              {ageFallback && (
+                <label className="flex items-center gap-3 bg-white/5 rounded-xl p-4 cursor-pointer border border-white/8">
+                  <input type="checkbox" checked={ageChecked} onChange={e => setAgeChecked(e.target.checked)} className="w-5 h-5 rounded" style={{ accentColor: '#9333ea' }} />
+                  <span className="text-white/70 text-sm">Confirmo que tenho 18 anos ou mais</span>
+                </label>
+              )}
+              <button onClick={verifyAge} disabled={ageVerifying || (ageFallback && !ageChecked)} className="w-full h-12 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+                {ageVerifying
+                  ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : ageFallback ? 'Confirmar' : <><ScanFace size={16} /> Verificar com Face ID</>}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Waiting for phone owner approval ─────────────────────────── */}
+        {!phoneLoading && !phoneVerified && view === 'phone_pending' && (
+          <div className="flex-1 flex flex-col">
+            <div className="flex items-center gap-3 px-4 pt-5 pb-4 bg-[#161616] border-b border-white/5">
+              <button onClick={() => { setView('phone_phone'); setPhoneRequestId(''); setPhoneError(''); }} className="p-1.5 rounded-full hover:bg-white/10"><ArrowLeft size={18} className="text-white/60" /></button>
+              <div className="flex-1">
+                <h2 className="text-white font-semibold text-base">Aguardando aprovação</h2>
                 <p className="text-white/40 text-xs mt-0.5">{phoneCountry} {phoneInput}</p>
               </div>
               <button onClick={onClose} className="p-1.5 rounded-full hover:bg-white/10"><X size={18} className="text-white/60" /></button>
             </div>
-            <div className="flex-1 flex flex-col justify-center px-5 py-6 gap-4">
-              <p className="text-white/60 text-sm text-center">Digite o código recebido pelo WhatsApp</p>
-              {phoneError && <p className="text-red-400 text-xs text-center bg-red-500/10 rounded-xl py-2 px-3">{phoneError}</p>}
-              <input value={codeInput} onChange={e => setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))} onKeyDown={e => { if (e.key === 'Enter') confirmCode(); }} placeholder="000000" className="w-full h-14 bg-white/8 border border-white/10 rounded-xl px-4 text-white text-2xl text-center outline-none focus:border-blue-500/50 tracking-[0.4em] placeholder-white/20" inputMode="numeric" maxLength={6} autoFocus />
-              <button onClick={confirmCode} disabled={phoneVerifying || codeInput.length < 4} className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
-                {phoneVerifying ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Verificar código'}
-              </button>
-              <button onClick={() => { setView('phone_phone'); setCodeInput(''); setPhoneError(''); }} className="text-white/40 text-xs text-center">Reenviar código</button>
+            <div className="flex-1 flex flex-col items-center justify-center px-5 py-6 gap-5 text-center">
+              <div className="w-20 h-20 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                <Phone size={34} className="text-yellow-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-lg">Número em uso</h3>
+                <p className="text-white/50 text-sm mt-2">O dono deste número foi notificado dentro do app. Quando ele aprovar, você terá acesso automaticamente.</p>
+              </div>
+              <div className="w-8 h-8 border-2 border-white/20 border-t-yellow-400 rounded-full animate-spin" />
+              {phoneError && <p className="text-red-400 text-xs bg-red-500/10 rounded-xl py-2 px-3 w-full">{phoneError}</p>}
             </div>
           </div>
         )}
@@ -721,7 +851,31 @@ const ChatModal: React.FC<ChatModalProps> = ({
               {/* LIST: DMs */}
               {view === 'list' && tab === 'dms' && (
                 <div className="flex-1 overflow-y-auto">
-                  {convos.length === 0 && (
+                  {/* Incoming phone link requests */}
+                  {incomingPhoneRequests.map(req => (
+                    <div key={req.id} className="border-b border-white/5 px-4 py-3 bg-yellow-500/5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-white/10 border border-white/10 overflow-hidden flex items-center justify-center flex-shrink-0">
+                          {req.requestingPhoto
+                            ? <img src={req.requestingPhoto} alt={req.requestingUsername} className="w-full h-full object-cover" />
+                            : <Phone size={16} className="text-yellow-400" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium truncate">@{req.requestingUsername}</p>
+                          <p className="text-yellow-400/70 text-xs mt-0.5">Quer usar seu número de telefone</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={() => denyPhoneRequest(req)} className="flex-1 h-9 rounded-xl bg-white/8 hover:bg-white/12 text-white/70 text-xs font-medium transition-colors flex items-center justify-center gap-1.5">
+                          <ShieldX size={13} /> Negar
+                        </button>
+                        <button onClick={() => approvePhoneRequest(req)} className="flex-1 h-9 rounded-xl bg-green-600/80 hover:bg-green-500 text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5">
+                          <ShieldCheck size={13} /> Permitir
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {convos.length === 0 && incomingPhoneRequests.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-center px-6 py-8">
                       <MessageSquare size={36} className="text-white/15 mb-3" />
                       <p className="text-white/30 text-sm">Nenhuma conversa ainda</p>

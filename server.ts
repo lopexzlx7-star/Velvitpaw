@@ -150,23 +150,11 @@ interface ResetToken {
 }
 const resetTokenStore = new Map<string, ResetToken>(); // key = tokenId (uuid-like)
 
-// ─── WhatsApp OTP store ────────────────────────────────────────────────────────
-interface WhatsAppOtpEntry {
-  phone: string;
-  code: string;
-  expiresAt: number;
-  attempts: number;
-}
-const whatsappOtpStore = new Map<string, WhatsAppOtpEntry>(); // key = sessionId
-
 // Cleanup expired tokens every 5 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of resetTokenStore.entries()) {
     if (now > v.expiresAt + 60_000) resetTokenStore.delete(k);
-  }
-  for (const [k, v] of whatsappOtpStore.entries()) {
-    if (now > v.expiresAt + 60_000) whatsappOtpStore.delete(k);
   }
 }, 5 * 60 * 1000);
 
@@ -1133,79 +1121,6 @@ app.post('/api/reset-password', async (req: Request, res: Response) => {
     console.error('[reset-password]', err.message);
     return res.status(500).json({ error: 'Erro interno ao redefinir senha. Tente novamente.' });
   }
-});
-
-// ─── WhatsApp OTP endpoints ───────────────────────────────────────────────────
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN ?? '';
-const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID ?? '';
-
-async function sendWhatsAppOtp(phone: string, code: string): Promise<void> {
-  if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID) throw new Error('WhatsApp não configurado.');
-  const url = `https://graph.facebook.com/v18.0/${WHATSAPP_PHONE_ID}/messages`;
-  const body = {
-    messaging_product: 'whatsapp',
-    to: phone,
-    type: 'text',
-    text: { body: `*Velvit* — Seu código de verificação é: *${code}*\n\nVálido por 10 minutos. Não compartilhe com ninguém.` },
-  };
-  const fetchRes = await fetch(url, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!fetchRes.ok) {
-    const err = await fetchRes.text();
-    throw new Error(`WhatsApp API erro ${fetchRes.status}: ${err}`);
-  }
-}
-
-// POST /api/whatsapp-otp/send
-app.post('/api/whatsapp-otp/send', async (req: Request, res: Response) => {
-  const { phone } = req.body as { phone?: string };
-  if (!phone) return res.status(400).json({ error: 'Número inválido.' });
-  const cleanPhone = phone.replace(/\D/g, '');
-  if (cleanPhone.length < 10) return res.status(400).json({ error: 'Número inválido. Use o formato: +55 11 99999-9999' });
-
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const sessionId = require('crypto').randomBytes(16).toString('hex');
-  const expiresAt = Date.now() + 10 * 60 * 1000;
-  whatsappOtpStore.set(sessionId, { phone: cleanPhone, code, expiresAt, attempts: 0 });
-
-  try {
-    await sendWhatsAppOtp(cleanPhone, code);
-    console.log(`[whatsapp-otp] Código enviado para ${cleanPhone.slice(0, 6)}...`);
-    return res.json({ ok: true, sessionId });
-  } catch (err: any) {
-    whatsappOtpStore.delete(sessionId);
-    console.error('[whatsapp-otp] Erro ao enviar:', err.message);
-    return res.status(500).json({ error: 'Erro ao enviar código via WhatsApp. Verifique o número e tente novamente.' });
-  }
-});
-
-// POST /api/whatsapp-otp/verify
-app.post('/api/whatsapp-otp/verify', async (req: Request, res: Response) => {
-  const { sessionId, code } = req.body as { sessionId?: string; code?: string };
-  if (!sessionId || !code) return res.status(400).json({ error: 'Dados incompletos.' });
-
-  const entry = whatsappOtpStore.get(sessionId);
-  if (!entry) return res.status(400).json({ error: 'Sessão inválida ou expirada. Solicite um novo código.' });
-  if (Date.now() > entry.expiresAt) {
-    whatsappOtpStore.delete(sessionId);
-    return res.status(400).json({ error: 'Código expirado. Solicite um novo.' });
-  }
-
-  entry.attempts++;
-  if (entry.attempts > 5) {
-    whatsappOtpStore.delete(sessionId);
-    return res.status(429).json({ error: 'Muitas tentativas incorretas. Solicite um novo código.' });
-  }
-
-  if (entry.code !== code.trim()) {
-    return res.status(400).json({ error: 'Código incorreto. Tente novamente.' });
-  }
-
-  whatsappOtpStore.delete(sessionId);
-  return res.json({ ok: true, phone: entry.phone });
 });
 
 server.timeout = SERVER_TIMEOUT_MS;
