@@ -303,7 +303,16 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
     const results: ImageItem[] = [];
     for (const file of valid) {
       try {
-        const preview = await compressImage(file);
+        // GIFs must not be compressed via canvas — canvas only captures the first frame,
+        // which loses the animation. Read the raw file as a data URL instead.
+        const preview = file.type === 'image/gif'
+          ? await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = () => reject(new Error('Erro ao ler GIF.'));
+              reader.readAsDataURL(file);
+            })
+          : await compressImage(file);
         results.push({ file, preview });
       } catch {}
     }
@@ -487,10 +496,15 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       xhr.send(body);
     });
 
-  const uploadSingleImage = async (previewDataUrl: string): Promise<string> => {
-    const blob = await fetch(previewDataUrl).then(r => r.blob());
+  const uploadSingleImage = async (previewDataUrl: string, rawFile?: File): Promise<string> => {
     const fd = new FormData();
-    fd.append('file', blob, 'image.jpg');
+    if (rawFile) {
+      // For GIFs (and any raw file), upload the original bytes to preserve animation.
+      fd.append('file', rawFile, rawFile.name);
+    } else {
+      const blob = await fetch(previewDataUrl).then(r => r.blob());
+      fd.append('file', blob, 'image.jpg');
+    }
     const data = await xhrPost('/api/upload-image', fd);
     if (!data.url) throw new Error('Servidor não retornou URL da imagem.');
     return data.url as string;
@@ -595,8 +609,13 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
   };
 
   const uploadVideo = async (file: File): Promise<string> => {
-    const sign = await safeFetchJson('/api/cloudinary-sign');
-    return uploadVideoChunked(file, sign);
+    // Route through server proxy instead of direct browser→Cloudinary XHR.
+    // This avoids CORS/network issues and is more reliable in all environments.
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    const data = await xhrPost('/api/upload-video', fd);
+    if (!data.url) throw new Error('Servidor não retornou URL do vídeo.');
+    return data.url as string;
   };
 
   // Uploads the captured first-frame thumbnail to Cloudinary via the server proxy.
@@ -646,16 +665,19 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           if (cancelledRef.current) throw new Error('upload_aborted');
           setUploadingIdx(i);
           setUploadProgress(0);
-          const url = await uploadSingleImage(images[i].preview);
+          const img = images[i];
+          // Pass raw file for GIFs so animation bytes are preserved (canvas compresses to JPEG).
+          const url = await uploadSingleImage(img.preview, img.file.type === 'image/gif' ? img.file : undefined);
           imageUrls.push(url);
         }
         setUploadingIdx(null);
 
+        const hasGif = images.some(img => img.file.type === 'image/gif');
         const postData: Record<string, unknown> = {
           title: title.trim() || 'Sem título',
           url: imageUrls[0],
           images: imageUrls,
-          type: 'image',
+          type: hasGif ? 'gif' : 'image',
           height: 450,
           aspectRatio,
           authorUid: auth.currentUser.uid,
@@ -683,7 +705,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
             authorName: postData.authorName,
             authorPhotoUrl: postData.authorPhotoUrl,
             postThumbnailUrl: imageUrls[0] || null,
-            postType: 'image',
+            postType: hasGif ? 'gif' : 'image',
           }),
         }).catch(() => {});
       } else if (videoDraft) {

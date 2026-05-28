@@ -721,7 +721,7 @@ app.get('/api/person-tag-photo', async (req: Request, res: Response) => {
 // Returns: { url }
 const imageUploadMiddleware = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB — GIFs can be large
 });
 
 app.post('/api/upload-image', (req: Request, res: Response) => {

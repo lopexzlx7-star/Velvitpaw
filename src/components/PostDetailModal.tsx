@@ -642,7 +642,16 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
               ...getMediaStyle(),
             }}
           >
-            {isVideo ? (
+            {item.type === 'gif' ? (
+              /* ── Animated GIF — always render as <img> to preserve animation ── */
+              <img
+                src={item.url}
+                alt={item.title}
+                className="w-full h-full object-contain block"
+                referrerPolicy="no-referrer"
+                style={{ display: 'block' }}
+              />
+            ) : isVideo ? (
               externalEmbed ? (
                 // External video URL — YouTube embed or link
                 youtubeEmbed ? (
