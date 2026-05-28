@@ -2405,12 +2405,6 @@ export default function App() {
                     </AnimatePresence>
                   </div>
 
-                  <button
-                    onClick={() => setShowChat(true)}
-                    className="relative p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/50 hover:text-white transition-all"
-                  >
-                    <MessageCircle size={20} />
-                  </button>
                 </div>
 
                 <AnimatePresence>

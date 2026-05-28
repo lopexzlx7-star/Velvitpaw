@@ -451,9 +451,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     }
   };
 
-  // TikTok-style vertical swipe/wheel navigation while in fullscreen
+  // TikTok-style vertical swipe/wheel navigation while in fullscreen (skip for landscape videos)
   useEffect(() => {
-    if (!isFullscreen || !onNavigate) return;
+    if (!isFullscreen || !onNavigate || isLandscapeVideo) return;
     const container = mediaContainerRef.current;
     if (!container) return;
 
@@ -778,7 +778,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   {/* End-of-feed toast — appears when the user tries to swipe past the
                       first or last video. Auto-dismisses after ~1.6s. */}
                   <AnimatePresence>
-                    {endToast && (
+                    {endToast && !isLandscapeVideo && (
                       <motion.div
                         key="end-toast"
                         initial={{ opacity: 0, y: endToast === 'next' ? 20 : -20, scale: 0.96 }}
@@ -791,17 +791,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         <div
                           className="px-5 py-2.5 rounded-full"
                           style={{
-                            background: 'rgba(0,0,0,0.55)',
-                            backdropFilter: 'blur(18px) saturate(160%)',
-                            WebkitBackdropFilter: 'blur(18px) saturate(160%)',
-                            border: '1px solid rgba(255,255,255,0.18)',
-                            boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+                            background: 'rgba(0,0,0,0.65)',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                           }}
                         >
-                          <span
-                            className="text-white text-[13px] font-semibold tracking-tight"
-                            style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}
-                          >
+                          <span className="text-white text-[13px] font-semibold tracking-tight">
                             {endToast === 'next' ? 'Você chegou ao final' : 'Você está no início'}
                           </span>
                         </div>

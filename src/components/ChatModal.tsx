@@ -614,7 +614,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
   // ── Popup panel ────────────────────────────────────────────────────────────
   const panelStyle: React.CSSProperties = isMobile
-    ? { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 300, height: '84svh', borderRadius: '1.25rem 1.25rem 0 0' }
+    ? { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 300, width: 'min(92vw, 420px)', height: 'min(88svh, 660px)', borderRadius: 20 }
     : { position: 'fixed', top: 72, right: 14, width: 384, height: Math.min(620, window.innerHeight - 120), zIndex: 300, borderRadius: 20 };
 
   return (
@@ -626,9 +626,9 @@ const ChatModal: React.FC<ChatModalProps> = ({
         onClick={onClose}
       />
       <motion.div
-        initial={isMobile ? { y: '100%' } : { opacity: 0, scale: 0.95, y: -8 }}
-        animate={isMobile ? { y: 0 } : { opacity: 1, scale: 1, y: 0 }}
-        exit={isMobile ? { y: '100%' } : { opacity: 0, scale: 0.95, y: -8 }}
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
         transition={{ type: 'spring', damping: 30, stiffness: 340 }}
         className="glass-panel flex flex-col overflow-hidden"
         style={panelStyle}
@@ -643,7 +643,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
         {/* ── Enter phone number ──────────────────────────────────────── */}
         {!phoneLoading && !phoneVerified && view === 'phone_phone' && (
           <div className="flex-1 flex flex-col">
-            {isMobile && <div className="flex justify-center pt-3 pb-1"><div className="w-9 h-1 rounded-full bg-white/20" /></div>}
             <div className="flex items-center gap-3 px-4 pt-4 pb-4 border-b border-white/8">
               <div className="flex-1">
                 <h2 className="text-white font-semibold text-base">Número de Telefone</h2>
@@ -687,7 +686,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
         {/* ── Waiting for phone owner approval ─────────────────────────── */}
         {!phoneLoading && !phoneVerified && view === 'phone_pending' && (
           <div className="flex-1 flex flex-col">
-            {isMobile && <div className="flex justify-center pt-3 pb-1"><div className="w-9 h-1 rounded-full bg-white/20" /></div>}
             <div className="flex items-center gap-3 px-4 pt-4 pb-4 border-b border-white/8">
               <button onClick={() => { setView('phone_phone'); setPhoneRequestId(''); setPhoneError(''); }} className="p-1.5 rounded-full hover:bg-white/10"><ArrowLeft size={18} className="text-white/60" /></button>
               <div className="flex-1">
@@ -716,7 +714,6 @@ const ChatModal: React.FC<ChatModalProps> = ({
             {/* ── Panel header (changes with view) ─── */}
             {view === 'list' && (
               <div className="flex flex-col border-b border-white/8 flex-shrink-0">
-                {isMobile && <div className="flex justify-center pt-3 pb-0"><div className="w-9 h-1 rounded-full bg-white/20" /></div>}
                 <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
                   <span className="flex-1 text-white font-semibold text-base">Mensagens</span>
                   <button onClick={() => { setDmSearch(''); setView('dm_search'); }} className="p-1.5 rounded-full hover:bg-white/10" title="Nova mensagem"><Search size={17} className="text-white/60" /></button>
