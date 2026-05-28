@@ -2198,18 +2198,7 @@ export default function App() {
           >
             VELVIT
           </motion.h1>
-          <button
-            onClick={() => {
-              setChatWithUid(null);
-              setChatWithName(null);
-              setChatWithPhoto(null);
-              setShowChat(true);
-            }}
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors relative"
-            aria-label="Mensagens"
-          >
-            <MessageCircle size={22} className="text-white" />
-          </button>
+          <div className="w-10" />
         </div>
       </motion.header>
 
@@ -2404,6 +2393,19 @@ export default function App() {
                       )}
                     </AnimatePresence>
                   </div>
+
+                  <button
+                    onClick={() => {
+                      setChatWithUid(null);
+                      setChatWithName(null);
+                      setChatWithPhoto(null);
+                      setShowChat(true);
+                    }}
+                    className="relative p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/50 hover:text-white transition-all"
+                    aria-label="Mensagens"
+                  >
+                    <MessageCircle size={20} />
+                  </button>
 
                 </div>
 
