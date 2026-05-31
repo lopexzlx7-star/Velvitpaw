@@ -102,8 +102,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [videoReady, setVideoReady] = useState(false);
   // Chunk playback state — for videos stored as multiple 2-min segments
   const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
-  const [chunkTransitioning, setChunkTransitioning] = useState(false);
-  const chunkTransitionTimerRef = useRef<number | null>(null);
   // Briefly shown when the user tries to swipe past the last/first video.
   const [endToast, setEndToast] = useState<'next' | 'prev' | null>(null);
   const endToastTimerRef = useRef<number | null>(null);
@@ -115,20 +113,14 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     endToastTimerRef.current = window.setTimeout(() => setEndToast(null), 1600);
   }, []);
 
-  // Cleanup the toast timer and chunk transition timer on unmount
+  // Cleanup the toast timer on unmount
   useEffect(() => () => {
     if (endToastTimerRef.current) window.clearTimeout(endToastTimerRef.current);
-    if (chunkTransitionTimerRef.current) window.clearTimeout(chunkTransitionTimerRef.current);
   }, []);
 
   // Reset chunk index whenever the item changes (navigating to a different post)
   useEffect(() => {
     setCurrentChunkIdx(0);
-    setChunkTransitioning(false);
-    if (chunkTransitionTimerRef.current) {
-      window.clearTimeout(chunkTransitionTimerRef.current);
-      chunkTransitionTimerRef.current = null;
-    }
   }, [item.id]);
 
   const isMobileScreen = useIsMobile();
@@ -209,13 +201,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       if (video) video.currentTime = seekTo;
       setCurrentTime(seekTo);
     } else {
-      // Cross-chunk: park the offset and switch chunk
+      // Cross-chunk: park the offset and switch chunk immediately
       pendingSeekRef.current = Math.max(0, offsetInChunk);
-      if (chunkTransitionTimerRef.current) {
-        window.clearTimeout(chunkTransitionTimerRef.current);
-        chunkTransitionTimerRef.current = null;
-      }
-      setChunkTransitioning(false);
       setCurrentChunkIdx(targetChunk);
     }
   }, [isChunkedVideo, currentChunkIdx, totalChunks]);
@@ -288,22 +275,16 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   // element unmounts and the new one mounts — so playback never visibly pauses during
   // a scroll gesture.
 
-  // When a chunked video segment ends, show the transition overlay then advance
+  // When a chunked video segment ends, switch to the next chunk immediately.
+  // The next chunk is already being preloaded by the hidden <video> element,
+  // so the transition is nearly instantaneous.
   const handleVideoEnded = useCallback(() => {
     if (!isChunkedVideo) return; // non-chunked videos use loop={true}
     if (currentChunkIdx < totalChunks - 1) {
-      // Show the "Carregando parte X..." overlay, then switch chunk after ~1.5s
-      setChunkTransitioning(true);
-      setVideoReady(false);
-      if (chunkTransitionTimerRef.current) window.clearTimeout(chunkTransitionTimerRef.current);
-      chunkTransitionTimerRef.current = window.setTimeout(() => {
-        setCurrentChunkIdx(idx => idx + 1);
-        setChunkTransitioning(false);
-      }, 1500);
+      setCurrentChunkIdx(idx => idx + 1);
     } else {
       // Last chunk — loop back to the first chunk
       setCurrentChunkIdx(0);
-      setVideoReady(false);
     }
   }, [isChunkedVideo, currentChunkIdx, totalChunks]);
 
@@ -338,11 +319,11 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       const buf = v.buffered;
       if (buf.length === 0) return;
       const bufferedEnd = buf.end(buf.length - 1);
-      // Start when EITHER 50% of the file OR 5 seconds of playback are already
-      // buffered — whichever happens first. This makes long videos start almost
-      // instantly while still keeping short videos safely pre-buffered.
-      const enoughByRatio = bufferedEnd / dur >= 0.5;
-      const enoughByTime = bufferedEnd >= 5;
+      // Start when EITHER 20% of the file OR 2 seconds of playback are already
+      // buffered — whichever happens first. For chunk transitions the next chunk
+      // is already preloaded so it starts almost instantly.
+      const enoughByRatio = bufferedEnd / dur >= 0.2;
+      const enoughByTime = bufferedEnd >= 2;
       if (enoughByRatio || enoughByTime) startNow();
     };
 
@@ -820,6 +801,18 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       style={{ cursor: 'pointer', display: 'block', objectFit: 'contain', transform: 'translateZ(0)' }}
                     />
 
+                    {/* Preload the next chunk of the same video so switching is instant */}
+                    {isChunkedVideo && currentChunkIdx < totalChunks - 1 && (
+                      <video
+                        key={`chunk-preload-${item.id}-${currentChunkIdx + 1}`}
+                        src={getResponsiveVideoUrl(item.videoChunks![currentChunkIdx + 1], isMobileScreen)}
+                        muted
+                        playsInline
+                        preload="auto"
+                        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+                      />
+                    )}
+
                     {nextItem && isDirectVideoUrl(nextItem.url) && (
                       <video
                         key={`next-${nextItem.id}`}
@@ -835,44 +828,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   </div>
 
 
-                  {/* Chunk transition overlay — shown between segments */}
-                  <AnimatePresence>
-                    {chunkTransitioning && (
-                      <motion.div
-                        key="chunk-transition"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
-                        style={{ background: 'rgba(0,0,0,0.60)' }}
-                      >
-                        <div
-                          className="flex flex-col items-center gap-3 px-6 py-4 rounded-3xl"
-                          style={{
-                            background: 'rgba(255,255,255,0.10)',
-                            backdropFilter: 'blur(20px) saturate(160%)',
-                            WebkitBackdropFilter: 'blur(20px) saturate(160%)',
-                            border: '1px solid rgba(255,255,255,0.18)',
-                            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                            minWidth: '220px',
-                          }}
-                        >
-                          <span className="text-white text-[13px] font-semibold tracking-tight text-center">
-                            Indo para a parte {currentChunkIdx + 2} de {totalChunks}...
-                          </span>
-                          <div className="w-full h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.20)' }}>
-                            <motion.div
-                              className="h-full rounded-full bg-white"
-                              initial={{ width: '0%' }}
-                              animate={{ width: '100%' }}
-                              transition={{ duration: 1.35, ease: 'easeInOut' }}
-                            />
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
 
                   {/* One-time swipe hint — overlays first video in fullscreen */}
                   <AnimatePresence>
