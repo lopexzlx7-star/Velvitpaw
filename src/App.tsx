@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense, ChangeEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react';
-import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bookmark, UserPlus, UserMinus, FolderPlus, Users, Download, MessageCircle } from 'lucide-react';
+import { Search, X, Loader2, Info, Plus, User, Image as ImageIcon, RotateCcw, CheckCircle2, AlertCircle, Heart, Bookmark, UserPlus, UserMinus, FolderPlus, Users, Download, Bell } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import { 
   doc, 
@@ -52,6 +52,7 @@ const ImageCropperModal   = lazy(() => import('./components/ImageCropperModal'))
 const PhotoViewerModal    = lazy(() => import('./components/PhotoViewerModal'));
 const LoginBackdrop       = lazy(() => import('./components/LoginBackdrop'));
 const ChatModal = lazy(() => import('./components/ChatModal'));
+const NotificationsModal = lazy(() => import('./components/NotificationsModal'));
 
 const ModalFallback = () => null;
 
@@ -450,6 +451,8 @@ export default function App() {
   const [showEmailPopup, setShowEmailPopup] = useState(false);
   // Yellow "in development" toast shown when the user clicks a temporarily disabled feature.
   const [devNoticeMessage, setDevNoticeMessage] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [emailPopupLoading, setEmailPopupLoading] = useState(false);
   const [emailPopupError, setEmailPopupError] = useState<string | null>(null);
@@ -1290,14 +1293,12 @@ export default function App() {
     setActiveHashtag(null);
     setHashtagResults([]);
 
+    // Always restore the full feed when clearing filters/hashtags
+    setItems(globalPosts);
+
     // Merge any pending new posts into the visible feed + show loading animation
     setIsRefreshingFeed(true);
-    setPendingNewPosts(pending => {
-      if (pending.length > 0) {
-        setItems(globalPosts);
-      }
-      return [];
-    });
+    setPendingNewPosts(() => []);
     setTimeout(() => setIsRefreshingFeed(false), 750);
   };
 
@@ -2400,16 +2401,14 @@ export default function App() {
                   </div>
 
                   <button
-                    onClick={() => {
-                      setChatWithUid(null);
-                      setChatWithName(null);
-                      setChatWithPhoto(null);
-                      setShowChat(true);
-                    }}
+                    onClick={() => setShowNotifications(v => !v)}
                     className="relative p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-white/50 hover:text-white transition-all"
-                    aria-label="Mensagens"
+                    aria-label="Notificações"
                   >
-                    <MessageCircle size={20} />
+                    <Bell size={20} />
+                    {unreadNotifCount > 0 && (
+                      <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full accent-primary-btn" />
+                    )}
                   </button>
 
                 </div>
@@ -2802,6 +2801,20 @@ export default function App() {
             />
           )}
         </AnimatePresence>
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <NotificationsModal
+          isOpen={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          userId={auth.currentUser?.uid ?? null}
+          onUnreadChange={setUnreadNotifCount}
+          onPostClick={(postId) => {
+            setShowNotifications(false);
+            const post = globalPosts.find(p => p.id === postId);
+            if (post) setSelectedPost(post);
+          }}
+        />
       </Suspense>
 
       {!publishHasMedia && !selectedPost && (
