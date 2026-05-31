@@ -328,6 +328,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         setCurrentTime(pendingSeekRef.current);
         pendingSeekRef.current = null;
       }
+      setIsPlaying(true);
       v.play().catch(() => {});
     };
     const tryStart = () => {
@@ -443,7 +444,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
     };
-  }, [isVideo, directVideo, isSeeking, item.duration]);
+  }, [isVideo, directVideo, isSeeking, item.duration, currentChunkIdx]);
 
   const flashPlayPause = () => {
     setShowPlayPause(true);
