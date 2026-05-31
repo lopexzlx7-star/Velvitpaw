@@ -465,11 +465,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
   const handleSeekStart = () => setIsSeeking(true);
 
+  const globalDurationEarly = isChunkedVideo
+    ? (item.duration || totalChunks * APPROX_CHUNK_DURATION_S)
+    : duration;
+
   const doSeek = useCallback((val: number) => {
     seekToGlobalTime(val);
-    const pct = (val / (globalDuration || 1)) * 100;
+    const pct = (val / (globalDurationEarly || 1)) * 100;
     setSeekPreview({ time: val, pct: Math.max(2, Math.min(98, pct)) });
-  }, [seekToGlobalTime, globalDuration]);
+  }, [seekToGlobalTime, globalDurationEarly]);
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     doSeek(parseFloat(e.target.value));
