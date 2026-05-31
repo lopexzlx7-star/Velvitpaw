@@ -523,7 +523,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       }
 
       container.requestFullscreen().then(() => {
-        tryLockLandscape();
+        // Small delay ensures fullscreen is fully active before lock attempt
+        setTimeout(() => { tryLockLandscape(); }, 120);
       }).catch(() => {
         // Last-resort fallback for browsers without Fullscreen API
         if (videoRef.current) {
@@ -1038,32 +1039,41 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     )}
                   </AnimatePresence>
 
-                  {/* ── Rotate-to-watch hint — landscape videos on mobile only ── */}
+                  {/* ── Rotate-to-landscape button — shown inside fullscreen on mobile landscape videos ── */}
                   <AnimatePresence>
-                    {isLandscapeVideo && !isFullscreen && isMobileScreen && videoReady && !controlsVisible && (
+                    {isLandscapeVideo && isFullscreen && isMobileScreen && (
                       <motion.button
-                        key="rotate-hint"
-                        initial={{ opacity: 0, scale: 0.88, y: 6 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.88, y: 6 }}
+                        key="rotate-landscape-btn"
+                        initial={{ opacity: 0, scale: 0.88 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.88 }}
                         transition={{ duration: 0.22, ease: 'easeOut' }}
-                        onClick={(e) => { handleFullscreen(e); }}
-                        className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 px-3 py-2 rounded-2xl"
-                        style={{
-                          background: 'rgba(0,0,0,0.55)',
-                          backdropFilter: 'blur(14px) saturate(160%)',
-                          WebkitBackdropFilter: 'blur(14px) saturate(160%)',
-                          border: '1px solid rgba(255,255,255,0.18)',
-                          boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          try {
+                            (screen.orientation as any)?.lock?.('landscape')
+                              .then?.(() => {})
+                              .catch?.(() => {
+                                // Fallback: try landscape-primary
+                                try { (screen.orientation as any)?.lock?.('landscape-primary').catch(() => {}); } catch {}
+                              });
+                          } catch {}
                         }}
-                        aria-label="Deitar para assistir em tela cheia"
+                        className="absolute top-4 right-4 z-30 flex items-center gap-2 px-3 py-2 rounded-2xl"
+                        style={{
+                          background: 'rgba(0,0,0,0.60)',
+                          backdropFilter: 'blur(16px) saturate(160%)',
+                          WebkitBackdropFilter: 'blur(16px) saturate(160%)',
+                          border: '1px solid rgba(255,255,255,0.22)',
+                          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                        }}
+                        aria-label="Girar para paisagem"
                       >
-                        {/* Smartphone icon rotated 90° to represent landscape */}
                         <span style={{ display: 'inline-flex', transform: 'rotate(90deg)' }}>
                           <Smartphone size={15} className="text-white" strokeWidth={1.8} />
                         </span>
-                        <span className="text-white text-[11px] font-semibold tracking-tight" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
-                          Deitar para assistir
+                        <span className="text-white text-[11px] font-semibold tracking-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
+                          Girar tela
                         </span>
                       </motion.button>
                     )}
