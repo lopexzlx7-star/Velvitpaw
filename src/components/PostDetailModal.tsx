@@ -495,24 +495,29 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     ('ontouchstart' in window && window.innerWidth < 1024);
 
-  // Apply/remove the CSS landscape rotation directly on the fullscreen element.
-  // This is the fallback for when screen.orientation.lock() is unavailable or denied.
+  // Apply/remove the CSS landscape rotation.
+  // Uses position:fixed + z-index so it covers the full screen even in WebView/APK
+  // where requestFullscreen() may not be available.
   useEffect(() => {
     const el = mediaContainerRef.current;
     if (!el) return;
     if (isForcedLandscape) {
+      el.style.position = 'fixed';
+      el.style.zIndex = '99999';
+      el.style.background = '#000';
       el.style.width = '100vh';
       el.style.height = '100vw';
-      el.style.position = 'absolute';
       el.style.top = '50%';
       el.style.left = '50%';
       el.style.transform = 'translate(-50%, -50%) rotate(90deg)';
       el.style.transformOrigin = 'center center';
       el.style.overflow = 'hidden';
     } else {
+      el.style.position = '';
+      el.style.zIndex = '';
+      el.style.background = '';
       el.style.width = '';
       el.style.height = '';
-      el.style.position = '';
       el.style.top = '';
       el.style.left = '';
       el.style.transform = '';
@@ -556,9 +561,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     const container = mediaContainerRef.current;
     if (!container) return;
 
-    if (document.fullscreenElement) {
-      // Exit fullscreen — orientation unlock + CSS reset happen in the change event handler
+    // Exit: covers both browser fullscreen and CSS fake-fullscreen (APK)
+    if (document.fullscreenElement || isForcedLandscape) {
       document.exitFullscreen().catch(() => {});
+      try { screen.orientation?.unlock?.(); } catch {}
+      setIsForcedLandscape(false);
+      setIsFullscreen(false);
       return;
     }
 
@@ -571,13 +579,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       return;
     }
 
+    // Try browser fullscreen API — may fail silently in WebView/APK, that's OK
     try {
       await container.requestFullscreen();
     } catch {
-      // Fallback for older WebKit
-      (videoRef.current as any)?.webkitEnterFullscreen?.();
-      return;
+      // requestFullscreen not available (WebView/APK) — fall through to CSS approach
     }
+
+    // Mark as fullscreen so controls render correctly even without browser fullscreen API
+    setIsFullscreen(true);
 
     // Restore position if rotation caused a seek reset
     setTimeout(() => {
@@ -587,15 +597,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       }
     }, 350);
 
-    // Try native orientation lock (works on Android Chrome when in fullscreen)
+    // Try native orientation lock (works on Android Chrome in browser fullscreen)
     try {
       await (screen.orientation as any).lock('landscape');
     } catch {
-      // Lock denied or not supported — will use CSS fallback below
+      // Not supported — will check below and use CSS fallback
     }
 
-    // Wait a moment for the OS to apply the rotation, then check if it worked.
-    // If the screen is still in portrait, apply CSS rotation as fallback.
+    // Wait for the OS to apply native rotation, then verify.
+    // If still in portrait (native lock didn't work), use CSS rotate(90deg).
     await new Promise<void>(r => setTimeout(r, 150));
     const nowLandscape = screen.orientation?.type?.includes('landscape') ?? false;
     if (!nowLandscape) {
