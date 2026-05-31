@@ -259,7 +259,18 @@ async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName
   return withRetry(async () => {
     const timestamp = String(Math.floor(Date.now() / 1000));
     const folder = 'videos';
-    const paramsToSign: Record<string, string> = { folder, timestamp };
+    // Pré-gera versões de alta qualidade de forma assíncrona após o upload.
+    // Mobile (1080p) e desktop (resolução original) — prontos antes da primeira reprodução.
+    const eagerTransforms = [
+      'q_auto:best,w_1920,h_1080,c_limit,ac_aac,af_48000',
+      'q_auto:best,ac_aac,af_48000',
+    ].join('|');
+    const paramsToSign: Record<string, string> = {
+      eager: eagerTransforms,
+      eager_async: 'true',
+      folder,
+      timestamp,
+    };
     const signature = buildCloudinarySignature(paramsToSign);
 
     const form = new FormData();
@@ -267,6 +278,8 @@ async function uploadToCloudinary(buffer: Buffer, mimetype: string, originalName
     form.append('file', blob, fileName);
     form.append('folder', folder);
     form.append('timestamp', timestamp);
+    form.append('eager', eagerTransforms);
+    form.append('eager_async', 'true');
     form.append('api_key', CLOUDINARY_API_KEY);
     form.append('signature', signature);
 
