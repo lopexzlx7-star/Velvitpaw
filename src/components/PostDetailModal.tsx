@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark, Smartphone } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -104,8 +104,11 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
   // Briefly shown when the user tries to swipe past the last/first video.
   const [endToast, setEndToast] = useState<'next' | 'prev' | null>(null);
+  const [seekPreview, setSeekPreview] = useState<{ time: number; pct: number } | null>(null);
   const endToastTimerRef = useRef<number | null>(null);
   const slidingRef = useRef(false);
+  // Saves currentTime before fullscreen so we can restore if rotation causes restart
+  const savedTimeRef = useRef<number>(0);
 
   const flashEndToast = useCallback((dir: 'next' | 'prev') => {
     setEndToast(dir);
@@ -124,15 +127,18 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   }, [item.id]);
 
   const isMobileScreen = useIsMobile();
-  const curVideoUrl = getResponsiveVideoUrl(item.url, isMobileScreen);
-  const prevVideoUrl = prevItem ? getResponsiveVideoUrl(prevItem.url, isMobileScreen) : '';
-  const nextVideoUrl = nextItem ? getResponsiveVideoUrl(nextItem.url, isMobileScreen) : '';
+  // Freeze the mobile flag at mount — prevents video URL from changing when the
+  // screen rotates to landscape in fullscreen, which would restart the video.
+  const frozenMobile = useRef(isMobileScreen).current;
+  const curVideoUrl = useMemo(() => getResponsiveVideoUrl(item.url, frozenMobile), [item.url, frozenMobile]);
+  const prevVideoUrl = useMemo(() => prevItem ? getResponsiveVideoUrl(prevItem.url, frozenMobile) : '', [prevItem?.url, frozenMobile]);
+  const nextVideoUrl = useMemo(() => nextItem ? getResponsiveVideoUrl(nextItem.url, frozenMobile) : '', [nextItem?.url, frozenMobile]);
 
   // Chunked video support — item may have videoChunks[] with 2-min segments
   const isChunkedVideo = !!(item.videoChunks && item.videoChunks.length > 1);
   const totalChunks = isChunkedVideo ? item.videoChunks!.length : 1;
   const activeChunkUrl = isChunkedVideo
-    ? getResponsiveVideoUrl(item.videoChunks![Math.min(currentChunkIdx, totalChunks - 1)], isMobileScreen)
+    ? getResponsiveVideoUrl(item.videoChunks![Math.min(currentChunkIdx, totalChunks - 1)], frozenMobile)
     : curVideoUrl;
   const APPROX_CHUNK_DURATION_S = 120;
 
@@ -447,15 +453,32 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     toggleControls();
   };
 
+  // Build a Cloudinary thumbnail URL at a specific second (used for seek preview)
+  const getCloudinaryThumb = useCallback((secs: number): string => {
+    const url = item.url;
+    if (!url.includes('res.cloudinary.com')) return '';
+    const t = Math.round(Math.max(0, secs));
+    return url
+      .replace(/\/video\/upload\/(?:[^/]+\/)?/, `/video/upload/so_${t},w_180,h_101,c_fill,g_auto/`)
+      .replace(/\.(mp4|webm|mov|avi|mkv)(\?.*)?$/i, '.jpg');
+  }, [item.url]);
+
   const handleSeekStart = () => setIsSeeking(true);
 
+  const doSeek = useCallback((val: number) => {
+    seekToGlobalTime(val);
+    const pct = (val / (globalDuration || 1)) * 100;
+    setSeekPreview({ time: val, pct: Math.max(2, Math.min(98, pct)) });
+  }, [seekToGlobalTime, globalDuration]);
+
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Value is in global seconds (0 → full video duration); seekToGlobalTime
-    // handles chunk switching when the target is in a different segment.
-    seekToGlobalTime(parseFloat(e.target.value));
+    doSeek(parseFloat(e.target.value));
   };
 
-  const handleSeekEnd = () => setIsSeeking(false);
+  const handleSeekEnd = () => {
+    setIsSeeking(false);
+    setSeekPreview(null);
+  };
 
   // True if this is a landscape-format video (wide/landscape aspect ratio)
   const isLandscapeVideo =
@@ -516,6 +539,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       document.exitFullscreen().catch(() => {});
       try { screen.orientation?.unlock?.(); } catch {}
     } else {
+      // Save current position — rotation may trigger a src change that restarts the video
+      savedTimeRef.current = videoRef.current?.currentTime ?? 0;
+
       // On iOS, use native video fullscreen (auto-rotates to landscape)
       if (videoRef.current && (videoRef.current as any).webkitSupportsFullscreen) {
         (videoRef.current as any).webkitEnterFullscreen();
@@ -525,6 +551,13 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       container.requestFullscreen().then(() => {
         // Small delay ensures fullscreen is fully active before lock attempt
         setTimeout(() => { tryLockLandscape(); }, 120);
+        // Restore position in case anything restarted the video
+        setTimeout(() => {
+          const v = videoRef.current;
+          if (v && savedTimeRef.current > 0 && Math.abs(v.currentTime - savedTimeRef.current) > 1.5) {
+            v.currentTime = savedTimeRef.current;
+          }
+        }, 350);
       }).catch(() => {
         // Last-resort fallback for browsers without Fullscreen API
         if (videoRef.current) {
@@ -1111,14 +1144,63 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}
                       >
                         <div className="relative w-full mb-2" style={{ height: '18px', display: 'flex', alignItems: 'center' }}>
+                          {/* Seek thumbnail preview popup */}
+                          {seekPreview && (
+                            <div
+                              className="absolute pointer-events-none z-50 flex flex-col items-center gap-1"
+                              style={{
+                                bottom: '22px',
+                                left: `clamp(36px, calc(${seekPreview.pct}% - 36px), calc(100% - 36px))`,
+                              }}
+                            >
+                              <div
+                                className="rounded-lg overflow-hidden"
+                                style={{
+                                  width: 72, height: 40,
+                                  background: '#000',
+                                  border: '1.5px solid rgba(255,255,255,0.25)',
+                                  boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                                }}
+                              >
+                                {getCloudinaryThumb(seekPreview.time) ? (
+                                  <img
+                                    src={getCloudinaryThumb(seekPreview.time)}
+                                    className="w-full h-full object-cover"
+                                    alt=""
+                                    draggable={false}
+                                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                  />
+                                ) : null}
+                              </div>
+                              <span
+                                className="text-white font-mono tabular-nums"
+                                style={{ fontSize: 9, background: 'rgba(0,0,0,0.65)', padding: '1px 4px', borderRadius: 3 }}
+                              >
+                                {formatTime(seekPreview.time)}
+                              </span>
+                            </div>
+                          )}
+
                           <div className="absolute left-0 right-0 h-[3px] rounded-full bg-white/20 overflow-hidden">
                             <div className="h-full rounded-full bg-white" style={{ width: `${progress}%`, transition: 'width 0.25s linear' }} />
                           </div>
                           <input
                             type="range" min={0} max={globalDuration || 1} step={0.1} value={globalCurrentTime}
-                            onMouseDown={handleSeekStart} onTouchStart={handleSeekStart}
-                            onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
-                            onClick={(e) => { e.stopPropagation(); showControls(); }}
+                            onMouseDown={handleSeekStart}
+                            onTouchStart={(e) => { handleSeekStart(); e.stopPropagation(); }}
+                            onChange={handleSeekChange}
+                            onInput={(e) => { doSeek(parseFloat((e.target as HTMLInputElement).value)); }}
+                            onMouseUp={handleSeekEnd}
+                            onTouchEnd={(e) => {
+                              e.stopPropagation();
+                              doSeek(parseFloat((e.currentTarget as HTMLInputElement).value));
+                              handleSeekEnd();
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              showControls();
+                              doSeek(parseFloat((e.currentTarget as HTMLInputElement).value));
+                            }}
                             className="absolute left-0 right-0 w-full opacity-0 cursor-pointer" style={{ height: '18px' }}
                           />
                         </div>
