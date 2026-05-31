@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
-import { compressVideoViaApyHub, shouldCompress, POST_COMPRESS_MAX_BYTES } from '../utils/videoCompress';
 
 interface PublishModalProps {
   isOpen: boolean;
@@ -158,6 +157,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadFailed, setUploadFailed] = useState(false);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  const [uploadStage, setUploadStage] = useState<'uploading' | 'processing' | 'saving'>('uploading');
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -626,41 +626,57 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
     return lastResult.secure_url as string;
   };
 
-  const uploadVideo = async (file: File): Promise<string> => {
-    // Get a signature from the server (keeps the API secret out of the browser),
-    // then upload directly to Cloudinary in chunks. This gives accurate real-time
-    // progress because the XHR goes directly to Cloudinary instead of the local proxy.
-    const signRes = await fetch('/api/cloudinary-sign');
-    if (!signRes.ok) throw new Error('Não foi possível obter assinatura do Cloudinary.');
-    const sign = await signRes.json();
-    return uploadVideoChunked(file, sign);
-  };
+  // Sends the video to the server which uses ffmpeg to split it into 2-min
+  // segments, uploads each to Cloudinary, and returns the segment URLs plus
+  // a server-generated thumbnail. Progress tracks the XHR upload (0-70%);
+  // server processing shows 70-99%.
+  const uploadVideoViaServer = (file: File): Promise<{ urls: string[]; thumbnailUrl: string | null }> =>
+    new Promise((resolve, reject) => {
+      const fd = new FormData();
+      fd.append('file', file, file.name);
 
-  // Uploads the captured first-frame thumbnail to Cloudinary via the server proxy.
-  // Returns the hosted URL, or null on any failure (non-blocking).
-  const uploadThumbnail = async (dataUrl: string): Promise<string | null> => {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 45000);
-      try {
-        const res = await fetch('/api/upload-thumbnail', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ thumbnail: dataUrl }),
-          signal: ctrl.signal,
-        });
-        clearTimeout(timer);
-        if (res.ok) { const d = await res.json(); return d.url ?? null; }
-        if (attempt < 3) { await new Promise(r => setTimeout(r, 1500 * attempt)); continue; }
-        return null;
-      } catch {
-        clearTimeout(timer);
-        if (attempt < 3) { await new Promise(r => setTimeout(r, 1500 * attempt)); continue; }
-        return null;
-      }
-    }
-    return null;
-  };
+      const xhr = new XMLHttpRequest();
+      activeXhrRef.current = xhr;
+
+      xhr.open('POST', '/api/split-upload-video');
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 70);
+          setUploadProgress(pct);
+          if (pct >= 70) setUploadStage('processing');
+        }
+      };
+
+      xhr.upload.onload = () => {
+        // File fully sent to server — now server is processing (ffmpeg + Cloudinary)
+        setUploadStage('processing');
+        setUploadProgress(72);
+      };
+
+      xhr.onload = () => {
+        activeXhrRef.current = null;
+        setUploadProgress(99);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (!data.urls?.length) { reject(new Error('Servidor não retornou URLs dos segmentos.')); return; }
+            resolve({ urls: data.urls as string[], thumbnailUrl: (data.thumbnailUrl as string | null) ?? null });
+          } catch {
+            reject(new Error('Resposta inválida do servidor.'));
+          }
+        } else {
+          let msg = `Erro ${xhr.status}`;
+          try { msg = JSON.parse(xhr.responseText)?.error ?? msg; } catch {}
+          reject(new Error(msg));
+        }
+      };
+
+      xhr.onerror = () => { activeXhrRef.current = null; reject(new Error('network_error')); };
+      xhr.onabort = () => { activeXhrRef.current = null; reject(new Error('upload_aborted')); };
+
+      xhr.send(fd);
+    });
 
 
   const submitPost = async () => {
@@ -729,48 +745,19 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       } else if (videoDraft) {
         if (!videoDraft) { setIsSubmitting(false); return; }
 
-        const durationSec = videoDraft.duration ?? 0;
-        const VIDEO_CHUNK_SECS = 120; // 2-minute segments
-        const needsCompression = shouldCompress(videoDraft.file, durationSec);
-        let fileToUpload: File = videoDraft.file;
-        let hostedThumbnailUrl: string | null = null;
-        let videoChunks: string[] | undefined;
+        setUploadStage('uploading');
 
-        if (needsCompression) {
-          // ── Video that needs compression ──────────────────────────────────────
-          const [compressionResult, thumbResult] = await Promise.allSettled([
-            compressVideoViaApyHub(videoDraft.file),
-            thumbnailUrl ? uploadThumbnail(thumbnailUrl) : Promise.resolve(null),
-          ]);
-          if (compressionResult.status === 'fulfilled') fileToUpload = compressionResult.value;
-          if (thumbResult.status === 'fulfilled') hostedThumbnailUrl = thumbResult.value;
-          if (fileToUpload.size > POST_COMPRESS_MAX_BYTES) {
-            setIsSubmitting(false);
-            setUploadFailed(true);
-            setError('Vídeo muito pesado mesmo após compressão. Tente um vídeo mais curto.');
-            return;
-          }
-        } else {
-          if (thumbnailUrl) hostedThumbnailUrl = await uploadThumbnail(thumbnailUrl);
-        }
+        // Upload to server → ffmpeg splits by time → each segment goes to Cloudinary.
+        // The server also generates a thumbnail at 1 s with ffmpeg.
+        const { urls: segmentUrls, thumbnailUrl: serverThumb } = await uploadVideoViaServer(videoDraft.file);
 
-        // Upload the video once — Cloudinary stores the full file.
-        // For long videos we derive chunk URLs using Cloudinary's built-in
-        // `so_X,eo_Y` (start-offset / end-offset) transformation so no
-        // server-side splitting is needed — zero extra uploads, zero timeout risk.
-        const finalUrl = await uploadVideo(fileToUpload);
+        setUploadStage('saving');
+        setUploadProgress(100);
 
-        if (durationSec > VIDEO_CHUNK_SECS && finalUrl.includes('cloudinary.com')) {
-          const chunkCount = Math.ceil(durationSec / VIDEO_CHUNK_SECS);
-          videoChunks = Array.from({ length: chunkCount }, (_, i) => {
-            const start = i * VIDEO_CHUNK_SECS;
-            const end = Math.min((i + 1) * VIDEO_CHUNK_SECS, Math.ceil(durationSec));
-            return finalUrl.replace(
-              '/video/upload/',
-              `/video/upload/so_${start},eo_${end}/`,
-            );
-          });
-        }
+        // If only one segment was produced the video fits in a single clip.
+        const finalUrl = segmentUrls[0];
+        const videoChunks = segmentUrls.length > 1 ? segmentUrls : undefined;
+        const hostedThumbnailUrl = serverThumb;
 
         const postData: Record<string, unknown> = {
           title: title.trim() || 'Sem título',
@@ -1196,7 +1183,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                   <span>
                     {isMultiImage && uploadingIdx !== null
                       ? `Publicando imagem ${uploadingIdx + 1} de ${images.length}...`
-                      : 'Publicando...'}
+                      : uploadStage === 'processing'
+                        ? 'Processando segmentos...'
+                        : uploadStage === 'saving'
+                          ? 'Salvando post...'
+                          : 'Enviando vídeo...'}
                   </span>
                   <span>{uploadProgress}%</span>
                 </div>
