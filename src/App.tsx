@@ -1712,11 +1712,15 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (activeHashtag && !searchQuery.trim()) {
+        // Re-apply hashtag filter when new posts arrive
         const filtered = globalPosts.filter(p => (p.hashtags || []).includes(activeHashtag));
         setItems(filtered);
-      } else {
+      } else if (searchQuery.trim()) {
+        // Re-run search when query is active
         runSearch(searchQuery);
       }
+      // When no search and no hashtag → do nothing: the "novos posts" button
+      // controls when the feed updates, not Firestore's live listener.
     }, 180);
     return () => clearTimeout(timer);
   }, [searchQuery, globalPosts, activeHashtag]);

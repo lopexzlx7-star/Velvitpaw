@@ -792,20 +792,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     )}
                   </div>
 
-                  {/* Part X/N badge — shown for chunked multi-segment videos */}
-                  {isChunkedVideo && !chunkTransitioning && (
-                    <div
-                      className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold text-white/90 z-20 pointer-events-none"
-                      style={{
-                        background: 'rgba(0,0,0,0.55)',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        backdropFilter: 'blur(8px)',
-                        WebkitBackdropFilter: 'blur(8px)',
-                      }}
-                    >
-                      Parte {currentChunkIdx + 1}/{totalChunks}
-                    </div>
-                  )}
 
                   {/* Chunk transition overlay — shown between segments */}
                   <AnimatePresence>
