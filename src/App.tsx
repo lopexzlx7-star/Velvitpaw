@@ -286,13 +286,14 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const isDarkMode = true;
 
-  type AccentColor = 'default' | 'gold' | 'neon_yellow';
+  type AccentColor = 'default' | 'neon_blue' | 'neon_violet' | 'neon_gold';
   const ACCENTS: { id: AccentColor; label: string; hex: string }[] = [
-    { id: 'default',     label: 'Original',    hex: '#ffffff' },
-    { id: 'gold',        label: 'Neon Gold',   hex: '#D4A800' },
-    { id: 'neon_yellow', label: 'Neon Yellow', hex: '#E8FF00' },
+    { id: 'default',     label: 'Padrão',       hex: '#ffffff' },
+    { id: 'neon_blue',   label: 'Azul Neon',    hex: '#00CFFF' },
+    { id: 'neon_violet', label: 'Violeta Neon', hex: '#CC00FF' },
+    { id: 'neon_gold',   label: 'Ouro Neon',    hex: '#FFB300' },
   ];
-  const VALID_ACCENTS: AccentColor[] = ['default', 'gold', 'neon_yellow'];
+  const VALID_ACCENTS: AccentColor[] = ['default', 'neon_blue', 'neon_violet', 'neon_gold'];
   const [accentColor, setAccentColor] = useState<AccentColor>(() => {
     const saved = localStorage.getItem('velvit_accent') as AccentColor;
     if (!VALID_ACCENTS.includes(saved)) { localStorage.setItem('velvit_accent', 'default'); return 'default'; }
@@ -534,7 +535,7 @@ export default function App() {
 
             // Restore accent color from user profile (cross-device sync)
             if (data.accentColor) {
-              const validAccents: AccentColor[] = ['default', 'gold', 'neon_yellow'];
+              const validAccents: AccentColor[] = ['default', 'neon_blue', 'neon_violet', 'neon_gold'];
               const c = validAccents.includes(data.accentColor) ? data.accentColor as AccentColor : 'default';
               setAccentColor(c);
               localStorage.setItem('velvit_accent', c);
@@ -2465,7 +2466,7 @@ export default function App() {
                   </button>
                 )}
 
-                <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   {isGeneratingFeed && items.length === 0 ? (
                     Array.from({ length: 10 }).map((_, i) => (
                       <div key={i} className="mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: [250, 300, 400, 600][i % 4] }} />
@@ -2575,9 +2576,11 @@ export default function App() {
                                   background: a.id === 'default' ? '#ffffff' : a.hex,
                                   boxShadow: a.id === 'default'
                                     ? '0 0 8px rgba(255,255,255,0.55), 0 0 18px rgba(255,255,255,0.2)'
-                                    : a.id === 'gold'
-                                    ? '0 0 10px rgba(212,168,0,0.9), 0 0 22px rgba(255,210,0,0.45)'
-                                    : '0 0 10px rgba(232,255,0,0.95), 0 0 22px rgba(232,255,0,0.5)',
+                                    : a.id === 'neon_blue'
+                                    ? '0 0 10px rgba(0,207,255,0.95), 0 0 22px rgba(0,207,255,0.5)'
+                                    : a.id === 'neon_violet'
+                                    ? '0 0 10px rgba(204,0,255,0.95), 0 0 22px rgba(204,0,255,0.5)'
+                                    : '0 0 10px rgba(255,179,0,0.95), 0 0 22px rgba(255,179,0,0.5)',
                                 }}
                               />
                             </button>

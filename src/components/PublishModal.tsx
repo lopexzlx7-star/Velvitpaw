@@ -609,13 +609,13 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
   };
 
   const uploadVideo = async (file: File): Promise<string> => {
-    // Route through server proxy instead of direct browser→Cloudinary XHR.
-    // This avoids CORS/network issues and is more reliable in all environments.
-    const fd = new FormData();
-    fd.append('file', file, file.name);
-    const data = await xhrPost('/api/upload-video', fd);
-    if (!data.url) throw new Error('Servidor não retornou URL do vídeo.');
-    return data.url as string;
+    // Get a signature from the server (keeps the API secret out of the browser),
+    // then upload directly to Cloudinary in chunks. This gives accurate real-time
+    // progress because the XHR goes directly to Cloudinary instead of the local proxy.
+    const signRes = await fetch('/api/cloudinary-sign');
+    if (!signRes.ok) throw new Error('Não foi possível obter assinatura do Cloudinary.');
+    const sign = await signRes.json();
+    return uploadVideoChunked(file, sign);
   };
 
   // Uploads the captured first-frame thumbnail to Cloudinary via the server proxy.

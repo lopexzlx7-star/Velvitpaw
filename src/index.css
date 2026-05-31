@@ -199,21 +199,29 @@
   --accent-text: #ffffff;
 }
 
-[data-accent="gold"] {
-  --accent: #D4A800;
-  --accent-rgb: 212,168,0;
-  --accent-dim: rgba(212,168,0,0.14);
+[data-accent="neon_blue"] {
+  --accent: #00CFFF;
+  --accent-rgb: 0,207,255;
+  --accent-dim: rgba(0,207,255,0.14);
   --accent-text: #000000;
 }
-[data-accent="gold"] .glass-panel { border-color: rgba(212,168,0,0.28) !important; }
+[data-accent="neon_blue"] .glass-panel { border-color: rgba(0,207,255,0.28) !important; }
 
-[data-accent="neon_yellow"] {
-  --accent: #E8FF00;
-  --accent-rgb: 232,255,0;
-  --accent-dim: rgba(232,255,0,0.14);
+[data-accent="neon_violet"] {
+  --accent: #CC00FF;
+  --accent-rgb: 204,0,255;
+  --accent-dim: rgba(204,0,255,0.14);
+  --accent-text: #ffffff;
+}
+[data-accent="neon_violet"] .glass-panel { border-color: rgba(204,0,255,0.28) !important; }
+
+[data-accent="neon_gold"] {
+  --accent: #FFB300;
+  --accent-rgb: 255,179,0;
+  --accent-dim: rgba(255,179,0,0.14);
   --accent-text: #000000;
 }
-[data-accent="neon_yellow"] .glass-panel { border-color: rgba(232,255,0,0.28) !important; }
+[data-accent="neon_gold"] .glass-panel { border-color: rgba(255,179,0,0.28) !important; }
 
 /* ── Neon glow em todos os accents (inclusive default branco) ────── */
 [data-accent="default"] .accent-primary-btn,
@@ -223,16 +231,22 @@
     0 0 22px -4px rgba(255,255,255,0.15),
     inset 0 1px 0 rgba(255,255,255,0.30);
 }
-[data-accent="gold"] .accent-primary-btn {
+[data-accent="neon_blue"] .accent-primary-btn {
   box-shadow:
-    0 0 12px -2px rgba(212,168,0,0.65),
-    0 0 26px -4px rgba(255,210,0,0.30),
+    0 0 12px -2px rgba(0,207,255,0.70),
+    0 0 26px -4px rgba(0,207,255,0.35),
     inset 0 1px 0 rgba(255,255,255,0.20);
 }
-[data-accent="neon_yellow"] .accent-primary-btn {
+[data-accent="neon_violet"] .accent-primary-btn {
   box-shadow:
-    0 0 12px -2px rgba(232,255,0,0.70),
-    0 0 26px -4px rgba(232,255,0,0.35),
+    0 0 12px -2px rgba(204,0,255,0.65),
+    0 0 26px -4px rgba(204,0,255,0.30),
+    inset 0 1px 0 rgba(255,255,255,0.20);
+}
+[data-accent="neon_gold"] .accent-primary-btn {
+  box-shadow:
+    0 0 12px -2px rgba(255,179,0,0.65),
+    0 0 26px -4px rgba(255,179,0,0.30),
     inset 0 1px 0 rgba(255,255,255,0.20);
 }
 
@@ -240,11 +254,14 @@
 :root .accent-line {
   box-shadow: 0 0 6px rgba(255,255,255,0.45), 0 0 14px rgba(255,255,255,0.15);
 }
-[data-accent="gold"] .accent-line {
-  box-shadow: 0 0 8px rgba(212,168,0,0.65), 0 0 18px rgba(255,210,0,0.30);
+[data-accent="neon_blue"] .accent-line {
+  box-shadow: 0 0 8px rgba(0,207,255,0.70), 0 0 18px rgba(0,207,255,0.35);
 }
-[data-accent="neon_yellow"] .accent-line {
-  box-shadow: 0 0 8px rgba(232,255,0,0.70), 0 0 18px rgba(232,255,0,0.35);
+[data-accent="neon_violet"] .accent-line {
+  box-shadow: 0 0 8px rgba(204,0,255,0.65), 0 0 18px rgba(204,0,255,0.30);
+}
+[data-accent="neon_gold"] .accent-line {
+  box-shadow: 0 0 8px rgba(255,179,0,0.65), 0 0 18px rgba(255,179,0,0.30);
 }
 
 /* ── Accent-aware utility classes ───────────────────────────────── */
@@ -277,10 +294,12 @@ textarea:focus.accent-focus {
   color: var(--accent-text) !important;
 }
 
-.light-mode[data-accent="gold"] .liquid-blob,
-.light-mode [data-accent="gold"] .liquid-blob       { background: rgba(212,168,0,0.18) !important; }
-.light-mode[data-accent="neon_yellow"] .liquid-blob,
-.light-mode [data-accent="neon_yellow"] .liquid-blob { background: rgba(232,255,0,0.18) !important; }
+.light-mode[data-accent="neon_blue"] .liquid-blob,
+.light-mode [data-accent="neon_blue"] .liquid-blob     { background: rgba(0,207,255,0.18) !important; }
+.light-mode[data-accent="neon_violet"] .liquid-blob,
+.light-mode [data-accent="neon_violet"] .liquid-blob   { background: rgba(204,0,255,0.18) !important; }
+.light-mode[data-accent="neon_gold"] .liquid-blob,
+.light-mode [data-accent="neon_gold"] .liquid-blob     { background: rgba(255,179,0,0.18) !important; }
 
 /* ─── DARK-SURFACE MODAL ──────────────────────────────────────────── */
 .light-mode .modal-dark { color: #ffffff; }
