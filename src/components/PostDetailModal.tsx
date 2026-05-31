@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark, Smartphone } from 'lucide-react';
+import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -495,36 +495,41 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     ('ontouchstart' in window && window.innerWidth < 1024);
 
-  // Returns true if the current content is landscape (wide/landscape aspectRatio
-  // OR the video element's actual dimensions are wider than tall).
-  const isActuallyLandscape = useCallback((): boolean => {
-    if (item.aspectRatio === 'landscape' || item.aspectRatio === 'wide') return true;
-    if (videoRef.current) {
-      const { videoWidth, videoHeight } = videoRef.current;
-      if (videoWidth > 0 && videoHeight > 0) return videoWidth > videoHeight;
+  // Apply/remove the CSS landscape rotation directly on the fullscreen element.
+  // This is the fallback for when screen.orientation.lock() is unavailable or denied.
+  useEffect(() => {
+    const el = mediaContainerRef.current;
+    if (!el) return;
+    if (isForcedLandscape) {
+      el.style.width = '100vh';
+      el.style.height = '100vw';
+      el.style.position = 'absolute';
+      el.style.top = '50%';
+      el.style.left = '50%';
+      el.style.transform = 'translate(-50%, -50%) rotate(90deg)';
+      el.style.transformOrigin = 'center center';
+      el.style.overflow = 'hidden';
+    } else {
+      el.style.width = '';
+      el.style.height = '';
+      el.style.position = '';
+      el.style.top = '';
+      el.style.left = '';
+      el.style.transform = '';
+      el.style.transformOrigin = '';
+      el.style.overflow = '';
     }
-    return false;
-  }, [item.aspectRatio]);
+  }, [isForcedLandscape]);
 
-  // Lock screen to landscape when entering fullscreen for landscape content.
-  const tryLockLandscape = useCallback(() => {
-    if (!isActuallyLandscape()) return;
-    try {
-      (screen.orientation as any)?.lock?.('landscape').catch(() => {});
-    } catch {}
-  }, [isActuallyLandscape]);
-
-  // Track fullscreen state and unlock orientation on exit
+  // Track fullscreen state; on exit unlock orientation and clear CSS rotation.
   useEffect(() => {
     const onFsChange = () => {
       const fsEl = document.fullscreenElement || (document as any).webkitFullscreenElement;
       const inFs = !!fsEl && fsEl === mediaContainerRef.current;
       setIsFullscreen(inFs);
-      if (inFs) {
-        // Auto-lock landscape when entering fullscreen by any means
-        tryLockLandscape();
-      } else {
+      if (!inFs) {
         try { screen.orientation?.unlock?.(); } catch {}
+        setIsForcedLandscape(false);
       }
     };
     document.addEventListener('fullscreenchange', onFsChange);
@@ -533,76 +538,64 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       document.removeEventListener('fullscreenchange', onFsChange);
       document.removeEventListener('webkitfullscreenchange', onFsChange);
     };
-  }, [tryLockLandscape]);
+  }, []);
 
-  // Force landscape via CSS transform — works even when auto-rotate is locked.
-  // First tries the native Screen Orientation API (requires fullscreen on Android).
-  // Falls back to rotating the modal container via CSS if the API is unavailable.
-  const handleForceRotate = useCallback(async () => {
-    // Toggle off if already in forced landscape
-    if (isForcedLandscape) {
-      setIsForcedLandscape(false);
-      try { screen.orientation?.unlock?.(); } catch {}
-      return;
-    }
-
-    // Try native lock first (works in fullscreen on modern Android Chrome)
-    try {
-      if ((screen.orientation as any)?.lock) {
-        await (screen.orientation as any).lock('landscape');
-        return; // Native lock succeeded — no CSS transform needed
-      }
-    } catch {
-      // Native lock failed (auto-rotate locked, iOS, or not in fullscreen) → CSS fallback
-    }
-
-    // CSS transform fallback: rotate the entire modal 90° to simulate landscape
-    setIsForcedLandscape(true);
-  }, [isForcedLandscape]);
-
-  // Reset forced landscape when the modal unmounts
+  // Unlock orientation and clear CSS rotation when modal unmounts.
   useEffect(() => {
     return () => {
-      setIsForcedLandscape(false);
       try { screen.orientation?.unlock?.(); } catch {}
+      setIsForcedLandscape(false);
     };
   }, []);
 
-  const handleFullscreen = (e: React.MouseEvent) => {
+  // Enter fullscreen and immediately rotate to landscape.
+  // Tries the native Screen Orientation API first; falls back to CSS transform
+  // so it works even when auto-rotate is locked on the device.
+  const handleFullscreen = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const container = mediaContainerRef.current;
     if (!container) return;
 
     if (document.fullscreenElement) {
+      // Exit fullscreen — orientation unlock + CSS reset happen in the change event handler
       document.exitFullscreen().catch(() => {});
-      try { screen.orientation?.unlock?.(); } catch {}
-    } else {
-      // Save current position — rotation may trigger a src change that restarts the video
-      savedTimeRef.current = videoRef.current?.currentTime ?? 0;
-
-      // On iOS, use native video fullscreen (auto-rotates to landscape)
-      if (videoRef.current && (videoRef.current as any).webkitSupportsFullscreen) {
-        (videoRef.current as any).webkitEnterFullscreen();
-        return;
-      }
-
-      container.requestFullscreen().then(() => {
-        // Small delay ensures fullscreen is fully active before lock attempt
-        setTimeout(() => { tryLockLandscape(); }, 120);
-        // Restore position in case anything restarted the video
-        setTimeout(() => {
-          const v = videoRef.current;
-          if (v && savedTimeRef.current > 0 && Math.abs(v.currentTime - savedTimeRef.current) > 1.5) {
-            v.currentTime = savedTimeRef.current;
-          }
-        }, 350);
-      }).catch(() => {
-        // Last-resort fallback for browsers without Fullscreen API
-        if (videoRef.current) {
-          (videoRef.current as any).webkitEnterFullscreen?.();
-        }
-      });
+      return;
     }
+
+    // Save current playback position — rotation can restart the video on some browsers
+    savedTimeRef.current = videoRef.current?.currentTime ?? 0;
+
+    // iOS: use native video fullscreen which auto-rotates to landscape
+    if (videoRef.current && (videoRef.current as any).webkitSupportsFullscreen) {
+      (videoRef.current as any).webkitEnterFullscreen();
+      return;
+    }
+
+    try {
+      await container.requestFullscreen();
+    } catch {
+      // Fallback for older WebKit
+      (videoRef.current as any)?.webkitEnterFullscreen?.();
+      return;
+    }
+
+    // Restore position if rotation caused a seek reset
+    setTimeout(() => {
+      const v = videoRef.current;
+      if (v && savedTimeRef.current > 0 && Math.abs(v.currentTime - savedTimeRef.current) > 1.5) {
+        v.currentTime = savedTimeRef.current;
+      }
+    }, 350);
+
+    // Try native orientation lock (works on Android Chrome in fullscreen)
+    try {
+      await (screen.orientation as any).lock('landscape');
+      return; // Native lock succeeded — no CSS needed
+    } catch {
+      // Lock denied or not supported → CSS transform fallback
+    }
+
+    setIsForcedLandscape(true);
   };
 
   // TikTok-style vertical swipe/wheel navigation while in fullscreen (skip for landscape videos)
@@ -735,35 +728,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     : duration;
   const progress = globalDuration > 0 ? (globalCurrentTime / globalDuration) * 100 : 0;
 
-  // When forced landscape, rotate the entire modal overlay so the content
-  // appears in landscape regardless of the device's auto-rotate lock.
-  const forcedLandscapeStyle: React.CSSProperties = isForcedLandscape
-    ? {
-        position: 'fixed',
-        top: '50%',
-        left: '50%',
-        width: '100vh',
-        height: '100vw',
-        transform: 'translate(-50%, -50%) rotate(90deg)',
-        transformOrigin: 'center center',
-        zIndex: 100,
-        background: 'rgba(0,0,0,0.97)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 0,
-      }
-    : { background: 'rgba(0,0,0,0.88)' };
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
-      className={isForcedLandscape ? 'z-[100]' : 'fixed inset-0 z-[100] flex items-center justify-center px-4'}
-      style={forcedLandscapeStyle}
-      onClick={isForcedLandscape ? undefined : onClose}
+      className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+      style={{ background: 'rgba(0,0,0,0.88)' }}
+      onClick={onClose}
     >
       <motion.div
         initial={{ y: 32, opacity: 0 }}
@@ -1130,38 +1103,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     )}
                   </AnimatePresence>
 
-                  {/* ── Rotate-to-landscape button — shown on mobile for any video ── */}
-                  <AnimatePresence>
-                    {isMobileScreen && isVideo && (
-                      <motion.button
-                        key="rotate-landscape-btn"
-                        initial={{ opacity: 0, scale: 0.88 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.88 }}
-                        transition={{ duration: 0.22, ease: 'easeOut' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleForceRotate();
-                        }}
-                        className="absolute top-4 right-4 z-30 flex items-center gap-2 px-3 py-2 rounded-2xl"
-                        style={{
-                          background: isForcedLandscape ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.60)',
-                          backdropFilter: 'blur(16px) saturate(160%)',
-                          WebkitBackdropFilter: 'blur(16px) saturate(160%)',
-                          border: isForcedLandscape ? '1px solid rgba(255,255,255,0.50)' : '1px solid rgba(255,255,255,0.22)',
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-                        }}
-                        aria-label={isForcedLandscape ? 'Voltar para retrato' : 'Girar para paisagem'}
-                      >
-                        <span style={{ display: 'inline-flex', transform: isForcedLandscape ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.3s ease' }}>
-                          <Smartphone size={15} className="text-white" strokeWidth={1.8} />
-                        </span>
-                        <span className="text-white text-[11px] font-semibold tracking-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
-                          {isForcedLandscape ? 'Retrato' : 'Girar tela'}
-                        </span>
-                      </motion.button>
-                    )}
-                  </AnimatePresence>
 
                   {/* Mini progress bar — visible only when controls are hidden */}
                   <AnimatePresence>
