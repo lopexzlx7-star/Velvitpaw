@@ -32,10 +32,10 @@ interface ImageItem {
   preview: string;
 }
 
-const MAX_VIDEO_DURATION = 600; // 10 minutes
+const MAX_VIDEO_DURATION = 3600; // 1 hour
 const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
-const MAX_FILE_SIZE_MB = 300;
+const MAX_FILE_SIZE_MB = 500;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_IMAGES = 10;
 const CHUNK_SIZE = 50 * 1024 * 1024; // 50 MB per Cloudinary chunk
