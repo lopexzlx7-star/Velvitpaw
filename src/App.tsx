@@ -1549,15 +1549,37 @@ export default function App() {
     }
   };
 
+  // Resize an image data-URL to fit within maxW × maxH, preserving aspect ratio.
+  // Returns a JPEG data-URL — used for background images where no crop is needed.
+  const resizeImageForBg = (dataUrl: string, maxW = 1920, maxH = 1920): Promise<string> =>
+    new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width, maxH / img.height);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
+      };
+      img.onerror = () => resolve(dataUrl); // fallback: use original
+      img.src = dataUrl;
+    });
+
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>, type: 'bg' | 'profile' | 'post') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64String = reader.result as string;
       if (type === 'bg') {
-        setCropperState({ open: true, src: base64String, target: 'bg' });
+        // Background: use the image as-is (no crop UI), just resize to avoid
+        // storing a huge base64 string in localStorage.
+        const resized = await resizeImageForBg(base64String);
+        updateBackground(resized);
       } else if (type === 'profile') {
         setCropperState({ open: true, src: base64String, target: 'profile' });
       }
