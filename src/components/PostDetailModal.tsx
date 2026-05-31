@@ -171,6 +171,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const mediaContainerRef = useRef<HTMLDivElement>(null);
   const playPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef<{ time: number; x: number } | null>(null);
+  // When a seek crosses a chunk boundary we store the target offset here so
+  // it can be applied to the <video> element once the new chunk has loaded.
+  const pendingSeekRef = useRef<number | null>(null);
   const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -188,16 +191,48 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     };
   }, []);
 
-  const triggerSeek = (side: 'left' | 'right') => {
-    const video = videoRef.current;
-    if (!video) return;
+  // Seek to a position expressed in global seconds (spanning all chunks).
+  // If the target falls in the current chunk, seeks immediately.
+  // If it's in a different chunk, stores the offset in pendingSeekRef and
+  // switches the chunk — the offset is applied once the new chunk loads.
+  const seekToGlobalTime = useCallback((globalSecs: number) => {
+    const clampedGlobal = Math.max(0, globalSecs);
+    const targetChunk = Math.min(
+      Math.floor(clampedGlobal / APPROX_CHUNK_DURATION_S),
+      totalChunks - 1,
+    );
+    const offsetInChunk = clampedGlobal - targetChunk * APPROX_CHUNK_DURATION_S;
+
+    if (!isChunkedVideo || targetChunk === currentChunkIdx) {
+      const video = videoRef.current;
+      const seekTo = Math.max(0, Math.min(video?.duration || 0, offsetInChunk));
+      if (video) video.currentTime = seekTo;
+      setCurrentTime(seekTo);
+    } else {
+      // Cross-chunk: park the offset and switch chunk
+      pendingSeekRef.current = Math.max(0, offsetInChunk);
+      if (chunkTransitionTimerRef.current) {
+        window.clearTimeout(chunkTransitionTimerRef.current);
+        chunkTransitionTimerRef.current = null;
+      }
+      setChunkTransitioning(false);
+      setCurrentChunkIdx(targetChunk);
+    }
+  }, [isChunkedVideo, currentChunkIdx, totalChunks]);
+
+  const triggerSeek = useCallback((side: 'left' | 'right') => {
     const delta = side === 'right' ? 10 : -10;
-    video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + delta));
-    // Show flash feedback
+    const curGlobal = isChunkedVideo
+      ? currentChunkIdx * APPROX_CHUNK_DURATION_S + currentTime
+      : currentTime;
+    const totalDur = isChunkedVideo
+      ? (item.duration || totalChunks * APPROX_CHUNK_DURATION_S)
+      : duration;
+    seekToGlobalTime(Math.min(totalDur, curGlobal + delta));
     if (seekFlashTimer.current) clearTimeout(seekFlashTimer.current);
     setSeekFlash(side);
     seekFlashTimer.current = setTimeout(() => setSeekFlash(null), 700);
-  };
+  }, [isChunkedVideo, currentChunkIdx, currentTime, totalChunks, duration, item.duration, seekToGlobalTime]);
 
   const handleVideoDoubleClick = (e: React.MouseEvent<HTMLVideoElement>) => {
     e.stopPropagation();
@@ -287,6 +322,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     const startNow = () => {
       if (started) return;
       started = true;
+      // Apply any cross-chunk seek offset that was stored before the chunk switched
+      if (pendingSeekRef.current !== null) {
+        v.currentTime = Math.max(0, Math.min(v.duration || 0, pendingSeekRef.current));
+        setCurrentTime(pendingSeekRef.current);
+        pendingSeekRef.current = null;
+      }
       v.play().catch(() => {});
     };
     const tryStart = () => {
@@ -427,9 +468,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const handleSeekStart = () => setIsSeeking(true);
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    setCurrentTime(val);
-    if (videoRef.current) videoRef.current.currentTime = val;
+    // Value is in global seconds (0 → full video duration); seekToGlobalTime
+    // handles chunk switching when the target is in a different segment.
+    seekToGlobalTime(parseFloat(e.target.value));
   };
 
   const handleSeekEnd = () => setIsSeeking(false);
@@ -1060,7 +1101,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                             <div className="h-full rounded-full bg-white" style={{ width: `${progress}%`, transition: 'width 0.25s linear' }} />
                           </div>
                           <input
-                            type="range" min={0} max={duration || 1} step={0.01} value={currentTime}
+                            type="range" min={0} max={globalDuration || 1} step={0.1} value={globalCurrentTime}
                             onMouseDown={handleSeekStart} onTouchStart={handleSeekStart}
                             onChange={handleSeekChange} onMouseUp={handleSeekEnd} onTouchEnd={handleSeekEnd}
                             onClick={(e) => { e.stopPropagation(); showControls(); }}
