@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "fuser -k 3001/tcp 5000/tcp 2>/dev/null; sleep 1 && concurrently \"tsx server.ts\" \"vite\"",
+    "dev": "fuser -k 3001/tcp 5000/tcp 2>/dev/null; sleep 1 && concurrently \"node node_modules/tsx/dist/cli.mjs server.ts\" \"node node_modules/vite/bin/vite.js\"",
     "build": "vite build",
     "start": "NODE_ENV=production tsx server.ts",
     "preview": "vite preview",
