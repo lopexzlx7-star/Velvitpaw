@@ -4,6 +4,7 @@ export interface ContentItem {
   url: string;
   thumbnailUrl?: string;
   images?: string[];
+  videoChunks?: string[];
   authorName: string;
   authorPhotoUrl: string;
   authorUid: string;

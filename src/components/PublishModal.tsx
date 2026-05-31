@@ -712,54 +712,52 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
         if (!videoDraft) { setIsSubmitting(false); return; }
 
         const durationSec = videoDraft.duration ?? 0;
-        const needsCompression = shouldCompress(videoDraft.file, durationSec);
+        // Videos longer than 2 minutes are split into 2-min chunks server-side so
+        // each piece is small enough for Cloudinary. Compression is skipped for
+        // these since splitting itself keeps file sizes manageable.
+        const VIDEO_SPLIT_THRESHOLD = 120; // 2 minutes
+        const isLongVideo = durationSec > VIDEO_SPLIT_THRESHOLD;
+        const needsCompression = !isLongVideo && shouldCompress(videoDraft.file, durationSec);
         let fileToUpload: File = videoDraft.file;
         let hostedThumbnailUrl: string | null = null;
+        let videoChunks: string[] | undefined;
 
         if (needsCompression) {
-          // ── Long video ────────────────────────────────────────────────────────
-          // 1. Run ApyHub compression AND thumbnail upload in parallel.
-          //    The thumbnail finishes in seconds; compression takes much longer.
-          //    Cloudinary is NOT contacted until step 2 below.
+          // ── Short-to-medium video that needs compression ──────────────────────
           const [compressionResult, thumbResult] = await Promise.allSettled([
             compressVideoViaApyHub(videoDraft.file),
             thumbnailUrl ? uploadThumbnail(thumbnailUrl) : Promise.resolve(null),
           ]);
-
-          if (compressionResult.status === 'fulfilled') {
-            fileToUpload = compressionResult.value;
-          }
-          // If compression failed, fileToUpload stays as original.
-          // The size guard below will surface an error if it is still too large.
-
-          if (thumbResult.status === 'fulfilled') {
-            hostedThumbnailUrl = thumbResult.value;
-          }
-
-          // Guard: bail out if the file is still too heavy after compression
+          if (compressionResult.status === 'fulfilled') fileToUpload = compressionResult.value;
+          if (thumbResult.status === 'fulfilled') hostedThumbnailUrl = thumbResult.value;
           if (fileToUpload.size > POST_COMPRESS_MAX_BYTES) {
             setIsSubmitting(false);
             setUploadFailed(true);
             setError('Vídeo muito pesado mesmo após compressão. Tente um vídeo mais curto.');
             return;
           }
-
-          // 2. Only now — after compression is fully done — upload to Cloudinary.
-          //    (sign fetch + chunked XHR upload happens here, not before)
-
         } else {
-          // ── Short video — no compression needed ──────────────────────────────
-          // Upload thumbnail first (fast, a few seconds) then video to Cloudinary.
-          if (thumbnailUrl) {
-            hostedThumbnailUrl = await uploadThumbnail(thumbnailUrl);
-          }
+          // ── Short video or long video (long = will be split below) ────────────
+          if (thumbnailUrl) hostedThumbnailUrl = await uploadThumbnail(thumbnailUrl);
         }
 
-        // Upload video to Cloudinary — always sequential, always AFTER any compression
-        const finalUrl = await uploadVideo(fileToUpload);
+        let finalUrl: string;
 
-        // For long videos the thumbnail was already uploaded above in parallel.
-        // For short videos it was uploaded above before the video, so nothing to do.
+        if (isLongVideo) {
+          // ── Long video: send to server → ffmpeg splits into 2-min segments →
+          //    each segment uploaded to Cloudinary → returns array of URLs ──────
+          const fd = new FormData();
+          fd.append('file', fileToUpload, fileToUpload.name);
+          const data = await xhrPost('/api/split-upload-video', fd);
+          if (!data.urls || !Array.isArray(data.urls) || data.urls.length === 0) {
+            throw new Error('Servidor não retornou segmentos do vídeo.');
+          }
+          finalUrl = data.urls[0];
+          videoChunks = data.urls.length > 1 ? (data.urls as string[]) : undefined;
+        } else {
+          // ── Regular upload for short videos ───────────────────────────────────
+          finalUrl = await uploadVideo(fileToUpload);
+        }
 
         const postData: Record<string, unknown> = {
           title: title.trim() || 'Sem título',
@@ -778,6 +776,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           description: description.trim() || '',
           hashtags: extractedHashtags,
           ...(hostedThumbnailUrl ? { thumbnailUrl: hostedThumbnailUrl } : {}),
+          ...(videoChunks ? { videoChunks } : {}),
         };
 
         const newVideoRef = await addDoc(collection(db, 'posts'), postData);

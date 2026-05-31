@@ -100,6 +100,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [dragY, setDragY] = useState<number | null>(null); // px the finger has moved during an active drag
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  // Chunk playback state — for videos stored as multiple 2-min segments
+  const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
+  const [chunkTransitioning, setChunkTransitioning] = useState(false);
+  const chunkTransitionTimerRef = useRef<number | null>(null);
   // Briefly shown when the user tries to swipe past the last/first video.
   const [endToast, setEndToast] = useState<'next' | 'prev' | null>(null);
   const endToastTimerRef = useRef<number | null>(null);
@@ -111,15 +115,34 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     endToastTimerRef.current = window.setTimeout(() => setEndToast(null), 1600);
   }, []);
 
-  // Cleanup the toast timer on unmount
+  // Cleanup the toast timer and chunk transition timer on unmount
   useEffect(() => () => {
     if (endToastTimerRef.current) window.clearTimeout(endToastTimerRef.current);
+    if (chunkTransitionTimerRef.current) window.clearTimeout(chunkTransitionTimerRef.current);
   }, []);
+
+  // Reset chunk index whenever the item changes (navigating to a different post)
+  useEffect(() => {
+    setCurrentChunkIdx(0);
+    setChunkTransitioning(false);
+    if (chunkTransitionTimerRef.current) {
+      window.clearTimeout(chunkTransitionTimerRef.current);
+      chunkTransitionTimerRef.current = null;
+    }
+  }, [item.id]);
 
   const isMobileScreen = useIsMobile();
   const curVideoUrl = getResponsiveVideoUrl(item.url, isMobileScreen);
   const prevVideoUrl = prevItem ? getResponsiveVideoUrl(prevItem.url, isMobileScreen) : '';
   const nextVideoUrl = nextItem ? getResponsiveVideoUrl(nextItem.url, isMobileScreen) : '';
+
+  // Chunked video support — item may have videoChunks[] with 2-min segments
+  const isChunkedVideo = !!(item.videoChunks && item.videoChunks.length > 1);
+  const totalChunks = isChunkedVideo ? item.videoChunks!.length : 1;
+  const activeChunkUrl = isChunkedVideo
+    ? getResponsiveVideoUrl(item.videoChunks![Math.min(currentChunkIdx, totalChunks - 1)], isMobileScreen)
+    : curVideoUrl;
+  const APPROX_CHUNK_DURATION_S = 120;
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -230,11 +253,30 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   // element unmounts and the new one mounts — so playback never visibly pauses during
   // a scroll gesture.
 
-  // Buffer-then-play: when the active item changes, wait until at least half of the
-  // video has been buffered before starting playback. The remainder keeps loading in
-  // the background while playing, which prevents mid-stream stutters. A loading
-  // spinner is shown during the wait, and a 4s fallback ensures playback always
-  // starts even on flaky networks or unknown durations.
+  // When a chunked video segment ends, show the transition overlay then advance
+  const handleVideoEnded = useCallback(() => {
+    if (!isChunkedVideo) return; // non-chunked videos use loop={true}
+    if (currentChunkIdx < totalChunks - 1) {
+      // Show the "Carregando parte X..." overlay, then switch chunk after ~1.5s
+      setChunkTransitioning(true);
+      setVideoReady(false);
+      if (chunkTransitionTimerRef.current) window.clearTimeout(chunkTransitionTimerRef.current);
+      chunkTransitionTimerRef.current = window.setTimeout(() => {
+        setCurrentChunkIdx(idx => idx + 1);
+        setChunkTransitioning(false);
+      }, 1500);
+    } else {
+      // Last chunk — loop back to the first chunk
+      setCurrentChunkIdx(0);
+      setVideoReady(false);
+    }
+  }, [isChunkedVideo, currentChunkIdx, totalChunks]);
+
+  // Buffer-then-play: when the active item or chunk changes, wait until at least
+  // half of the video has been buffered before starting playback. The remainder
+  // keeps loading in the background while playing, preventing mid-stream stutters.
+  // A loading spinner is shown during the wait; a 4s fallback ensures playback
+  // always starts even on flaky networks or unknown durations.
   useEffect(() => {
     if (!isVideo || !directVideo) return;
     setVideoReady(false);
@@ -277,7 +319,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       v.removeEventListener('loadedmetadata', tryStart);
       v.removeEventListener('canplaythrough', startNow);
     };
-  }, [item.id, isVideo, directVideo]);
+  }, [item.id, currentChunkIdx, isVideo, directVideo]);
 
   // Trigger a TikTok-style slide; on completion swap the active item via onNavigate
   const triggerSlide = useCallback((dir: 'next' | 'prev') => {
@@ -572,7 +614,14 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   };
 
   const isUserPost = item.authorUid === currentUserUid;
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  // For chunked videos compute global position across all segments
+  const globalCurrentTime = isChunkedVideo
+    ? currentChunkIdx * APPROX_CHUNK_DURATION_S + currentTime
+    : currentTime;
+  const globalDuration = isChunkedVideo
+    ? (item.duration || totalChunks * APPROX_CHUNK_DURATION_S)
+    : duration;
+  const progress = globalDuration > 0 ? (globalCurrentTime / globalDuration) * 100 : 0;
 
   return (
     <motion.div
@@ -711,12 +760,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     )}
 
                     <video
-                      key={`cur-${item.id}`}
+                      key={`cur-${item.id}-chunk-${currentChunkIdx}`}
                       ref={videoRef}
-                      src={curVideoUrl}
+                      src={activeChunkUrl}
                       poster={item.thumbnailUrl || undefined}
                       className="absolute left-0 top-0 w-full h-full bg-black"
-                      loop
+                      loop={!isChunkedVideo}
                       muted={isMuted}
                       playsInline
                       preload="auto"
@@ -725,6 +774,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       onTouchEnd={handleVideoTouchEnd}
                       onPlaying={() => setVideoReady(true)}
                       onWaiting={() => setVideoReady(false)}
+                      onEnded={handleVideoEnded}
                       style={{ cursor: 'pointer', display: 'block', objectFit: 'contain', transform: 'translateZ(0)' }}
                     />
 
@@ -741,6 +791,60 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       />
                     )}
                   </div>
+
+                  {/* Part X/N badge — shown for chunked multi-segment videos */}
+                  {isChunkedVideo && !chunkTransitioning && (
+                    <div
+                      className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold text-white/90 z-20 pointer-events-none"
+                      style={{
+                        background: 'rgba(0,0,0,0.55)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)',
+                      }}
+                    >
+                      Parte {currentChunkIdx + 1}/{totalChunks}
+                    </div>
+                  )}
+
+                  {/* Chunk transition overlay — shown between segments */}
+                  <AnimatePresence>
+                    {chunkTransitioning && (
+                      <motion.div
+                        key="chunk-transition"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+                        style={{ background: 'rgba(0,0,0,0.60)' }}
+                      >
+                        <div
+                          className="flex flex-col items-center gap-3 px-6 py-4 rounded-3xl"
+                          style={{
+                            background: 'rgba(255,255,255,0.10)',
+                            backdropFilter: 'blur(20px) saturate(160%)',
+                            WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+                            border: '1px solid rgba(255,255,255,0.18)',
+                            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                            minWidth: '220px',
+                          }}
+                        >
+                          <span className="text-white text-[13px] font-semibold tracking-tight text-center">
+                            Indo para a parte {currentChunkIdx + 2} de {totalChunks}...
+                          </span>
+                          <div className="w-full h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.20)' }}>
+                            <motion.div
+                              className="h-full rounded-full bg-white"
+                              initial={{ width: '0%' }}
+                              animate={{ width: '100%' }}
+                              transition={{ duration: 1.35, ease: 'easeInOut' }}
+                            />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* One-time swipe hint — overlays first video in fullscreen */}
                   <AnimatePresence>
@@ -978,7 +1082,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                           />
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-white/50 font-mono tabular-nums">{formatTime(currentTime)} / {formatTime(duration)}</span>
+                          <span className="text-[10px] text-white/50 font-mono tabular-nums">{formatTime(globalCurrentTime)} / {formatTime(globalDuration)}</span>
                           <div className="flex items-center gap-1">
                             <button
                               onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); showControls(); }}
