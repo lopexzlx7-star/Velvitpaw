@@ -2465,10 +2465,10 @@ export default function App() {
                   </button>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="columns-2 gap-4">
                   {isGeneratingFeed && items.length === 0 ? (
                     Array.from({ length: 10 }).map((_, i) => (
-                      <div key={i} className="mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: [250, 300, 400, 600][i % 4] }} />
+                      <div key={i} className="break-inside-avoid mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: [250, 300, 400, 600][i % 4] }} />
                     ))
                   ) : (
                     (activeTab === 'foryou' ? forYouItems : items).map((item) => {
@@ -2480,23 +2480,24 @@ export default function App() {
                       const isWithin24h = !!createdAt && (Date.now() - new Date(createdAt).getTime()) < 86_400_000;
                       const isNew = isFromFollowed && !isOwnPost && isAfterBaseline && isWithin24h && !seenPostIds.has(item.id);
                       return (
-                        <GlassCard 
-                          key={item.id} 
-                          item={item} 
-                          isLiked={likedIds.includes(item.id)}
-                          isSaved={savedIds.includes(item.id)}
-                          isFollowing={followingUids.includes(authorUid || '')}
-                          isNew={isNew}
-                          onSeen={markPostAsSeen}
-                          onLike={handleLike}
-                          onSave={openSavePicker}
-                          onFollow={handleFollow}
-                          onClick={() => { markPostAsSeen(item.id); setSelectedPost(item); }}
-                          onHashtagClick={handleHashtagClick}
-                          onPersonTagClick={(slug) => setOpenPersonTag(slug)}
-                          isUserPost={isOwnPost}
-                          searchQuery={searchQuery}
-                        />
+                        <div key={item.id} className="break-inside-avoid mb-4">
+                          <GlassCard 
+                            item={item} 
+                            isLiked={likedIds.includes(item.id)}
+                            isSaved={savedIds.includes(item.id)}
+                            isFollowing={followingUids.includes(authorUid || '')}
+                            isNew={isNew}
+                            onSeen={markPostAsSeen}
+                            onLike={handleLike}
+                            onSave={openSavePicker}
+                            onFollow={handleFollow}
+                            onClick={() => { markPostAsSeen(item.id); setSelectedPost(item); }}
+                            onHashtagClick={handleHashtagClick}
+                            onPersonTagClick={(slug) => setOpenPersonTag(slug)}
+                            isUserPost={isOwnPost}
+                            searchQuery={searchQuery}
+                          />
+                        </div>
                       );
                     })
                   )}
