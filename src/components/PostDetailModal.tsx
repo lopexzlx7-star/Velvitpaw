@@ -548,6 +548,46 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     };
   }, []);
 
+  // When the user physically rotates the device (gyroscope + auto-rotate enabled):
+  // - Landscape → auto-enter fullscreen so the video fills the screen horizontally
+  // - Portrait  → auto-exit fullscreen and restore normal modal view
+  useEffect(() => {
+    if (!isVideo || !directVideo) return;
+
+    const onOrientationChange = () => {
+      // Small delay to let the browser settle the new viewport dimensions
+      setTimeout(() => {
+        const type = screen.orientation?.type ?? '';
+        const legacyAngle = Math.abs(Number((window as any).orientation ?? 0));
+        const isNowLandscape = type.includes('landscape') || legacyAngle === 90;
+
+        if (isNowLandscape) {
+          // Device went landscape — enter fullscreen if not already in it
+          const container = mediaContainerRef.current;
+          if (container && !document.fullscreenElement) {
+            savedTimeRef.current = videoRef.current?.currentTime ?? 0;
+            container.requestFullscreen().catch(() => {});
+            // Device is already landscape via gyroscope — no orientation.lock needed
+          }
+        } else {
+          // Device went portrait — exit fullscreen and clear any CSS rotation
+          if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+          }
+          setIsForcedLandscape(false);
+        }
+      }, 100);
+    };
+
+    screen.orientation?.addEventListener?.('change', onOrientationChange);
+    window.addEventListener('orientationchange', onOrientationChange);
+
+    return () => {
+      screen.orientation?.removeEventListener?.('change', onOrientationChange);
+      window.removeEventListener('orientationchange', onOrientationChange);
+    };
+  }, [isVideo, directVideo]);
+
   // Enter fullscreen and immediately rotate to landscape.
   // Tries the native Screen Orientation API first; falls back to CSS transform
   // so it works even when auto-rotate is locked on the device.
