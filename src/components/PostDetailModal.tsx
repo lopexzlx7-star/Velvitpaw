@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark } from 'lucide-react';
+import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark, Smartphone } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -1035,6 +1035,37 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                           {seekFlash === 'left' ? '-10s' : '+10s'}
                         </span>
                       </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* ── Rotate-to-watch hint — landscape videos on mobile only ── */}
+                  <AnimatePresence>
+                    {isLandscapeVideo && !isFullscreen && isMobileScreen && videoReady && !controlsVisible && (
+                      <motion.button
+                        key="rotate-hint"
+                        initial={{ opacity: 0, scale: 0.88, y: 6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.88, y: 6 }}
+                        transition={{ duration: 0.22, ease: 'easeOut' }}
+                        onClick={(e) => { handleFullscreen(e); }}
+                        className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 px-3 py-2 rounded-2xl"
+                        style={{
+                          background: 'rgba(0,0,0,0.55)',
+                          backdropFilter: 'blur(14px) saturate(160%)',
+                          WebkitBackdropFilter: 'blur(14px) saturate(160%)',
+                          border: '1px solid rgba(255,255,255,0.18)',
+                          boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
+                        }}
+                        aria-label="Deitar para assistir em tela cheia"
+                      >
+                        {/* Smartphone icon rotated 90° to represent landscape */}
+                        <span style={{ display: 'inline-flex', transform: 'rotate(90deg)' }}>
+                          <Smartphone size={15} className="text-white" strokeWidth={1.8} />
+                        </span>
+                        <span className="text-white text-[11px] font-semibold tracking-tight" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+                          Deitar para assistir
+                        </span>
+                      </motion.button>
                     )}
                   </AnimatePresence>
 
