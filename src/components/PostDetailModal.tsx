@@ -105,6 +105,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   // Briefly shown when the user tries to swipe past the last/first video.
   const [endToast, setEndToast] = useState<'next' | 'prev' | null>(null);
   const [seekPreview, setSeekPreview] = useState<{ time: number; pct: number } | null>(null);
+  const [isForcedLandscape, setIsForcedLandscape] = useState(false);
   const endToastTimerRef = useRef<number | null>(null);
   const slidingRef = useRef(false);
   // Saves currentTime before fullscreen so we can restore if rotation causes restart
@@ -534,6 +535,39 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     };
   }, [tryLockLandscape]);
 
+  // Force landscape via CSS transform — works even when auto-rotate is locked.
+  // First tries the native Screen Orientation API (requires fullscreen on Android).
+  // Falls back to rotating the modal container via CSS if the API is unavailable.
+  const handleForceRotate = useCallback(async () => {
+    // Toggle off if already in forced landscape
+    if (isForcedLandscape) {
+      setIsForcedLandscape(false);
+      try { screen.orientation?.unlock?.(); } catch {}
+      return;
+    }
+
+    // Try native lock first (works in fullscreen on modern Android Chrome)
+    try {
+      if ((screen.orientation as any)?.lock) {
+        await (screen.orientation as any).lock('landscape');
+        return; // Native lock succeeded — no CSS transform needed
+      }
+    } catch {
+      // Native lock failed (auto-rotate locked, iOS, or not in fullscreen) → CSS fallback
+    }
+
+    // CSS transform fallback: rotate the entire modal 90° to simulate landscape
+    setIsForcedLandscape(true);
+  }, [isForcedLandscape]);
+
+  // Reset forced landscape when the modal unmounts
+  useEffect(() => {
+    return () => {
+      setIsForcedLandscape(false);
+      try { screen.orientation?.unlock?.(); } catch {}
+    };
+  }, []);
+
   const handleFullscreen = (e: React.MouseEvent) => {
     e.stopPropagation();
     const container = mediaContainerRef.current;
@@ -701,15 +735,35 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     : duration;
   const progress = globalDuration > 0 ? (globalCurrentTime / globalDuration) * 100 : 0;
 
+  // When forced landscape, rotate the entire modal overlay so the content
+  // appears in landscape regardless of the device's auto-rotate lock.
+  const forcedLandscapeStyle: React.CSSProperties = isForcedLandscape
+    ? {
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        width: '100vh',
+        height: '100vw',
+        transform: 'translate(-50%, -50%) rotate(90deg)',
+        transformOrigin: 'center center',
+        zIndex: 100,
+        background: 'rgba(0,0,0,0.97)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 0,
+      }
+    : { background: 'rgba(0,0,0,0.88)' };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
-      className="fixed inset-0 z-[100] flex items-center justify-center px-4"
-      style={{ background: 'rgba(0,0,0,0.88)' }}
-      onClick={onClose}
+      className={isForcedLandscape ? 'z-[100]' : 'fixed inset-0 z-[100] flex items-center justify-center px-4'}
+      style={forcedLandscapeStyle}
+      onClick={isForcedLandscape ? undefined : onClose}
     >
       <motion.div
         initial={{ y: 32, opacity: 0 }}
@@ -1076,9 +1130,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     )}
                   </AnimatePresence>
 
-                  {/* ── Rotate-to-landscape button — shown inside fullscreen on mobile landscape videos ── */}
+                  {/* ── Rotate-to-landscape button — shown on mobile for any video ── */}
                   <AnimatePresence>
-                    {isLandscapeVideo && isFullscreen && isMobileScreen && (
+                    {isMobileScreen && isVideo && (
                       <motion.button
                         key="rotate-landscape-btn"
                         initial={{ opacity: 0, scale: 0.88 }}
@@ -1087,30 +1141,23 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                         transition={{ duration: 0.22, ease: 'easeOut' }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          try {
-                            (screen.orientation as any)?.lock?.('landscape')
-                              .then?.(() => {})
-                              .catch?.(() => {
-                                // Fallback: try landscape-primary
-                                try { (screen.orientation as any)?.lock?.('landscape-primary').catch(() => {}); } catch {}
-                              });
-                          } catch {}
+                          handleForceRotate();
                         }}
                         className="absolute top-4 right-4 z-30 flex items-center gap-2 px-3 py-2 rounded-2xl"
                         style={{
-                          background: 'rgba(0,0,0,0.60)',
+                          background: isForcedLandscape ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.60)',
                           backdropFilter: 'blur(16px) saturate(160%)',
                           WebkitBackdropFilter: 'blur(16px) saturate(160%)',
-                          border: '1px solid rgba(255,255,255,0.22)',
+                          border: isForcedLandscape ? '1px solid rgba(255,255,255,0.50)' : '1px solid rgba(255,255,255,0.22)',
                           boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
                         }}
-                        aria-label="Girar para paisagem"
+                        aria-label={isForcedLandscape ? 'Voltar para retrato' : 'Girar para paisagem'}
                       >
-                        <span style={{ display: 'inline-flex', transform: 'rotate(90deg)' }}>
+                        <span style={{ display: 'inline-flex', transform: isForcedLandscape ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.3s ease' }}>
                           <Smartphone size={15} className="text-white" strokeWidth={1.8} />
                         </span>
                         <span className="text-white text-[11px] font-semibold tracking-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
-                          Girar tela
+                          {isForcedLandscape ? 'Retrato' : 'Girar tela'}
                         </span>
                       </motion.button>
                     )}
