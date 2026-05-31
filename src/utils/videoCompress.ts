@@ -1,10 +1,13 @@
-const MIN_DURATION_S = 3 * 60; // 3 minutes
 const MIN_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 
 export const POST_COMPRESS_MAX_BYTES = 200 * 1024 * 1024; // bail-out guard after compression
 
 export function shouldCompress(file: File, durationSeconds: number): boolean {
-  return durationSeconds > MIN_DURATION_S && file.size > MIN_SIZE_BYTES;
+  // Only compress short clips (under 3 min) that are large for their duration.
+  // Long videos upload fine via direct chunked Cloudinary upload — sending them
+  // to ApyHub would timeout. Chunked upload handles any file size without limits.
+  const MAX_COMPRESS_DURATION_S = 3 * 60; // 3 minutes
+  return durationSeconds > 0 && durationSeconds <= MAX_COMPRESS_DURATION_S && file.size > MIN_SIZE_BYTES;
 }
 
 // Sends the video to the server proxy which forwards to ApyHub for compression.

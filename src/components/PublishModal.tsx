@@ -46,17 +46,21 @@ function captureVideoFrame(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     const objectUrl = URL.createObjectURL(file);
-    video.preload = 'auto';
+    // metadata-only preload: browser reads just the container header —
+    // no large buffering of the video body, fast even for 30-min files.
+    video.preload = 'metadata';
     video.muted = true;
     video.playsInline = true;
     video.src = objectUrl;
     let settled = false;
+
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
       URL.revokeObjectURL(objectUrl);
       fn();
     };
+
     const capture = () => {
       try {
         const vw = video.videoWidth || TARGET_W;
@@ -77,13 +81,27 @@ function captureVideoFrame(file: File): Promise<string> {
         finish(() => reject(e));
       }
     };
-    video.addEventListener('loadeddata', () => {
-      if (video.videoWidth > 0 && video.videoHeight > 0) capture();
-      else video.currentTime = 0.001;
+
+    // Once metadata is available, immediately seek to the very first frame
+    // (0.1 s). For long videos this is instant because we only loaded headers.
+    video.addEventListener('loadedmetadata', () => {
+      video.currentTime = 0.1;
     });
+
+    // Capture as soon as the seek lands — this is always the first second.
     video.addEventListener('seeked', () => { if (!settled) capture(); });
-    video.addEventListener('canplay', () => { if (!settled && video.videoWidth > 0) capture(); });
+
+    // Fallback: if seeked never fires but the video is somehow already
+    // showing a frame (e.g., some containers report loadeddata immediately).
+    video.addEventListener('loadeddata', () => {
+      if (!settled && video.videoWidth > 0 && video.videoHeight > 0) capture();
+    });
+
     video.addEventListener('error', () => finish(() => reject(new Error('video_error'))));
+
+    // Hard timeout: 8 s max — if the browser can't get even one frame by
+    // then, give up gracefully rather than hanging the UI forever.
+    setTimeout(() => finish(() => reject(new Error('timeout'))), 8000);
   });
 }
 
