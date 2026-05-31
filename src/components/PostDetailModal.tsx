@@ -587,15 +587,20 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       }
     }, 350);
 
-    // Try native orientation lock (works on Android Chrome in fullscreen)
+    // Try native orientation lock (works on Android Chrome when in fullscreen)
     try {
       await (screen.orientation as any).lock('landscape');
-      return; // Native lock succeeded — no CSS needed
     } catch {
-      // Lock denied or not supported → CSS transform fallback
+      // Lock denied or not supported — will use CSS fallback below
     }
 
-    setIsForcedLandscape(true);
+    // Wait a moment for the OS to apply the rotation, then check if it worked.
+    // If the screen is still in portrait, apply CSS rotation as fallback.
+    await new Promise<void>(r => setTimeout(r, 150));
+    const nowLandscape = screen.orientation?.type?.includes('landscape') ?? false;
+    if (!nowLandscape) {
+      setIsForcedLandscape(true);
+    }
   };
 
   // TikTok-style vertical swipe/wheel navigation while in fullscreen (skip for landscape videos)
