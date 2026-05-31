@@ -712,18 +712,14 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
         if (!videoDraft) { setIsSubmitting(false); return; }
 
         const durationSec = videoDraft.duration ?? 0;
-        // Videos longer than 2 minutes are split into 2-min chunks server-side so
-        // each piece is small enough for Cloudinary. Compression is skipped for
-        // these since splitting itself keeps file sizes manageable.
-        const VIDEO_SPLIT_THRESHOLD = 120; // 2 minutes
-        const isLongVideo = durationSec > VIDEO_SPLIT_THRESHOLD;
-        const needsCompression = !isLongVideo && shouldCompress(videoDraft.file, durationSec);
+        const VIDEO_CHUNK_SECS = 120; // 2-minute segments
+        const needsCompression = shouldCompress(videoDraft.file, durationSec);
         let fileToUpload: File = videoDraft.file;
         let hostedThumbnailUrl: string | null = null;
         let videoChunks: string[] | undefined;
 
         if (needsCompression) {
-          // ── Short-to-medium video that needs compression ──────────────────────
+          // ── Video that needs compression ──────────────────────────────────────
           const [compressionResult, thumbResult] = await Promise.allSettled([
             compressVideoViaApyHub(videoDraft.file),
             thumbnailUrl ? uploadThumbnail(thumbnailUrl) : Promise.resolve(null),
@@ -737,26 +733,25 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
             return;
           }
         } else {
-          // ── Short video or long video (long = will be split below) ────────────
           if (thumbnailUrl) hostedThumbnailUrl = await uploadThumbnail(thumbnailUrl);
         }
 
-        let finalUrl: string;
+        // Upload the video once — Cloudinary stores the full file.
+        // For long videos we derive chunk URLs using Cloudinary's built-in
+        // `so_X,eo_Y` (start-offset / end-offset) transformation so no
+        // server-side splitting is needed — zero extra uploads, zero timeout risk.
+        const finalUrl = await uploadVideo(fileToUpload);
 
-        if (isLongVideo) {
-          // ── Long video: send to server → ffmpeg splits into 2-min segments →
-          //    each segment uploaded to Cloudinary → returns array of URLs ──────
-          const fd = new FormData();
-          fd.append('file', fileToUpload, fileToUpload.name);
-          const data = await xhrPost('/api/split-upload-video', fd);
-          if (!data.urls || !Array.isArray(data.urls) || data.urls.length === 0) {
-            throw new Error('Servidor não retornou segmentos do vídeo.');
-          }
-          finalUrl = data.urls[0];
-          videoChunks = data.urls.length > 1 ? (data.urls as string[]) : undefined;
-        } else {
-          // ── Regular upload for short videos ───────────────────────────────────
-          finalUrl = await uploadVideo(fileToUpload);
+        if (durationSec > VIDEO_CHUNK_SECS && finalUrl.includes('cloudinary.com')) {
+          const chunkCount = Math.ceil(durationSec / VIDEO_CHUNK_SECS);
+          videoChunks = Array.from({ length: chunkCount }, (_, i) => {
+            const start = i * VIDEO_CHUNK_SECS;
+            const end = Math.min((i + 1) * VIDEO_CHUNK_SECS, Math.ceil(durationSec));
+            return finalUrl.replace(
+              '/video/upload/',
+              `/video/upload/so_${start},eo_${end}/`,
+            );
+          });
         }
 
         const postData: Record<string, unknown> = {
