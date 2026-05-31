@@ -60,7 +60,7 @@ const ModalFallback = () => null;
 function getCloudinaryThumb(videoUrl: string): string | null {
   if (!videoUrl.includes('res.cloudinary.com')) return null;
   return videoUrl
-    .replace('/video/upload/', '/video/upload/so_0/')
+    .replace('/video/upload/', '/video/upload/so_10/')
     .replace(/\.[^./]+$/, '.jpg');
 }
 

@@ -81,10 +81,11 @@ function captureVideoFrame(file: File): Promise<string> {
       }
     };
 
-    // Once metadata is available, immediately seek to the very first frame
-    // (0.1 s). For long videos this is instant because we only loaded headers.
+    // Seek to 10 s for the preview frame. For long videos this is instant
+    // because we only loaded headers. Falls back to 0.1 s for short videos.
     video.addEventListener('loadedmetadata', () => {
-      video.currentTime = 0.1;
+      const target = video.duration && video.duration > 12 ? 10 : 0.1;
+      video.currentTime = target;
     });
 
     // Capture as soon as the seek lands — this is always the first second.

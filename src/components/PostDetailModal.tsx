@@ -467,13 +467,35 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     ('ontouchstart' in window && window.innerWidth < 1024);
 
+  // Returns true if the current content is landscape (wide/landscape aspectRatio
+  // OR the video element's actual dimensions are wider than tall).
+  const isActuallyLandscape = useCallback((): boolean => {
+    if (item.aspectRatio === 'landscape' || item.aspectRatio === 'wide') return true;
+    if (videoRef.current) {
+      const { videoWidth, videoHeight } = videoRef.current;
+      if (videoWidth > 0 && videoHeight > 0) return videoWidth > videoHeight;
+    }
+    return false;
+  }, [item.aspectRatio]);
+
+  // Lock screen to landscape when entering fullscreen for landscape content.
+  const tryLockLandscape = useCallback(() => {
+    if (!isActuallyLandscape()) return;
+    try {
+      (screen.orientation as any)?.lock?.('landscape').catch(() => {});
+    } catch {}
+  }, [isActuallyLandscape]);
+
   // Track fullscreen state and unlock orientation on exit
   useEffect(() => {
     const onFsChange = () => {
       const fsEl = document.fullscreenElement || (document as any).webkitFullscreenElement;
       const inFs = !!fsEl && fsEl === mediaContainerRef.current;
       setIsFullscreen(inFs);
-      if (!fsEl) {
+      if (inFs) {
+        // Auto-lock landscape when entering fullscreen by any means
+        tryLockLandscape();
+      } else {
         try { screen.orientation?.unlock?.(); } catch {}
       }
     };
@@ -483,7 +505,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       document.removeEventListener('fullscreenchange', onFsChange);
       document.removeEventListener('webkitfullscreenchange', onFsChange);
     };
-  }, []);
+  }, [tryLockLandscape]);
 
   const handleFullscreen = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -501,12 +523,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       }
 
       container.requestFullscreen().then(() => {
-        // Lock to landscape for landscape/wide videos
-        if (item.aspectRatio === 'landscape' || item.aspectRatio === 'wide') {
-          try {
-            (screen.orientation as any)?.lock?.('landscape').catch(() => {});
-          } catch {}
-        }
+        tryLockLandscape();
       }).catch(() => {
         // Last-resort fallback for browsers without Fullscreen API
         if (videoRef.current) {

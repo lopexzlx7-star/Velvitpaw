@@ -355,6 +355,45 @@ textarea:focus.accent-focus {
   *                    { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 
+/* ─── Responsive: tiny viewports (popup windows, smartwatch, etc.) ── */
+/* Screens narrower than 360px — phone popup / small floating window */
+@media (max-width: 359px) {
+  body { font-size: 13px; }
+
+  /* Reduce horizontal padding throughout */
+  .px-4 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+  .px-3 { padding-left: 0.4rem !important; padding-right: 0.4rem !important; }
+  .gap-4 { gap: 0.5rem !important; }
+  .gap-3 { gap: 0.4rem !important; }
+
+  /* Modals fill the full window instead of floating */
+  [style*="width: min("] {
+    width: calc(100vw - 8px) !important;
+    border-radius: 1rem !important;
+  }
+
+  /* Shrink author/button rows so they don't overflow */
+  .text-\[13px\]  { font-size: 11px !important; }
+  .text-\[14px\]  { font-size: 12px !important; }
+  .text-\[15px\]  { font-size: 12px !important; }
+
+  /* Reduce icon button sizes */
+  .w-7.h-7 { width: 1.4rem !important; height: 1.4rem !important; }
+  .w-8.h-8 { width: 1.6rem !important; height: 1.6rem !important; }
+
+  /* Tighten card grid */
+  .grid { gap: 4px !important; }
+}
+
+/* Ultra-small (smartwatch ~160-240 px or very narrow popup) */
+@media (max-width: 240px) {
+  body { font-size: 11px; }
+  .fixed.inset-0 { padding: 2px !important; }
+  [style*="borderRadius: '2.2rem'"] { border-radius: 0.6rem !important; }
+  .rounded-2xl, .rounded-3xl { border-radius: 0.5rem !important; }
+  nav, footer { display: none !important; }
+}
+
 @keyframes velvit-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }

@@ -870,11 +870,11 @@ app.post('/api/split-upload-video', (req: Request, res: Response) => {
       const fileSizeMB = (req.file.size / 1024 / 1024).toFixed(1);
       console.log(`[split-upload] ${req.file.originalname} | ${fileSizeMB}MB — gerando thumbnail e dividindo em segmentos de 2 min...`);
 
-      // Step 1: generate thumbnail at 1 s using ffmpeg (non-fatal if it fails)
+      // Step 1: generate thumbnail at 10 s using ffmpeg (non-fatal if it fails)
       await new Promise<void>((resolve) => {
         execFile(
           'ffmpeg',
-          ['-i', inputPath, '-ss', '00:00:01', '-vframes', '1',
+          ['-i', inputPath, '-ss', '00:00:10', '-vframes', '1',
            '-vf', 'scale=640:-2', '-q:v', '3', '-y', thumbPath],
           { maxBuffer: 10 * 1024 * 1024 },
           () => resolve(), // always resolve — thumbnail is best-effort
