@@ -2981,13 +2981,6 @@ export default function App() {
                 handleHashtagClick(tag);
               }}
               onPhotoClick={(url, name) => setPhotoViewer({ url, username: name })}
-              onMessageUser={(uid, name, photo) => {
-                setProfileViewUid(null);
-                setChatWithUid(uid);
-                setChatWithName(name);
-                setChatWithPhoto(photo);
-                setShowChat(true);
-              }}
             />
           )}
         </AnimatePresence>

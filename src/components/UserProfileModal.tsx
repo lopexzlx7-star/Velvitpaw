@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, UserPlus, UserCheck, Loader2, Users, ChevronLeft, MessageCircle } from 'lucide-react';
+import { X, User, UserPlus, UserCheck, Loader2, Users, ChevronLeft } from 'lucide-react';
 import { collection, query, where, getDocs, documentId } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -18,7 +18,6 @@ interface UserProfileModalProps {
   onLike?: (id: string) => void;
   onHashtagClick?: (tag: string) => void;
   onPhotoClick?: (url: string | null, username: string) => void;
-  onMessageUser?: (uid: string, name: string, photo: string | null) => void;
 }
 
 interface FollowedUser {
@@ -39,7 +38,6 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onLike,
   onHashtagClick,
   onPhotoClick,
-  onMessageUser,
 }) => {
   const [username, setUsername] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
@@ -338,17 +336,6 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
               >
                 {isFollowing ? <><UserCheck size={15} /> Seguindo</> : <><UserPlus size={15} /> Seguir</>}
               </button>
-              {onMessageUser && (
-                <button
-                  onClick={() => { onMessageUser(targetUid, username, profilePhoto); onClose(); }}
-                  title="Enviar mensagem"
-                  className="w-11 h-11 flex items-center justify-center rounded-full text-white/70 hover:text-white transition-colors"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
-                  aria-label="Enviar mensagem"
-                >
-                  <MessageCircle size={16} />
-                </button>
-              )}
               <button
                 onClick={openFollowing}
                 title="Quem este usuário segue"

@@ -31,13 +31,12 @@ interface ImageItem {
   preview: string;
 }
 
-const MAX_VIDEO_DURATION = 3600; // 1 hour
+const MAX_VIDEO_DURATION = 180; // 3 minutes
 const MAX_DESCRIPTION_WORDS = 50;
 const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 500;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_IMAGES = 10;
-const CHUNK_SIZE = 50 * 1024 * 1024; // 50 MB per Cloudinary chunk
 
 function captureVideoFrame(file: File): Promise<string> {
   const TARGET_W = 640;
@@ -529,109 +528,9 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
     return data.url as string;
   };
 
-  // Sends a single chunk to Cloudinary with retry (up to MAX_CHUNK_RETRIES attempts).
-  // On network errors it waits briefly and retries; on user abort it throws immediately.
-  const CHUNK_TIMEOUT_MS = 10 * 60 * 1000; // 10 min per chunk
-  const MAX_CHUNK_RETRIES = 3;
-
-  const sendChunk = (
-    chunkBlob: Blob,
-    file: File,
-    sign: any,
-    uploadId: string,
-    chunkStart: number,
-    end: number,
-    totalSize: number,
-  ): Promise<any> =>
-    new Promise((resolve, reject) => {
-      const fd = new FormData();
-      fd.append('file', chunkBlob, file.name);
-      fd.append('timestamp', sign.timestamp);
-      fd.append('folder', sign.folder);
-      fd.append('signature', sign.signature);
-      fd.append('api_key', sign.apiKey);
-
-      const xhr = new XMLHttpRequest();
-      activeXhrRef.current = xhr;
-
-      const timeoutId = setTimeout(() => {
-        xhr.abort();
-        reject(new Error('chunk_timeout'));
-      }, CHUNK_TIMEOUT_MS);
-
-      const cleanup = () => { clearTimeout(timeoutId); activeXhrRef.current = null; };
-
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${sign.cloudName}/video/upload`);
-      xhr.setRequestHeader('X-Unique-Upload-Id', uploadId);
-      xhr.setRequestHeader('Content-Range', `bytes ${chunkStart}-${end - 1}/${totalSize}`);
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const loaded = chunkStart + e.loaded;
-          setUploadProgress(Math.round((loaded / totalSize) * 95));
-        }
-      };
-      xhr.onload = () => {
-        cleanup();
-        if (xhr.status === 200 || xhr.status === 206) {
-          setUploadProgress(Math.round((end / totalSize) * 95));
-          let data: any = {};
-          try { data = JSON.parse(xhr.responseText); } catch {}
-          resolve(data);
-        } else {
-          let data: any = {};
-          try { data = JSON.parse(xhr.responseText); } catch {}
-          reject(new Error(data?.error?.message || data?.error || `Erro ${xhr.status}`));
-        }
-      };
-      xhr.onerror = () => { cleanup(); reject(new Error('network_error')); };
-      xhr.onabort = () => { cleanup(); reject(new Error('upload_aborted')); };
-      xhr.send(fd);
-    });
-
-  // Chunked upload: splits large files into CHUNK_SIZE pieces so each request
-  // completes quickly regardless of total video duration, avoiding Cloudinary timeouts.
-  // Each chunk retries up to MAX_CHUNK_RETRIES times on transient network errors.
-  const uploadVideoChunked = async (file: File, sign: any): Promise<string> => {
-    const uploadId = `velvit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const totalSize = file.size;
-    const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
-    let bytesConfirmed = 0;
-    let lastResult: any = {};
-
-    for (let i = 0; i < totalChunks; i++) {
-      if (cancelledRef.current) throw new Error('upload_aborted');
-
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, totalSize);
-      const chunkBlob = file.slice(start, end);
-
-      let chunkResult: any = null;
-      for (let attempt = 1; attempt <= MAX_CHUNK_RETRIES; attempt++) {
-        if (cancelledRef.current) throw new Error('upload_aborted');
-        try {
-          chunkResult = await sendChunk(chunkBlob, file, sign, uploadId, start, end, totalSize);
-          break; // success — move on
-        } catch (err: any) {
-          if (err?.message === 'upload_aborted') throw err; // propagate cancel
-          if (attempt === MAX_CHUNK_RETRIES) throw err;     // out of retries
-          // Wait before retrying: 2s, 4s
-          await new Promise(r => setTimeout(r, 2000 * attempt));
-        }
-      }
-
-      bytesConfirmed = end;
-      lastResult = chunkResult;
-    }
-
-    if (!lastResult?.secure_url) throw new Error('Cloudinary não retornou URL do vídeo.');
-    return lastResult.secure_url as string;
-  };
-
-  // Sends the video to the server which uses ffmpeg to split it into 2-min
-  // segments, uploads each to Cloudinary, and returns the segment URLs plus
-  // a server-generated thumbnail. Progress tracks the XHR upload (0-70%);
-  // server processing shows 70-99%.
-  const uploadVideoViaServer = (file: File): Promise<{ urls: string[]; thumbnailUrl: string | null }> =>
+  // Uploads the video to the server, which generates a thumbnail and sends
+  // the full file to Cloudinary at the best available quality.
+  const uploadVideo = (file: File): Promise<{ url: string; thumbnailUrl: string | null }> =>
     new Promise((resolve, reject) => {
       const fd = new FormData();
       fd.append('file', file, file.name);
@@ -639,7 +538,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       const xhr = new XMLHttpRequest();
       activeXhrRef.current = xhr;
 
-      xhr.open('POST', '/api/split-upload-video');
+      xhr.open('POST', '/api/upload-video');
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
@@ -650,7 +549,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       };
 
       xhr.upload.onload = () => {
-        // File fully sent to server — now server is processing (ffmpeg + Cloudinary)
         setUploadStage('processing');
         setUploadProgress(72);
       };
@@ -661,8 +559,8 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const data = JSON.parse(xhr.responseText);
-            if (!data.urls?.length) { reject(new Error('Servidor não retornou URLs dos segmentos.')); return; }
-            resolve({ urls: data.urls as string[], thumbnailUrl: (data.thumbnailUrl as string | null) ?? null });
+            if (!data.url) { reject(new Error('Servidor não retornou URL do vídeo.')); return; }
+            resolve({ url: data.url as string, thumbnailUrl: (data.thumbnailUrl as string | null) ?? null });
           } catch {
             reject(new Error('Resposta inválida do servidor.'));
           }
@@ -748,16 +646,12 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
 
         setUploadStage('uploading');
 
-        // Upload to server → ffmpeg splits by time → each segment goes to Cloudinary.
-        // The server also generates a thumbnail at 1 s with ffmpeg.
-        const { urls: segmentUrls, thumbnailUrl: serverThumb } = await uploadVideoViaServer(videoDraft.file);
+        // Upload to server → thumbnail generated → single video sent to Cloudinary at best quality.
+        const { url: finalUrl, thumbnailUrl: serverThumb } = await uploadVideo(videoDraft.file);
 
         setUploadStage('saving');
         setUploadProgress(100);
 
-        // If only one segment was produced the video fits in a single clip.
-        const finalUrl = segmentUrls[0];
-        const videoChunks = segmentUrls.length > 1 ? segmentUrls : undefined;
         const hostedThumbnailUrl = serverThumb;
 
         const postData: Record<string, unknown> = {
@@ -777,7 +671,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           description: description.trim() || '',
           hashtags: extractedHashtags,
           ...(hostedThumbnailUrl ? { thumbnailUrl: hostedThumbnailUrl } : {}),
-          ...(videoChunks ? { videoChunks } : {}),
         };
 
         const newVideoRef = await addDoc(collection(db, 'posts'), postData);

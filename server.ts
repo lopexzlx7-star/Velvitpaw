@@ -854,11 +854,10 @@ app.post('/api/upload-video', (req: Request, res: Response) => {
   });
 });
 
-// ─── /api/split-upload-video — split video into 2-min segments, upload each ───
-// Uses disk-based multer so multi-GB files are streamed to disk, not RAM.
-// ffmpeg splits by time, generates a thumbnail at 1 s, then each segment and
-// the thumbnail are uploaded to Cloudinary independently.
-app.post('/api/split-upload-video', (req: Request, res: Response) => {
+// ─── /api/upload-video — upload único de vídeo (máx 3 min) ao Cloudinary ─────
+// Recebe o arquivo em disco (multer disk), gera thumbnail com ffmpeg,
+// e envia o vídeo original ao Cloudinary sem re-encode para máxima qualidade.
+app.post('/api/upload-video', (req: Request, res: Response) => {
   uploadVideoDisk.single('file')(req, res, async (multerErr) => {
     res.setTimeout(SERVER_TIMEOUT_MS);
 
@@ -866,7 +865,7 @@ app.post('/api/split-upload-video', (req: Request, res: Response) => {
       if ((multerErr as any).code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ error: 'Arquivo muito grande. Limite: 5 GB.' });
       }
-      console.error('[split-upload] Multer error:', multerErr.message);
+      console.error('[upload-video] Multer error:', multerErr.message);
       return res.status(400).json({ error: multerErr.message });
     }
 
@@ -874,89 +873,48 @@ app.post('/api/split-upload-video', (req: Request, res: Response) => {
     if (!req.file.mimetype.startsWith('video/')) return res.status(400).json({ error: 'Apenas vídeos aceitos.' });
     if (!cloudinaryReady) return res.status(503).json({ error: 'Cloudinary não configurado. Adicione as credenciais nos Secrets.' });
 
-    const inputPath = req.file.path; // already on disk — no RAM copy needed
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'velvit-split-'));
-    const outputPattern = path.join(tmpDir, 'chunk%03d.mp4');
+    const inputPath = req.file.path;
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'velvit-upload-'));
     const thumbPath = path.join(tmpDir, 'thumb.jpg');
 
     try {
       const fileSizeMB = (req.file.size / 1024 / 1024).toFixed(1);
-      console.log(`[split-upload] ${req.file.originalname} | ${fileSizeMB}MB — gerando thumbnail e dividindo em segmentos de 2 min...`);
+      console.log(`[upload-video] ${req.file.originalname} | ${fileSizeMB}MB — gerando thumbnail...`);
 
-      // Step 1: generate thumbnail at 10 s using ffmpeg (non-fatal if it fails)
+      // Step 1: generate thumbnail at 1 s (non-fatal)
       await new Promise<void>((resolve) => {
         execFile(
           'ffmpeg',
-          ['-i', inputPath, '-ss', '00:00:10', '-vframes', '1',
-           '-vf', 'scale=640:-2', '-q:v', '3', '-y', thumbPath],
+          ['-i', inputPath, '-ss', '00:00:01', '-vframes', '1',
+           '-vf', 'scale=640:-2', '-q:v', '2', '-y', thumbPath],
           { maxBuffer: 10 * 1024 * 1024 },
-          () => resolve(), // always resolve — thumbnail is best-effort
+          () => resolve(),
         );
       });
 
-      // Step 2: split into 2-min segments (stream-copy, no re-encode)
-      await new Promise<void>((resolve, reject) => {
-        execFile(
-          'ffmpeg',
-          [
-            '-i', inputPath,
-            '-c', 'copy',
-            '-f', 'segment',
-            '-segment_time', '120',
-            '-reset_timestamps', '1',
-            '-avoid_negative_ts', 'make_zero',
-            outputPattern,
-          ],
-          { maxBuffer: 10 * 1024 * 1024 },
-          (err, _stdout, stderr) => {
-            if (err) {
-              console.error('[split-upload] ffmpeg split error:', stderr?.slice(-600));
-              reject(new Error('Falha ao dividir vídeo com ffmpeg.'));
-            } else {
-              resolve();
-            }
-          },
-        );
-      });
-
-      const chunkFiles = fs.readdirSync(tmpDir)
-        .filter(f => /^chunk\d+\.mp4$/.test(f))
-        .sort();
-
-      if (chunkFiles.length === 0) throw new Error('ffmpeg não produziu segmentos.');
-      console.log(`[split-upload] ${chunkFiles.length} segmento(s) — enviando ao Cloudinary...`);
-
-      // Step 3: upload thumbnail (best-effort)
+      // Step 2: upload thumbnail (best-effort)
       let thumbnailUrl: string | null = null;
       if (fs.existsSync(thumbPath)) {
         try {
           const thumbBuffer = fs.readFileSync(thumbPath);
           thumbnailUrl = await uploadImageToCloudinary(thumbBuffer, 'image/jpeg', 'thumb.jpg', 'thumbnails');
-          console.log(`[split-upload] ✓ thumbnail → ${thumbnailUrl}`);
+          console.log(`[upload-video] ✓ thumbnail → ${thumbnailUrl}`);
         } catch (e: any) {
-          console.warn('[split-upload] thumbnail upload falhou (não-fatal):', e?.message);
+          console.warn('[upload-video] thumbnail upload falhou (não-fatal):', e?.message);
         }
       }
 
-      // Step 4: upload each segment
-      const urls: string[] = [];
-      for (let i = 0; i < chunkFiles.length; i++) {
-        const segPath = path.join(tmpDir, chunkFiles[i]);
-        const segBuffer = fs.readFileSync(segPath);
-        const segMB = (segBuffer.length / 1024 / 1024).toFixed(1);
-        console.log(`[split-upload] segmento ${i + 1}/${chunkFiles.length} (${segMB}MB) → Cloudinary`);
-        const url = await uploadToCloudinary(segBuffer, 'video/mp4', `seg_${i}.mp4`);
-        urls.push(url);
-        console.log(`[split-upload] ✓ segmento ${i + 1} → ${url}`);
-      }
+      // Step 3: upload full video to Cloudinary without re-encoding
+      console.log(`[upload-video] Enviando vídeo ao Cloudinary...`);
+      const videoBuffer = fs.readFileSync(inputPath);
+      const url = await uploadToCloudinary(videoBuffer, req.file.mimetype, req.file.originalname);
+      console.log(`[upload-video] ✓ vídeo → ${url}`);
 
-      console.log(`[split-upload] ✓ Concluído — ${urls.length} segmento(s), thumbnail: ${thumbnailUrl ? 'sim' : 'não'}`);
-      return res.json({ urls, thumbnailUrl, isChunked: chunkFiles.length > 1 });
+      return res.json({ url, thumbnailUrl });
     } catch (err: any) {
-      console.error('[split-upload] ✗ Erro:', err?.message);
+      console.error('[upload-video] ✗ Erro:', err?.message);
       return res.status(500).json({ error: err?.message || 'Falha ao processar/enviar vídeo.' });
     } finally {
-      // Remove the original uploaded file and temp split directory
       try { fs.unlinkSync(inputPath); } catch {}
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
     }
