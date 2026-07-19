@@ -43,5 +43,9 @@
     "autoprefixer": "^10.4.27",
     "tailwindcss": "^4.2.2",
     "typescript": "~5.8.2"
+  },
+  "overrides": {
+    "shell-quote": "1.10.0",
+    "websocket-driver": "0.7.5"
   }
 }
