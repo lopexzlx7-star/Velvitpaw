@@ -811,49 +811,6 @@ app.post('/api/upload-thumbnail', async (req: Request, res: Response) => {
   }
 });
 
-// ─── /api/upload-video — server-side proxy to Cloudinary (heavy videos) ──────
-app.post('/api/upload-video', (req: Request, res: Response) => {
-  upload.single('file')(req, res, async (multerErr) => {
-    res.setTimeout(SERVER_TIMEOUT_MS);
-
-    if (multerErr) {
-      if ((multerErr as any).code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({
-          error: `Arquivo muito grande. O limite é ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB.`,
-        });
-      }
-      console.error('[upload-video] Multer error:', multerErr.message);
-      return res.status(400).json({ error: multerErr.message });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
-    }
-
-    if (!req.file.mimetype.startsWith('video/')) {
-      return res.status(400).json({ error: 'Tipo de arquivo inválido. Apenas vídeos são aceitos.' });
-    }
-
-    if (!cloudinaryReady) {
-      return res.status(503).json({
-        error: 'Cloudinary não configurado. Adicione as credenciais nos Secrets.',
-      });
-    }
-
-    const fileSizeMB = (req.file.size / 1024 / 1024).toFixed(1);
-    console.log(`[upload-video] ${req.file.originalname} | ${fileSizeMB}MB → Cloudinary`);
-
-    try {
-      const url = await uploadToCloudinary(req.file.buffer, req.file.mimetype, req.file.originalname);
-      console.log(`[upload-video] ✓ Cloudinary sucesso: ${url}`);
-      return res.json({ url, provider: 'cloudinary' });
-    } catch (err: any) {
-      console.error(`[upload-video] ✗ Cloudinary falhou: ${err?.message}`);
-      return res.status(500).json({ error: 'Upload falhou. Verifique as credenciais do Cloudinary nos Secrets.' });
-    }
-  });
-});
-
 // ─── /api/upload-video — upload único de vídeo (máx 3 min) ao Cloudinary ─────
 // Recebe o arquivo em disco (multer disk), gera thumbnail com ffmpeg,
 // e envia o vídeo original ao Cloudinary sem re-encode para máxima qualidade.
@@ -1220,58 +1177,6 @@ app.post('/api/reset-password', async (req: Request, res: Response) => {
 server.timeout = SERVER_TIMEOUT_MS;
 server.keepAliveTimeout = SERVER_TIMEOUT_MS;
 
-// ─── ApyHub video compression proxy ──────────────────────────────────────────
-// Receives the raw video from the browser, forwards to ApyHub, streams back
-// the compressed mp4. The API key stays on the server and never reaches the client.
-// Uses the existing `upload` multer instance (field name: "video", same as client).
-app.post('/api/compress-video', upload.single('video'), async (req: Request, res: Response) => {
-  const APYHUB_API_KEY = process.env.APYHUB_API_KEY ?? '';
-  if (!APYHUB_API_KEY) {
-    res.status(500).json({ error: 'APYHUB_API_KEY não configurada no servidor.' });
-    return;
-  }
-  if (!req.file) {
-    res.status(400).json({ error: 'Nenhum arquivo de vídeo recebido.' });
-    return;
-  }
-
-  console.log(`[ApyHub] Iniciando compressão: ${req.file.originalname ?? 'video'} (${(req.file.size / 1024 / 1024).toFixed(1)} MB)`);
-
-  try {
-    // ApyHub expects the field name "file"
-    const apyForm = new FormData();
-    const blob = new Blob([req.file.buffer], { type: req.file.mimetype || 'video/mp4' });
-    apyForm.append('file', blob, req.file.originalname || 'video.mp4');
-
-    const apyRes = await fetch('https://api.apyhub.com/processor/video/compress/file', {
-      method: 'POST',
-      headers: { 'apy-token': APYHUB_API_KEY },
-      body: apyForm,
-    });
-
-    if (!apyRes.ok) {
-      let errMsg = `ApyHub erro ${apyRes.status}`;
-      try {
-        const body = await apyRes.text();
-        try { const j = JSON.parse(body); errMsg = j?.message ?? j?.error ?? errMsg; } catch { errMsg = body || errMsg; }
-      } catch {}
-      console.error('[ERRO] ApyHub compress-video:', errMsg);
-      res.status(502).json({ error: errMsg });
-      return;
-    }
-
-    const contentType = apyRes.headers.get('content-type') ?? 'video/mp4';
-    const arrayBuffer = await apyRes.arrayBuffer();
-    const compressedMB = (arrayBuffer.byteLength / 1024 / 1024).toFixed(1);
-    console.log(`[ApyHub] Compressão concluída: ${compressedMB} MB — enviando ao cliente`);
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', 'attachment; filename="compressed.mp4"');
-    res.send(Buffer.from(arrayBuffer));
-  } catch (err: any) {
-    console.error('[ERRO] compress-video:', err.message);
-    res.status(500).json({ error: err.message ?? 'Erro interno ao comprimir vídeo.' });
-  }
-});
 
 // ─── /api/v1/status — verifica se a API do autopopulator está ok ──────────────
 app.get('/api/v1/status', requireApiKey, (_req: Request, res: Response) => {

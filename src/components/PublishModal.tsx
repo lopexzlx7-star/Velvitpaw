@@ -33,7 +33,6 @@ interface ImageItem {
 
 const MAX_VIDEO_DURATION = 180; // 3 minutes
 const MAX_DESCRIPTION_WORDS = 50;
-const MAX_VIDEO_SHORT_SIDE = 1920;
 const MAX_FILE_SIZE_MB = 500;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_IMAGES = 10;
@@ -444,16 +443,10 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       clearTimeout(safetyTimer);
       const dur = isFinite(metaEl.duration) ? metaEl.duration : 0;
       const w = metaEl.videoWidth; const h = metaEl.videoHeight;
-      const longerSide = Math.max(w, h);
       if (dur > MAX_VIDEO_DURATION) {
         cleanup(); clearTimeout(safetyTimer); URL.revokeObjectURL(blobUrl);
         setIsValidating(false);
         setError(`Vídeo muito longo. Máximo ${MAX_VIDEO_DURATION / 60} minutos.`); return;
-      }
-      if (w > 0 && h > 0 && longerSide > MAX_VIDEO_SHORT_SIDE) {
-        cleanup(); clearTimeout(safetyTimer); URL.revokeObjectURL(blobUrl);
-        setIsValidating(false);
-        setError(`Resolução muito alta (${w}×${h}). Use vídeos até ${MAX_VIDEO_SHORT_SIDE}p.`); return;
       }
       commitDraft(dur, w, h);
     };
@@ -1078,7 +1071,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                     {isMultiImage && uploadingIdx !== null
                       ? `Publicando imagem ${uploadingIdx + 1} de ${images.length}...`
                       : uploadStage === 'processing'
-                        ? 'Processando segmentos...'
+                        ? 'Enviando ao Cloudinary...'
                         : uploadStage === 'saving'
                           ? 'Salvando post...'
                           : 'Enviando vídeo...'}
