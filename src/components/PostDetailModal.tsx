@@ -100,8 +100,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [dragY, setDragY] = useState<number | null>(null); // px the finger has moved during an active drag
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
-  // Chunk playback state — for videos stored as multiple 2-min segments
-  const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
   // Briefly shown when the user tries to swipe past the last/first video.
   const [endToast, setEndToast] = useState<'next' | 'prev' | null>(null);
   const [seekPreview, setSeekPreview] = useState<{ time: number; pct: number } | null>(null);
@@ -122,11 +120,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     if (endToastTimerRef.current) window.clearTimeout(endToastTimerRef.current);
   }, []);
 
-  // Reset chunk index whenever the item changes (navigating to a different post)
-  useEffect(() => {
-    setCurrentChunkIdx(0);
-  }, [item.id]);
-
   const isMobileScreen = useIsMobile();
   // Freeze the mobile flag at mount — prevents video URL from changing when the
   // screen rotates to landscape in fullscreen, which would restart the video.
@@ -134,14 +127,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const curVideoUrl = useMemo(() => getResponsiveVideoUrl(item.url, frozenMobile), [item.url, frozenMobile]);
   const prevVideoUrl = useMemo(() => prevItem ? getResponsiveVideoUrl(prevItem.url, frozenMobile) : '', [prevItem?.url, frozenMobile]);
   const nextVideoUrl = useMemo(() => nextItem ? getResponsiveVideoUrl(nextItem.url, frozenMobile) : '', [nextItem?.url, frozenMobile]);
-
-  // Chunked video support — item may have videoChunks[] with 2-min segments
-  const isChunkedVideo = !!(item.videoChunks && item.videoChunks.length > 1);
-  const totalChunks = isChunkedVideo ? item.videoChunks!.length : 1;
-  const activeChunkUrl = isChunkedVideo
-    ? getResponsiveVideoUrl(item.videoChunks![Math.min(currentChunkIdx, totalChunks - 1)], frozenMobile)
-    : curVideoUrl;
-  const APPROX_CHUNK_DURATION_S = 120;
 
   const allImages: string[] = item.images && item.images.length > 0 ? item.images : [item.url];
   const isMultiImage = !isVideoType(item.type) && allImages.length > 1;
@@ -170,9 +155,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const mediaContainerRef = useRef<HTMLDivElement>(null);
   const playPauseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef<{ time: number; x: number } | null>(null);
-  // When a seek crosses a chunk boundary we store the target offset here so
-  // it can be applied to the <video> element once the new chunk has loaded.
-  const pendingSeekRef = useRef<number | null>(null);
   const seekFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -190,43 +172,20 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     };
   }, []);
 
-  // Seek to a position expressed in global seconds (spanning all chunks).
-  // If the target falls in the current chunk, seeks immediately.
-  // If it's in a different chunk, stores the offset in pendingSeekRef and
-  // switches the chunk — the offset is applied once the new chunk loads.
   const seekToGlobalTime = useCallback((globalSecs: number) => {
-    const clampedGlobal = Math.max(0, globalSecs);
-    const targetChunk = Math.min(
-      Math.floor(clampedGlobal / APPROX_CHUNK_DURATION_S),
-      totalChunks - 1,
-    );
-    const offsetInChunk = clampedGlobal - targetChunk * APPROX_CHUNK_DURATION_S;
-
-    if (!isChunkedVideo || targetChunk === currentChunkIdx) {
-      const video = videoRef.current;
-      const seekTo = Math.max(0, Math.min(video?.duration || 0, offsetInChunk));
-      if (video) video.currentTime = seekTo;
-      setCurrentTime(seekTo);
-    } else {
-      // Cross-chunk: park the offset and switch chunk immediately
-      pendingSeekRef.current = Math.max(0, offsetInChunk);
-      setCurrentChunkIdx(targetChunk);
-    }
-  }, [isChunkedVideo, currentChunkIdx, totalChunks]);
+    const video = videoRef.current;
+    const seekTo = Math.max(0, Math.min(video?.duration || 0, globalSecs));
+    if (video) video.currentTime = seekTo;
+    setCurrentTime(seekTo);
+  }, []);
 
   const triggerSeek = useCallback((side: 'left' | 'right') => {
     const delta = side === 'right' ? 10 : -10;
-    const curGlobal = isChunkedVideo
-      ? currentChunkIdx * APPROX_CHUNK_DURATION_S + currentTime
-      : currentTime;
-    const totalDur = isChunkedVideo
-      ? (item.duration || totalChunks * APPROX_CHUNK_DURATION_S)
-      : duration;
-    seekToGlobalTime(Math.min(totalDur, curGlobal + delta));
+    seekToGlobalTime(Math.min(duration, currentTime + delta));
     if (seekFlashTimer.current) clearTimeout(seekFlashTimer.current);
     setSeekFlash(side);
     seekFlashTimer.current = setTimeout(() => setSeekFlash(null), 700);
-  }, [isChunkedVideo, currentChunkIdx, currentTime, totalChunks, duration, item.duration, seekToGlobalTime]);
+  }, [currentTime, duration, seekToGlobalTime]);
 
   const handleVideoDoubleClick = (e: React.MouseEvent<HTMLVideoElement>) => {
     e.stopPropagation();
@@ -282,19 +241,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   // element unmounts and the new one mounts — so playback never visibly pauses during
   // a scroll gesture.
 
-  // When a chunked video segment ends, switch to the next chunk immediately.
-  // The next chunk is already being preloaded by the hidden <video> element,
-  // so the transition is nearly instantaneous.
-  const handleVideoEnded = useCallback(() => {
-    if (!isChunkedVideo) return; // non-chunked videos use loop={true}
-    if (currentChunkIdx < totalChunks - 1) {
-      setCurrentChunkIdx(idx => idx + 1);
-    } else {
-      // Last chunk — loop back to the first chunk
-      setCurrentChunkIdx(0);
-    }
-  }, [isChunkedVideo, currentChunkIdx, totalChunks]);
-
   // Buffer-then-play: when the active item or chunk changes, wait until at least
   // half of the video has been buffered before starting playback. The remainder
   // keeps loading in the background while playing, preventing mid-stream stutters.
@@ -310,12 +256,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     const startNow = () => {
       if (started) return;
       started = true;
-      // Apply any cross-chunk seek offset that was stored before the chunk switched
-      if (pendingSeekRef.current !== null) {
-        v.currentTime = Math.max(0, Math.min(v.duration || 0, pendingSeekRef.current));
-        setCurrentTime(pendingSeekRef.current);
-        pendingSeekRef.current = null;
-      }
       setIsPlaying(true);
       v.play().catch(() => {});
     };
@@ -327,8 +267,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       if (buf.length === 0) return;
       const bufferedEnd = buf.end(buf.length - 1);
       // Start when EITHER 20% of the file OR 2 seconds of playback are already
-      // buffered — whichever happens first. For chunk transitions the next chunk
-      // is already preloaded so it starts almost instantly.
+      // buffered — whichever happens first.
       const enoughByRatio = bufferedEnd / dur >= 0.2;
       const enoughByTime = bufferedEnd >= 2;
       if (enoughByRatio || enoughByTime) startNow();
@@ -349,7 +288,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       v.removeEventListener('loadedmetadata', tryStart);
       v.removeEventListener('canplaythrough', startNow);
     };
-  }, [item.id, currentChunkIdx, isVideo, directVideo]);
+  }, [item.id, isVideo, directVideo]);
 
   // Trigger a TikTok-style slide; on completion swap the active item via onNavigate
   const triggerSlide = useCallback((dir: 'next' | 'prev') => {
@@ -432,7 +371,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
     };
-  }, [isVideo, directVideo, isSeeking, item.duration, currentChunkIdx]);
+  }, [isVideo, directVideo, isSeeking, item.duration]);
 
   const flashPlayPause = () => {
     setShowPlayPause(true);
@@ -466,9 +405,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
 
   const handleSeekStart = () => setIsSeeking(true);
 
-  const globalDurationEarly = isChunkedVideo
-    ? (item.duration || totalChunks * APPROX_CHUNK_DURATION_S)
-    : duration;
+  const globalDurationEarly = duration;
 
   const doSeek = useCallback((val: number) => {
     seekToGlobalTime(val);
@@ -734,14 +671,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   };
 
   const isUserPost = item.authorUid === currentUserUid;
-  // For chunked videos compute global position across all segments
-  const globalCurrentTime = isChunkedVideo
-    ? currentChunkIdx * APPROX_CHUNK_DURATION_S + currentTime
-    : currentTime;
-  const globalDuration = isChunkedVideo
-    ? (item.duration || totalChunks * APPROX_CHUNK_DURATION_S)
-    : duration;
-  const progress = globalDuration > 0 ? (globalCurrentTime / globalDuration) * 100 : 0;
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <motion.div
@@ -880,12 +810,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                     )}
 
                     <video
-                      key={`cur-${item.id}-chunk-${currentChunkIdx}`}
+                      key={`cur-${item.id}`}
                       ref={videoRef}
-                      src={activeChunkUrl}
+                      src={curVideoUrl}
                       poster={item.thumbnailUrl || undefined}
                       className="absolute left-0 top-0 w-full h-full bg-black"
-                      loop={!isChunkedVideo}
+                      loop
                       muted={isMuted}
                       playsInline
                       preload="auto"
@@ -894,21 +824,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       onTouchEnd={handleVideoTouchEnd}
                       onPlaying={() => setVideoReady(true)}
                       onWaiting={() => setVideoReady(false)}
-                      onEnded={handleVideoEnded}
                       style={{ cursor: 'pointer', display: 'block', objectFit: 'contain', transform: 'translateZ(0)' }}
                     />
-
-                    {/* Preload the next chunk of the same video so switching is instant */}
-                    {isChunkedVideo && currentChunkIdx < totalChunks - 1 && (
-                      <video
-                        key={`chunk-preload-${item.id}-${currentChunkIdx + 1}`}
-                        src={getResponsiveVideoUrl(item.videoChunks![currentChunkIdx + 1], isMobileScreen)}
-                        muted
-                        playsInline
-                        preload="auto"
-                        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-                      />
-                    )}
 
                     {nextItem && isDirectVideoUrl(nextItem.url) && (
                       <video
@@ -1192,7 +1109,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                             <div className="h-full rounded-full bg-white" style={{ width: `${progress}%`, transition: 'width 0.25s linear' }} />
                           </div>
                           <input
-                            type="range" min={0} max={globalDuration || 1} step={0.1} value={globalCurrentTime}
+                            type="range" min={0} max={duration || 1} step={0.1} value={currentTime}
                             onMouseDown={handleSeekStart}
                             onTouchStart={(e) => { handleSeekStart(); e.stopPropagation(); }}
                             onChange={handleSeekChange}
@@ -1212,7 +1129,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                           />
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] text-white/50 font-mono tabular-nums">{formatTime(globalCurrentTime)} / {formatTime(globalDuration)}</span>
+                          <span className="text-[10px] text-white/50 font-mono tabular-nums">{formatTime(currentTime)} / {formatTime(duration)}</span>
                           <div className="flex items-center gap-1">
                             <button
                               onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); showControls(); }}
