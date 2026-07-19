@@ -1,5 +1,5 @@
 import { Home, Plus, User } from 'lucide-react';
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export type NavTab = 'feed' | 'publish' | 'profile';
 
@@ -20,12 +20,36 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
   onProfileClick,
 }) => {
   const idx = Math.max(0, TAB_ORDER.indexOf(activeTab));
+  const [visible, setVisible] = useState(true);
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setVisible(false);
+      if (scrollTimer.current) clearTimeout(scrollTimer.current);
+      scrollTimer.current = setTimeout(() => setVisible(true), 300);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    };
+  }, []);
 
   const tabColor = (t: NavTab) =>
     activeTab === t ? '#000' : 'rgba(255,255,255,0.55)';
 
   return (
-    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[120]">
+    <div
+      className="fixed bottom-8 left-1/2 z-[120]"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: `translateX(-50%) translateY(${visible ? '0px' : '16px'})`,
+        transition: 'opacity 250ms ease, transform 250ms ease',
+        pointerEvents: visible ? 'auto' : 'none',
+      }}
+    >
       <div
         className="dark:bg-black/30 bg-white/30 backdrop-blur-sm px-2 py-2 rounded-full shadow-xl dark:shadow-black/50 border dark:border-white/10 border-black/10"
         style={{ position: 'relative' }}
