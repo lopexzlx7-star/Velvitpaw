@@ -1,5 +1,5 @@
 import { Home, Plus, User } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 
 export type NavTab = 'feed' | 'publish' | 'profile';
 
@@ -8,6 +8,7 @@ interface FloatingNavProps {
   onHomeClick: () => void;
   onAddClick: () => void;
   onProfileClick: () => void;
+  visible?: boolean;
 }
 
 const TAB_ORDER: NavTab[] = ['publish', 'feed', 'profile'];
@@ -18,24 +19,9 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
   onHomeClick,
   onAddClick,
   onProfileClick,
+  visible = true,
 }) => {
   const idx = Math.max(0, TAB_ORDER.indexOf(activeTab));
-  const [visible, setVisible] = useState(true);
-  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setVisible(false);
-      if (scrollTimer.current) clearTimeout(scrollTimer.current);
-      scrollTimer.current = setTimeout(() => setVisible(true), 300);
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      if (scrollTimer.current) clearTimeout(scrollTimer.current);
-    };
-  }, []);
 
   const tabColor = (t: NavTab) =>
     activeTab === t ? '#000' : 'rgba(255,255,255,0.55)';
@@ -55,7 +41,7 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
         style={{ position: 'relative' }}
       >
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          {/* Sliding pill — pure CSS transition, no Tailwind transform conflicts */}
+          {/* Sliding pill */}
           <div
             className="accent-primary-btn"
             style={{

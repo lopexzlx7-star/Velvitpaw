@@ -484,13 +484,24 @@ export default function App() {
   const headerY = useTransform(scrollY, [0, 50], [0, -20]);
   const headerPointerEvents = useTransform(scrollY, [0, 50], ['auto', 'none']);
 
+  const [navVisible, setNavVisible] = useState(true);
+  const navScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const el = currentTab === 'feed' ? feedScrollRef.current : profileScrollRef.current;
     if (!el) return;
     scrollY.set(el.scrollTop);
-    const onScroll = () => scrollY.set(el.scrollTop);
+    const onScroll = () => {
+      scrollY.set(el.scrollTop);
+      setNavVisible(false);
+      if (navScrollTimer.current) clearTimeout(navScrollTimer.current);
+      navScrollTimer.current = setTimeout(() => setNavVisible(true), 300);
+    };
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (navScrollTimer.current) clearTimeout(navScrollTimer.current);
+    };
   }, [currentTab]);
 
   useEffect(() => {
@@ -2846,6 +2857,7 @@ export default function App() {
           onHomeClick={() => { if (showPublishModal) setShowPublishModal(false); handleHomeClick(); }}
           onAddClick={() => setShowPublishModal(true)}
           onProfileClick={() => { if (showPublishModal) setShowPublishModal(false); setCurrentTab('profile'); }}
+          visible={navVisible}
         />
       )}
 
