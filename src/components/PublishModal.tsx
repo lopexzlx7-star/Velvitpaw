@@ -1071,7 +1071,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
                     {isMultiImage && uploadingIdx !== null
                       ? `Publicando imagem ${uploadingIdx + 1} de ${images.length}...`
                       : uploadStage === 'processing'
-                        ? 'Enviando ao Cloudinary...'
+                        ? 'Fazendo upload...'
                         : uploadStage === 'saving'
                           ? 'Salvando post...'
                           : 'Enviando vídeo...'}
