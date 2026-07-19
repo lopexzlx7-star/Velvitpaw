@@ -56,7 +56,7 @@ build = ["npm", "run", "build"]
 [userenv]
 
 [userenv.shared]
-CLOUDINARY_CLOUD_NAME = "dekidzsq6"
+CLOUDINARY_CLOUD_NAME = "zuuoztsm"
 CLOUDINARY_UPLOAD_PRESET = "velvitpaw_uploads"
 CLOUDINARY_API_KEY = "619745768196494"
 CLOUDINARY_API_SECRET = "zIaEFxrdZh4im8oEditKM1RJYK0"
