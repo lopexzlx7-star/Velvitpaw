@@ -19,7 +19,7 @@ A social media app for sharing images, GIFs, and videos — optimized for low-en
 - **Backend**: Express (Node.js / tsx) on port 3001 — handles video uploads and AI tag suggestions
 - **Database**: Firebase Firestore (custom database ID in config)
 - **Auth**: Firebase Auth (Email/Password)
-- **Media Storage**: Cloudinary (todos os tipos: vídeos, imagens, thumbnails, frames)
+- **Media Storage**: Firebase Storage (imagens e GIFs — upload direto do cliente) + Cloudinary (vídeos e thumbnails de vídeo via servidor)
 - **Thumbnails**: First frame of video extracted on client (canvas JPEG), saved as `thumbnailUrl` in Firestore
 - **AI**: OpenAI GPT-4o-mini (`/api/suggest-tags`, `/api/generate-tags-multi`) — requires `OPENAI_API_KEY` env var
 - **Hashtag DB**: Local JSON file (`tags_db.json`) storing user hashtags per post for `/api/search-tags`
@@ -31,7 +31,7 @@ A social media app for sharing images, GIFs, and videos — optimized for low-en
 - `src/components/PublishModal.tsx` — post creation, video upload via Cloudinary/ImageKit, thumbnail extraction
 - `src/components/GlassCard.tsx` — content card component (uses `thumbnailUrl` as video poster)
 - `src/components/PostDetailModal.tsx` — full post view (uses `thumbnailUrl` as video poster)
-- `src/firebase.ts` — Firebase init (db, auth exports)
+- `src/firebase.ts` — Firebase init (db, auth, storage exports)
 - `src/types.ts` — TypeScript interfaces (ContentItem includes `thumbnailUrl`)
 - `server.ts` — Express API server (Cloudinary & ImageKit upload proxy, Gemini tag suggestions)
 - `firebase-applet-config.json` — Firebase project config
@@ -51,10 +51,10 @@ A social media app for sharing images, GIFs, and videos — optimized for low-en
 
 ## Upload Flow
 
-- **Images**: Compressed on client (canvas JPEG 0.82, max 1200px), stored as base64 in Firestore
+- **Images/GIFs**: Upload direto do cliente para Firebase Storage (`posts/{uid}/{filename}`). GIFs preservam animação (bytes originais, sem canvas). URL pública do Firebase salva no Firestore.
 - **Videos**:
   1. First frame extracted on client via canvas → saved as `thumbnailUrl` in Firestore document
-  2. File uploaded to Express server → proxied to Cloudinary (light) or ImageKit (heavy)
+  2. File uploaded to Express server (`/api/upload-video`) → proxied to Cloudinary
   3. Permanent CDN URL saved as `url` in Firestore document
   4. `thumbnailUrl` used as `poster` in `<video>` elements for instant preview before video loads
 
