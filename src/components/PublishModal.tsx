@@ -5,9 +5,8 @@ import {
   Maximize2, Square, Smartphone, Plus, Film, RotateCcw,
   ChevronLeft, ChevronRight, Trash2, Camera
 } from 'lucide-react';
-import { db, auth, storage } from '../firebase';
+import { db, auth } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL, UploadTask } from 'firebase/storage';
 
 interface PublishModalProps {
   isOpen: boolean;
@@ -164,7 +163,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
   const addMoreInputRef = useRef<HTMLInputElement>(null);
   const objectUrlRef = useRef<string | null>(null);
   const activeXhrRef = useRef<XMLHttpRequest | null>(null);
-  const activeUploadTaskRef = useRef<UploadTask | null>(null);
   const thumbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = useRef(false);
   const descRef = useRef<HTMLTextAreaElement>(null);
@@ -202,7 +200,6 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
 
   const resetState = () => {
     cancelledRef.current = true;
-    if (activeUploadTaskRef.current) { activeUploadTaskRef.current.cancel(); activeUploadTaskRef.current = null; }
     if (activeXhrRef.current) { activeXhrRef.current.abort(); activeXhrRef.current = null; }
     if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
     if (thumbTimerRef.current) { clearTimeout(thumbTimerRef.current); thumbTimerRef.current = null; }
@@ -510,50 +507,21 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
       xhr.send(body);
     });
 
-  const uploadSingleImage = (previewDataUrl: string, rawFile?: File): Promise<string> =>
-    new Promise(async (resolve, reject) => {
-      if (!auth.currentUser) { reject(new Error('Não autenticado.')); return; }
-
-      let fileBlob: Blob;
-      let filename: string;
-      if (rawFile) {
-        fileBlob = rawFile;
-        const ext = rawFile.name.split('.').pop() || (rawFile.type === 'image/gif' ? 'gif' : 'jpg');
-        filename = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      } else {
-        fileBlob = await fetch(previewDataUrl).then(r => r.blob());
-        filename = `${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-      }
-
-      const path = `posts/${auth.currentUser.uid}/${filename}`;
-      const fileRef = storageRef(storage, path);
-      const task = uploadBytesResumable(fileRef, fileBlob, {
-        contentType: rawFile?.type || 'image/jpeg',
-      });
-      activeUploadTaskRef.current = task;
-
-      task.on(
-        'state_changed',
-        (snap) => {
-          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 95);
-          setUploadProgress(pct);
-        },
-        (err) => {
-          activeUploadTaskRef.current = null;
-          if (err.code === 'storage/canceled') {
-            reject(new Error('upload_aborted'));
-          } else {
-            reject(new Error(err.message));
-          }
-        },
-        async () => {
-          activeUploadTaskRef.current = null;
-          setUploadProgress(100);
-          const url = await getDownloadURL(task.snapshot.ref);
-          resolve(url);
-        },
-      );
-    });
+  // Images (non-GIF): saved as compressed base64 data URL directly in Firestore — no upload needed.
+  // GIFs: uploaded to Cloudinary via /api/upload-image to preserve animation (raw bytes, no canvas).
+  const uploadSingleImage = async (previewDataUrl: string, rawFile?: File): Promise<string> => {
+    if (!rawFile || rawFile.type !== 'image/gif') {
+      // Regular image — previewDataUrl is already a compressed JPEG base64 from compressImage().
+      setUploadProgress(100);
+      return previewDataUrl;
+    }
+    // GIF — upload original bytes to Cloudinary to preserve animation.
+    const fd = new FormData();
+    fd.append('file', rawFile, rawFile.name);
+    const data = await xhrPost('/api/upload-image', fd);
+    if (!data.url) throw new Error('Servidor não retornou URL do GIF.');
+    return data.url as string;
+  };
 
   // Uploads the video to the server, which generates a thumbnail and sends
   // the full file to Cloudinary at the best available quality.
