@@ -53,7 +53,6 @@ const PhotoViewerModal    = lazy(() => import('./components/PhotoViewerModal'));
 const LoginBackdrop       = lazy(() => import('./components/LoginBackdrop'));
 const ChatModal = lazy(() => import('./components/ChatModal'));
 const NotificationsModal = lazy(() => import('./components/NotificationsModal'));
-const CleanupPostsModal  = lazy(() => import('./components/CleanupPostsModal'));
 
 const ModalFallback = () => null;
 
@@ -449,7 +448,6 @@ export default function App() {
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [showProfileEdit, setShowProfileEdit] = useState(false);
-  const [showCleanupPosts, setShowCleanupPosts] = useState(false);
   const [cropperState, setCropperState] = useState<{ open: boolean; src: string | null; target: 'profile' | 'bg' | null }>({ open: false, src: null, target: null });
   const [publishHasMedia, setPublishHasMedia] = useState(false);
   const [photoViewer, setPhotoViewer] = useState<{ url: string | null; username: string } | null>(null);
@@ -2664,13 +2662,6 @@ export default function App() {
                         >
                           <User size={14} /> Editar Perfil
                         </button>
-                        <button
-                          onClick={() => setShowCleanupPosts(true)}
-                          className="px-5 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-full text-[10px] uppercase tracking-widest text-red-400/70 hover:text-red-400 transition-all flex items-center gap-2"
-                          title="Excluir posts de contas antigas"
-                        >
-                          <Trash2 size={14} /> Limpar Posts Antigos
-                        </button>
                         <div className="flex items-center gap-2 flex-nowrap shrink-0">
                           <button
                             onClick={() => setShowFollowingList(true)}
@@ -3116,13 +3107,6 @@ export default function App() {
           onSelectProfilePhoto={(e) => { handleFileSelect(e, 'profile'); }}
           onSelectBackgroundPhoto={(e) => { handleFileSelect(e, 'bg'); }}
           onDeleteAccount={() => { setShowProfileEdit(false); handleDeleteAccount(); }}
-        />
-      </Suspense>
-
-      <Suspense fallback={<ModalFallback />}>
-        <CleanupPostsModal
-          isOpen={showCleanupPosts}
-          onClose={() => setShowCleanupPosts(false)}
         />
       </Suspense>
 
