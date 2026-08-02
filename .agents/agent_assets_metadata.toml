@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "lkfcpmoHi7UL4XA3kbFAq"
+uri = "file://firestore.rules"
+type = "unspecified"
+title = "firestore.rules"
+description = "Regras de segurança do Firestore — cole no Firebase Console na aba Regras e publique."
