@@ -1,77 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, Search, X, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Trash2, X, Loader2, AlertTriangle } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, getDocs, query, where, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
+
+interface Post {
+  id: string;
+  title?: string;
+  authorName?: string;
+  url?: string;
+  type?: string;
+  thumbnailUrl?: string;
+  createdAt?: string;
+}
 
 interface CleanupPostsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type Stage = 'search' | 'confirm' | 'deleting' | 'done';
-
 const CleanupPostsModal: React.FC<CleanupPostsModalProps> = ({ isOpen, onClose }) => {
-  const [inputName, setInputName] = useState('');
-  const [stage, setStage] = useState<Stage>('search');
-  const [foundCount, setFoundCount] = useState(0);
-  const [deletedCount, setDeletedCount] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const reset = () => {
-    setInputName('');
-    setStage('search');
-    setFoundCount(0);
-    setDeletedCount(0);
-    setError(null);
-    setLoading(false);
-  };
-
-  const handleClose = () => { reset(); onClose(); };
-
-  const handleSearch = async () => {
-    const name = inputName.trim();
-    if (!name) return;
+  useEffect(() => {
+    if (!isOpen) return;
     setError(null);
     setLoading(true);
-    try {
-      const snap = await getDocs(
-        query(collection(db, 'posts'), where('authorName', '==', name))
-      );
-      setFoundCount(snap.size);
-      if (snap.size === 0) {
-        setError(`Nenhum post encontrado com o autor "@${name}".`);
-      } else {
-        setStage('confirm');
-      }
-    } catch (e: any) {
-      setError('Erro ao buscar posts. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    getDocs(query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(200)))
+      .then(snap => {
+        setPosts(snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<Post, 'id'>) })));
+      })
+      .catch(() => setError('Não foi possível carregar os posts.'))
+      .finally(() => setLoading(false));
+  }, [isOpen]);
 
-  const handleDelete = async () => {
-    const name = inputName.trim();
-    setStage('deleting');
-    setError(null);
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
     try {
-      const snap = await getDocs(
-        query(collection(db, 'posts'), where('authorName', '==', name))
-      );
-      // Delete in batches of 10 to avoid overwhelming Firestore
-      const docs = snap.docs;
-      let deleted = 0;
-      for (const d of docs) {
-        await deleteDoc(d.ref);
-        deleted++;
-        setDeletedCount(deleted);
-      }
-      setStage('done');
-    } catch (e: any) {
-      setError('Erro ao excluir posts. Alguns podem não ter sido removidos.');
-      setStage('confirm');
+      await deleteDoc(doc(db, 'posts', id));
+      setPosts(prev => prev.filter(p => p.id !== id));
+    } catch {
+      setError('Erro ao excluir. Tente novamente.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -82,135 +56,107 @@ const CleanupPostsModal: React.FC<CleanupPostsModalProps> = ({ isOpen, onClose }
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-lg p-4"
-      onClick={handleClose}
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-lg"
+      onClick={onClose}
     >
       <motion.div
-        initial={{ y: 40, opacity: 0 }}
+        initial={{ y: 60, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 40, opacity: 0 }}
-        transition={{ type: 'spring', damping: 22, stiffness: 220 }}
-        className="relative w-full max-w-sm rounded-[2.5rem] overflow-hidden p-8 flex flex-col gap-6"
+        exit={{ y: 60, opacity: 0 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 220 }}
+        className="relative w-full sm:max-w-md flex flex-col rounded-t-[2.5rem] sm:rounded-[2.5rem] overflow-hidden"
         style={{
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%)',
-          backdropFilter: 'blur(28px)',
-          border: '1px solid rgba(255,255,255,0.10)',
-          boxShadow: '0 30px 80px -20px rgba(0,0,0,0.7)',
+          background: 'linear-gradient(180deg, rgba(30,30,30,0.98) 0%, rgba(18,18,18,0.99) 100%)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: '0 -20px 60px rgba(0,0,0,0.6)',
+          maxHeight: '85vh',
         }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-              <Trash2 size={16} className="text-red-400" />
-            </div>
-            <h2 className="text-base font-bold tracking-tight text-white">Limpar posts antigos</h2>
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/5 shrink-0">
+          <div>
+            <h2 className="text-sm font-bold tracking-tight text-white">Gerenciar Posts</h2>
+            <p className="text-white/30 text-xs mt-0.5">{posts.length} posts carregados</p>
           </div>
           <button
-            onClick={handleClose}
+            onClick={onClose}
             className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white transition-all"
           >
             <X size={16} />
           </button>
         </div>
 
-        <AnimatePresence mode="wait">
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-4 py-3">
+          {loading && (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 size={28} className="animate-spin text-white/30" />
+            </div>
+          )}
 
-          {/* ── Stage: search ── */}
-          {stage === 'search' && (
-            <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col gap-4">
-              <p className="text-white/50 text-sm leading-relaxed">
-                Digite o nome de usuário de uma conta antiga. Todos os posts desse autor serão encontrados e você poderá excluí-los.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={inputName}
-                  onChange={(e) => { setInputName(e.target.value); setError(null); }}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  placeholder="nome_da_conta_antiga"
-                  autoFocus
-                  className="flex-1 px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/20 outline-none focus:border-white/25 transition-colors"
-                />
-                <button
-                  onClick={handleSearch}
-                  disabled={!inputName.trim() || loading}
-                  className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 text-white/70 hover:text-white transition-all disabled:opacity-40 flex items-center gap-2"
+          {error && (
+            <div className="flex items-center gap-2 text-red-400/80 text-xs py-4 px-2">
+              <AlertTriangle size={14} /> {error}
+            </div>
+          )}
+
+          {!loading && posts.length === 0 && !error && (
+            <p className="text-white/30 text-sm text-center py-12">Nenhum post encontrado.</p>
+          )}
+
+          <AnimatePresence initial={false}>
+            {posts.map(post => {
+              const thumb = post.thumbnailUrl || (
+                post.type === 'image' || post.type === 'gif' ? post.url : null
+              );
+              const isDataUrl = thumb?.startsWith('data:');
+              const showThumb = thumb && !isDataUrl;
+
+              return (
+                <motion.div
+                  key={post.id}
+                  layout
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0"
                 >
-                  {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                </button>
-              </div>
-              {error && (
-                <p className="text-red-400/80 text-xs flex items-center gap-1.5">
-                  <AlertTriangle size={12} /> {error}
-                </p>
-              )}
-            </motion.div>
-          )}
+                  {/* Thumbnail */}
+                  <div className="w-10 h-10 rounded-xl bg-white/5 shrink-0 overflow-hidden flex items-center justify-center">
+                    {showThumb ? (
+                      <img src={thumb} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-white/20 text-[10px] uppercase">{post.type?.[0] ?? '?'}</span>
+                    )}
+                  </div>
 
-          {/* ── Stage: confirm ── */}
-          {stage === 'confirm' && (
-            <motion.div key="confirm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col gap-5">
-              <div className="rounded-2xl bg-red-500/10 border border-red-500/20 p-4 text-center">
-                <p className="text-white/60 text-xs uppercase tracking-widest mb-1">Posts encontrados</p>
-                <p className="text-4xl font-black text-white">{foundCount}</p>
-                <p className="text-white/40 text-xs mt-1">de <span className="text-white/70">@{inputName.trim()}</span></p>
-              </div>
-              <p className="text-white/40 text-xs text-center leading-relaxed">
-                Esta ação é <span className="text-red-400">irreversível</span>. Todos os {foundCount} posts serão removidos permanentemente do Firestore.
-              </p>
-              {error && (
-                <p className="text-red-400/80 text-xs flex items-center gap-1.5">
-                  <AlertTriangle size={12} /> {error}
-                </p>
-              )}
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={handleDelete}
-                  className="w-full py-3.5 rounded-2xl bg-red-600/80 hover:bg-red-600 border border-red-500/40 text-white font-bold text-xs uppercase tracking-widest transition-all"
-                >
-                  Excluir {foundCount} posts
-                </button>
-                <button
-                  onClick={reset}
-                  className="w-full py-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 hover:text-white font-bold text-xs uppercase tracking-widest transition-all"
-                >
-                  Voltar
-                </button>
-              </div>
-            </motion.div>
-          )}
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-xs font-medium truncate">
+                      {post.title || 'Sem título'}
+                    </p>
+                    <p className="text-white/35 text-[10px] truncate">
+                      @{post.authorName || '—'}
+                    </p>
+                  </div>
 
-          {/* ── Stage: deleting ── */}
-          {stage === 'deleting' && (
-            <motion.div key="deleting" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4 py-4">
-              <Loader2 size={36} className="animate-spin text-white/40" />
-              <p className="text-white/60 text-sm">Excluindo posts…</p>
-              <p className="text-white font-bold text-lg">{deletedCount} / {foundCount}</p>
-            </motion.div>
-          )}
-
-          {/* ── Stage: done ── */}
-          {stage === 'done' && (
-            <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-4 py-4 text-center">
-              <div className="w-16 h-16 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center">
-                <CheckCircle2 size={32} className="text-green-400" />
-              </div>
-              <div>
-                <p className="text-white font-bold text-lg">{deletedCount} posts removidos</p>
-                <p className="text-white/40 text-xs mt-1">de @{inputName.trim()}</p>
-              </div>
-              <button
-                onClick={reset}
-                className="mt-2 px-6 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white font-bold text-xs uppercase tracking-widest transition-all"
-              >
-                Limpar outra conta
-              </button>
-            </motion.div>
-          )}
-
-        </AnimatePresence>
+                  {/* Delete */}
+                  <button
+                    onClick={() => handleDelete(post.id)}
+                    disabled={deletingId === post.id}
+                    className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 flex items-center justify-center text-red-400/60 hover:text-red-400 transition-all disabled:opacity-40 shrink-0"
+                  >
+                    {deletingId === post.id
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : <Trash2 size={13} />}
+                  </button>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
       </motion.div>
     </motion.div>
   );
