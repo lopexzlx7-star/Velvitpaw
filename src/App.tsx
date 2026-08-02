@@ -57,6 +57,9 @@ const CleanupPostsModal  = lazy(() => import('./components/CleanupPostsModal'));
 
 const ModalFallback = () => null;
 
+// Posts criados antes desta data não aparecem no feed.
+const FEED_CUTOFF = '2026-08-02T01:19:21.000Z';
+
 // Generates a Cloudinary video thumbnail URL by injecting the `so_0` transformation.
 function getCloudinaryThumb(videoUrl: string): string | null {
   if (!videoUrl.includes('res.cloudinary.com')) return null;
@@ -599,7 +602,7 @@ export default function App() {
       }
     });
 
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(100));
+    const q = query(collection(db, 'posts'), where('createdAt', '>', FEED_CUTOFF), orderBy('createdAt', 'desc'), limit(100));
     const unsubscribePosts = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(doc => ({
         ...doc.data(),
