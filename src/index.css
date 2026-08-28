@@ -42,6 +42,89 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+/* Desktop content panes keep a visible vertical scrollbar so the full feed
+   remains usable on Windows notebooks and smaller laptop screens. */
+.desktop-scrollbar {
+  scrollbar-gutter: stable;
+}
+
+@media (min-width: 768px) {
+  .desktop-scrollbar {
+    -ms-overflow-style: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #5a5a5a #1a1a1a;
+  }
+
+  .desktop-scrollbar::-webkit-scrollbar {
+    display: block;
+    width: 8px;
+  }
+
+  .desktop-scrollbar::-webkit-scrollbar-track {
+    background: #1a1a1a;
+  }
+
+  .desktop-scrollbar::-webkit-scrollbar-thumb {
+    background: #5a5a5a;
+    border-radius: 8px;
+    border: 2px solid #1a1a1a;
+  }
+
+  .desktop-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #777;
+  }
+}
+
+/* Keep large media previews from pushing the rest of a desktop dialog below
+   the fold. These rules intentionally start at tablet/desktop widths so the
+   existing mobile layout remains unchanged. */
+@media (min-width: 768px) {
+  .publish-modal-shell {
+    max-width: 520px !important;
+    max-height: calc(100vh - 32px) !important;
+  }
+
+  .publish-modal-media-frame {
+    height: min(360px, 38vh);
+    max-height: min(360px, 38vh);
+    aspect-ratio: 4 / 3 !important;
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  .publish-modal-media-frame img {
+    object-fit: contain !important;
+  }
+
+  .post-detail-modal-shell {
+    max-width: min(500px, calc(100vw - 48px)) !important;
+  }
+
+  .post-detail-modal-media {
+    max-height: min(55vh, 520px) !important;
+  }
+
+  .post-detail-modal-media img {
+    object-fit: contain !important;
+    background: #050505;
+  }
+}
+
+/* The desktop login art is intentionally a separate asset. Until the new
+   asset is uploaded, LoginBackdrop falls back to the current image. */
+.login-backdrop-image-desktop {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .login-backdrop-image-mobile {
+    display: none;
+  }
+
+  .login-backdrop-image-desktop {
+    display: block;
+  }
+}
 }
 
 /* Custom Scrollbar */

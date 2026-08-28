@@ -729,7 +729,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.92, opacity: 0, y: 12 }}
         transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-        className="relative w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] rounded-[2.5rem]"
+        className="publish-modal-shell relative w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] rounded-[2.5rem]"
         style={{
           background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
           backdropFilter: 'blur(28px) saturate(140%)',
@@ -757,7 +757,7 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+        <div className="publish-modal-scroll flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
           {error && (
             <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
               className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400 text-xs font-bold uppercase tracking-widest">
@@ -805,8 +805,11 @@ const PublishModal: React.FC<PublishModalProps> = ({ isOpen, onClose, onSuccess,
           ) : isMultiImage ? (
             /* ── Multi-image preview ── */
             <div className="space-y-3">
-              <div className="relative rounded-3xl overflow-hidden bg-white/5">
-                <div className={`relative ${getAspectClass()} overflow-hidden`}>
+              <div className="publish-modal-media relative rounded-3xl overflow-hidden bg-white/5">
+                <div
+                  className={`publish-modal-media-frame relative ${getAspectClass()} overflow-hidden`}
+                  data-aspect={aspectRatio}
+                >
                   <AnimatePresence mode="wait">
                     <motion.img
                       key={activeIdx}

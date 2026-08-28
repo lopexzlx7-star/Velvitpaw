@@ -689,6 +689,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         exit={{ y: 32, opacity: 0 }}
         transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
         onClick={(e) => e.stopPropagation()}
+        className="post-detail-modal-shell"
         style={{
           width: getModalWidth(),
           borderRadius: '2.2rem',
@@ -730,7 +731,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         <div className="px-3">
           <div
             ref={mediaContainerRef}
-            className="relative overflow-hidden w-full"
+            className="post-detail-modal-media relative overflow-hidden w-full"
             style={{
               borderRadius: '1.6rem',
               border: '1px solid rgba(255,255,255,0.08)',

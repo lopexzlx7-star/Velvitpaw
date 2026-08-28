@@ -2259,7 +2259,7 @@ export default function App() {
             <div
               ref={feedScrollRef}
               key="feed"
-              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar pt-24"
+              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar desktop-scrollbar pt-24"
             >
               <div className="px-4 md:px-6 pb-24 max-w-7xl mx-auto">
                 <div className="flex items-center justify-between mb-8 gap-4">
@@ -2556,7 +2556,7 @@ export default function App() {
             <div
               ref={profileScrollRef}
               key="profile"
-              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar pt-24"
+              className="w-screen shrink-0 h-full overflow-y-auto no-scrollbar desktop-scrollbar pt-24"
             >
               <div className="px-4 md:px-6 pb-24 max-w-4xl mx-auto">
                 <div className="glass-panel p-8 rounded-3xl relative">
