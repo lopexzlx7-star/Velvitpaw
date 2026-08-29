@@ -194,7 +194,7 @@ const PersonTagModal: React.FC<PersonTagModalProps> = ({
               </p>
             </div>
           ) : (
-            <div className="columns-2 gap-3">
+            <div className="columns-2 md:columns-5 gap-3">
               {posts.map(post => (
                 <GlassCard
                   key={post.id}

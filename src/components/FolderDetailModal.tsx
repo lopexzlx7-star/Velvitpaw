@@ -263,7 +263,7 @@ const FolderDetailModal: React.FC<Props> = ({
                   </p>
                 </div>
               ) : (
-                <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
+                <div className="columns-2 md:columns-5 gap-4">
                   {posts.map(item => (
                     <div key={item.id} className="relative group mb-4 break-inside-avoid">
                       <GlassCard
@@ -365,7 +365,7 @@ const FolderDetailModal: React.FC<Props> = ({
                           </p>
                         </div>
                       ) : (
-                        <div className="columns-2 md:columns-3 lg:columns-4 gap-3">
+                        <div className="columns-2 md:columns-5 gap-3">
                           {(aiRanked && aiRanked.length > 0 ? aiRanked : relatedPosts).map(item => (
                             <div key={`rel-${item.id}`} className="mb-3 break-inside-avoid">
                               <GlassCard

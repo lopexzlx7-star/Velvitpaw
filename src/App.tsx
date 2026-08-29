@@ -2501,7 +2501,7 @@ export default function App() {
                   </button>
                 )}
 
-                <div className="columns-2 gap-4">
+                <div className="columns-2 md:columns-5 gap-4">
                   {isGeneratingFeed && items.length === 0 ? (
                     Array.from({ length: 10 }).map((_, i) => (
                       <div key={i} className="break-inside-avoid mb-4 glass-panel rounded-2xl animate-pulse" style={{ height: [250, 300, 400, 600][i % 4] }} />
@@ -2778,7 +2778,7 @@ export default function App() {
                       )}
                     </div>
                   ) : (
-                    <div className="columns-2 sm:columns-3 gap-4">
+                    <div className="columns-2 sm:columns-3 md:columns-5 gap-4">
                       {(profileTab === 'posts' ? userPosts : likedItems).map(post => (
                         <GlassCard
                           key={`profile-${post.id}`}

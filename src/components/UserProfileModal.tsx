@@ -368,7 +368,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 Nenhum post ainda
               </div>
             ) : (
-              <div className="columns-2 gap-3">
+              <div className="columns-2 md:columns-5 gap-3">
                 {posts.map(post => (
                   <GlassCard
                     key={`user-profile-${post.id}`}
