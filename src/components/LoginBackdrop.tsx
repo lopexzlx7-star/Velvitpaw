@@ -9,11 +9,11 @@ const LoginBackdrop: React.FC = () => {
         className="login-backdrop-image login-backdrop-image-mobile absolute inset-0 w-full h-full object-cover"
       />
       <img
-        src="/login-bg-desktop.jpg"
+        src="/login-bg-desktop.png"
         alt=""
         className="login-backdrop-image login-backdrop-image-desktop absolute inset-0 w-full h-full object-cover"
         onError={(event) => {
-          // Keep the current login image visible until the desktop asset is provided.
+          // Keep the current login image visible if the desktop asset cannot load.
           event.currentTarget.src = '/login-bg.jpg';
         }}
       />
