@@ -1,4 +1,5 @@
 import { Home, Plus, User } from 'lucide-react';
+import { motion } from 'framer-motion';
 import React from 'react';
 
 export type NavTab = 'feed' | 'publish' | 'profile';
@@ -21,10 +22,42 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
   onProfileClick,
   visible = true,
 }) => {
+  const [hoveredTab, setHoveredTab] = React.useState<NavTab | null>(null);
   const idx = Math.max(0, TAB_ORDER.indexOf(activeTab));
 
   const tabColor = (t: NavTab) =>
     activeTab === t ? '#000' : 'rgba(255,255,255,0.55)';
+
+  const hoverGlow = (tab: NavTab, icon: React.ReactNode) => (
+    <motion.span
+      aria-hidden
+      initial={false}
+      animate={{
+        opacity: hoveredTab === tab ? 0.95 : 0,
+        scale: hoveredTab === tab ? 1.15 : 0.82,
+      }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fff',
+        filter: 'blur(6px)',
+        pointerEvents: 'none',
+      }}
+    >
+      {icon}
+    </motion.span>
+  );
+
+  const buttonEvents = (tab: NavTab) => ({
+    onMouseEnter: () => setHoveredTab(tab),
+    onMouseLeave: () => setHoveredTab(null),
+    onFocus: () => setHoveredTab(tab),
+    onBlur: () => setHoveredTab(null),
+  });
 
   return (
     <div
@@ -62,31 +95,37 @@ const FloatingNav: React.FC<FloatingNavProps> = ({
           {/* Plus tab */}
           <button
             onClick={onAddClick}
+            {...buttonEvents('publish')}
             style={{ position: 'relative', zIndex: 10, width: SIZE, height: SIZE, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', color: tabColor('publish') }}
             className="transition-colors active:scale-90"
             aria-label="Publicar"
           >
-            <Plus size={24} />
+            {hoverGlow('publish', <Plus size={24} />)}
+            <span style={{ position: 'relative', zIndex: 1 }}><Plus size={24} /></span>
           </button>
 
           {/* Home tab */}
           <button
             onClick={onHomeClick}
+            {...buttonEvents('feed')}
             style={{ position: 'relative', zIndex: 10, width: SIZE, height: SIZE, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', color: tabColor('feed') }}
             className="transition-colors active:scale-90"
             aria-label="Início"
           >
-            <Home size={26} />
+            {hoverGlow('feed', <Home size={26} />)}
+            <span style={{ position: 'relative', zIndex: 1 }}><Home size={26} /></span>
           </button>
 
           {/* Profile tab */}
           <button
             onClick={onProfileClick}
+            {...buttonEvents('profile')}
             style={{ position: 'relative', zIndex: 10, width: SIZE, height: SIZE, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', color: tabColor('profile') }}
             className="transition-colors active:scale-90"
             aria-label="Perfil"
           >
-            <User size={24} />
+            {hoverGlow('profile', <User size={24} />)}
+            <span style={{ position: 'relative', zIndex: 1 }}><User size={24} /></span>
           </button>
         </div>
       </div>

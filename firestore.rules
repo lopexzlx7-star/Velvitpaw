@@ -67,7 +67,9 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && resource.data.authorUid == request.auth.uid;
       allow update: if isAuthenticated() && (
         (resource.data.authorUid == request.auth.uid &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description']) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description']) &&
+         request.resource.data.title is string &&
+         request.resource.data.title.size() <= 100 &&
          request.resource.data.description is string &&
          request.resource.data.description.size() <= 4000) ||
         (resource.data.authorUid == request.auth.uid &&

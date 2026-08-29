@@ -13,11 +13,12 @@ interface PostDetailModalProps {
   onClose: () => void;
   onLike: (id: string) => void;
   onDelete?: (id: string) => void;
-  onUpdateDescription?: (id: string, description: string) => Promise<void>;
+  onUpdatePostDetails?: (id: string, updates: { title: string; description: string }) => Promise<void>;
   isLiked: boolean;
   isSaved?: boolean;
   onSave?: (id: string) => void;
   currentUserUid?: string;
+  canEditPost?: boolean;
   onHashtagClick?: (tag: string) => void;
   onAuthorClick?: (authorUid: string) => void;
   onNavigate?: (direction: 'next' | 'prev') => void;
@@ -73,10 +74,11 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   onClose,
   onLike,
   isLiked,
-  onUpdateDescription,
+  onUpdatePostDetails,
   isSaved = false,
   onSave,
   currentUserUid,
+  canEditPost = false,
   onHashtagClick,
   onAuthorClick,
   onNavigate,
@@ -107,6 +109,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [seekPreview, setSeekPreview] = useState<{ time: number; pct: number } | null>(null);
   const [isForcedLandscape, setIsForcedLandscape] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(item.title || '');
   const [draftDescription, setDraftDescription] = useState(item.description || '');
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
@@ -340,6 +343,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   useEffect(() => { setLocalIsLiked(isLiked); }, [isLiked]);
 
   useEffect(() => {
+    setDraftTitle(item.title || '');
     setDraftDescription(item.description || '');
     setIsEditingDescription(false);
     setDescriptionError(null);
@@ -683,11 +687,16 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   };
 
   const isUserPost = item.authorUid === currentUserUid;
-  const handleSaveDescription = async () => {
-    if (!onUpdateDescription || !isUserPost || isSavingDescription) return;
+  const handleSavePostDetails = async () => {
+    if (!onUpdatePostDetails || !canEditPost || !isUserPost || isSavingDescription) return;
 
+    const cleanTitle = draftTitle.trim() || 'Sem título';
     const cleanDescription = draftDescription.trim();
     const wordCount = cleanDescription ? cleanDescription.split(/\s+/).length : 0;
+    if (cleanTitle.length > 100) {
+      setDescriptionError('O título pode ter no máximo 100 caracteres.');
+      return;
+    }
     if (wordCount > 50) {
       setDescriptionError('A descrição pode ter no máximo 50 palavras.');
       return;
@@ -696,7 +705,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
     setIsSavingDescription(true);
     setDescriptionError(null);
     try {
-      await onUpdateDescription(item.id, cleanDescription);
+      await onUpdatePostDetails(item.id, { title: cleanTitle, description: cleanDescription });
       setIsEditingDescription(false);
     } catch (err) {
       setDescriptionError(err instanceof Error ? err.message : 'Não foi possível salvar a descrição.');
@@ -1358,6 +1367,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         <div className="px-4 pb-3">
           {isEditingDescription ? (
             <div className="space-y-2">
+              <input
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                maxLength={100}
+                placeholder="Título do post..."
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-xs font-bold text-white placeholder-white/25 outline-none focus:border-white/35"
+              />
               <textarea
                 value={draftDescription}
                 onChange={(e) => setDraftDescription(e.target.value)}
@@ -1377,6 +1395,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    setDraftTitle(item.title || '');
                     setDraftDescription(item.description || '');
                     setDescriptionError(null);
                     setIsEditingDescription(false);
@@ -1388,7 +1407,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); void handleSaveDescription(); }}
+                  onClick={(e) => { e.stopPropagation(); void handleSavePostDetails(); }}
                   disabled={isSavingDescription}
                   className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-black disabled:opacity-50"
                 >
@@ -1436,7 +1455,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   })}
                 </p>
               )}
-              {isUserPost && onUpdateDescription && (
+              {canEditPost && isUserPost && onUpdatePostDetails && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1448,7 +1467,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
                   className="mt-2 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-white/35 hover:text-white/75 transition-colors"
                 >
                   <Pencil size={11} />
-                  Editar descrição
+                  Editar post
                 </button>
               )}
             </>

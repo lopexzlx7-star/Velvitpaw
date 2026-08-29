@@ -445,6 +445,7 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<'feed' | 'profile'>('feed');
   const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
   const [selectedPost, setSelectedPost] = useState<ContentItem | null>(null);
+  const [selectedPostFromProfile, setSelectedPostFromProfile] = useState(false);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [showProfileEdit, setShowProfileEdit] = useState(false);
@@ -1297,30 +1298,42 @@ export default function App() {
     }
   };
 
-  const handleUpdatePostDescription = async (id: string, description: string) => {
+  const handleUpdatePostDetails = async (
+    id: string,
+    updates: { title: string; description: string },
+  ) => {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error('Você precisa estar autenticado.');
 
     const post = [...globalPosts, ...userPosts, ...(selectedPost ? [selectedPost] : [])]
       .find(item => item.id === id);
     if (!post || post.authorUid !== currentUser.uid) {
-      throw new Error('Somente o autor pode editar esta descrição.');
+      throw new Error('Somente o autor pode editar este post.');
     }
 
-    const cleanDescription = description.trim();
+    const cleanTitle = updates.title.trim() || 'Sem título';
+    const cleanDescription = updates.description.trim();
+    if (cleanTitle.length > 100) {
+      throw new Error('O título pode ter no máximo 100 caracteres.');
+    }
     if (cleanDescription.split(/\s+/).filter(Boolean).length > 50) {
       throw new Error('A descrição pode ter no máximo 50 palavras.');
     }
 
-    await updateDoc(doc(db, 'posts', id), { description: cleanDescription });
+    await updateDoc(doc(db, 'posts', id), {
+      title: cleanTitle,
+      description: cleanDescription,
+    });
     const updateDescription = (items: ContentItem[]) =>
-      items.map(item => item.id === id ? { ...item, description: cleanDescription } : item);
+      items.map(item => item.id === id
+        ? { ...item, title: cleanTitle, description: cleanDescription }
+        : item);
 
     setItems(updateDescription);
     setGlobalPosts(updateDescription);
     setUserPosts(updateDescription);
     setSelectedPost(previous => previous?.id === id
-      ? { ...previous, description: cleanDescription }
+      ? { ...previous, title: cleanTitle, description: cleanDescription }
       : previous);
   };
 
@@ -2554,7 +2567,11 @@ export default function App() {
                             onLike={handleLike}
                             onSave={openSavePicker}
                             onFollow={handleFollow}
-                            onClick={() => { markPostAsSeen(item.id); setSelectedPost(item); }}
+                            onClick={() => {
+                              markPostAsSeen(item.id);
+                              setSelectedPost(item);
+                              setSelectedPostFromProfile(false);
+                            }}
                             onHashtagClick={handleHashtagClick}
                             onPersonTagClick={(slug) => setOpenPersonTag(slug)}
                             isUserPost={isOwnPost}
@@ -2815,7 +2832,10 @@ export default function App() {
                           onLike={handleLike}
                           onSave={openSavePicker}
                           onDelete={handleDeletePost}
-                          onClick={() => setSelectedPost(post)}
+                          onClick={() => {
+                            setSelectedPost(post);
+                            setSelectedPostFromProfile(true);
+                          }}
                           onHashtagClick={handleHashtagClick}
                           isUserPost={(post as any).authorUid === auth.currentUser?.uid}
                         />
@@ -2857,7 +2877,11 @@ export default function App() {
               key={openPersonTag}
               slug={openPersonTag}
               onClose={() => setOpenPersonTag(null)}
-              onPostClick={(post) => { setOpenPersonTag(null); setSelectedPost(post); }}
+              onPostClick={(post) => {
+                setOpenPersonTag(null);
+                setSelectedPost(post);
+                setSelectedPostFromProfile(false);
+              }}
               likedIds={likedIds}
               savedIds={savedIds}
               onLike={handleLike}
@@ -2876,7 +2900,10 @@ export default function App() {
           onPostClick={(postId) => {
             setShowNotifications(false);
             const post = globalPosts.find(p => p.id === postId);
-            if (post) setSelectedPost(post);
+            if (post) {
+              setSelectedPost(post);
+              setSelectedPostFromProfile(false);
+            }
           }}
         />
       </Suspense>
@@ -2949,10 +2976,14 @@ export default function App() {
               item={selectedPost}
               prevItem={prevItem}
               nextItem={nextItem}
-              onClose={() => setSelectedPost(null)}
+              onClose={() => {
+                setSelectedPost(null);
+                setSelectedPostFromProfile(false);
+              }}
               onLike={handleLike}
               onDelete={handleDeletePost}
-              onUpdateDescription={handleUpdatePostDescription}
+              onUpdatePostDetails={handleUpdatePostDetails}
+              canEditPost={selectedPostFromProfile}
               isLiked={likedIds.includes(selectedPost.id)}
               isSaved={savedIds.includes(selectedPost.id)}
               onSave={(id) => openSavePicker(id)}
@@ -2966,10 +2997,12 @@ export default function App() {
               }}
               onHashtagClick={(tag) => {
                 setSelectedPost(null);
+                setSelectedPostFromProfile(false);
                 handleHashtagClick(tag);
               }}
               onAuthorClick={(uid) => {
                 setSelectedPost(null);
+                setSelectedPostFromProfile(false);
                 if (uid && uid === auth.currentUser?.uid) {
                   setCurrentTab('profile');
                   setProfileTab('posts');
@@ -2995,6 +3028,7 @@ export default function App() {
               onPostClick={(post) => {
                 setProfileViewUid(null);
                 setSelectedPost(post);
+                setSelectedPostFromProfile(false);
               }}
               onOpenUser={(uid) => {
                 if (uid && uid === auth.currentUser?.uid) {
@@ -3354,7 +3388,11 @@ export default function App() {
           followingUids={followingUids}
           currentUid={auth.currentUser?.uid}
           onClose={() => setOpenFolder(null)}
-          onOpenPost={(p) => { setOpenFolder(null); setSelectedPost(p); }}
+          onOpenPost={(p) => {
+            setOpenFolder(null);
+            setSelectedPost(p);
+            setSelectedPostFromProfile(true);
+          }}
           onLike={handleLike}
           onSave={openSavePicker}
           onFollow={handleFollow}
