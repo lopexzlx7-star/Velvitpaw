@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark } from 'lucide-react';
+import { X, Volume2, VolumeX, Heart, User, Play, Pause, ChevronLeft, ChevronRight, ChevronDown, Maximize2, ExternalLink, Bookmark, Pencil, Check } from 'lucide-react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ContentItem } from '../types';
@@ -13,6 +13,7 @@ interface PostDetailModalProps {
   onClose: () => void;
   onLike: (id: string) => void;
   onDelete?: (id: string) => void;
+  onUpdateDescription?: (id: string, description: string) => Promise<void>;
   isLiked: boolean;
   isSaved?: boolean;
   onSave?: (id: string) => void;
@@ -72,6 +73,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   onClose,
   onLike,
   isLiked,
+  onUpdateDescription,
   isSaved = false,
   onSave,
   currentUserUid,
@@ -104,6 +106,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const [endToast, setEndToast] = useState<'next' | 'prev' | null>(null);
   const [seekPreview, setSeekPreview] = useState<{ time: number; pct: number } | null>(null);
   const [isForcedLandscape, setIsForcedLandscape] = useState(false);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [draftDescription, setDraftDescription] = useState(item.description || '');
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
   const endToastTimerRef = useRef<number | null>(null);
   const slidingRef = useRef(false);
   // Saves currentTime before fullscreen so we can restore if rotation causes restart
@@ -332,6 +338,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   }, [isFullscreen, isVideo, directVideo]);
 
   useEffect(() => { setLocalIsLiked(isLiked); }, [isLiked]);
+
+  useEffect(() => {
+    setDraftDescription(item.description || '');
+    setIsEditingDescription(false);
+    setDescriptionError(null);
+  }, [item.id, item.description]);
 
   useEffect(() => {
     if (!item.authorUid) return;
@@ -671,6 +683,28 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
   };
 
   const isUserPost = item.authorUid === currentUserUid;
+  const handleSaveDescription = async () => {
+    if (!onUpdateDescription || !isUserPost || isSavingDescription) return;
+
+    const cleanDescription = draftDescription.trim();
+    const wordCount = cleanDescription ? cleanDescription.split(/\s+/).length : 0;
+    if (wordCount > 50) {
+      setDescriptionError('A descrição pode ter no máximo 50 palavras.');
+      return;
+    }
+
+    setIsSavingDescription(true);
+    setDescriptionError(null);
+    try {
+      await onUpdateDescription(item.id, cleanDescription);
+      setIsEditingDescription(false);
+    } catch (err) {
+      setDescriptionError(err instanceof Error ? err.message : 'Não foi possível salvar a descrição.');
+    } finally {
+      setIsSavingDescription(false);
+    }
+  };
+
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
@@ -1321,45 +1355,105 @@ const PostDetailModal: React.FC<PostDetailModalProps> = ({
         </div>
 
         {/* Description */}
-        {item.description && (
-          <div className="px-4 pb-3">
-            <p className="text-[9px] font-normal text-white/35 leading-relaxed lowercase break-words">
-              {item.description.split(/(https?:\/\/[^\s]+|\B#\w+)/g).map((part, i) => {
-                if (/^https?:\/\//.test(part)) {
-                  return (
-                    <a
-                      key={i}
-                      href={part}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-red-500 underline underline-offset-2 hover:text-red-400 transition-colors"
-                      style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
-                    >
-                      {part}
-                    </a>
-                  );
-                }
-                if (/^\B#\w+/.test(part) || part.startsWith('#')) {
-                  const tag = part.slice(1);
-                  return (
-                    <button
-                      key={i}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onHashtagClick) { onHashtagClick(tag); onClose(); }
-                      }}
-                      className={onHashtagClick ? 'text-blue-400 hover:text-blue-300 transition-colors cursor-pointer' : 'text-blue-400/50 cursor-default'}
-                    >
-                      {part}
-                    </button>
-                  );
-                }
-                return <span key={i}>{part}</span>;
-              })}
-            </p>
-          </div>
-        )}
+        <div className="px-4 pb-3">
+          {isEditingDescription ? (
+            <div className="space-y-2">
+              <textarea
+                value={draftDescription}
+                onChange={(e) => setDraftDescription(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                maxLength={4000}
+                rows={4}
+                autoFocus
+                placeholder="Descreva seu post..."
+                className="w-full resize-none rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none focus:border-white/35"
+              />
+              {descriptionError && (
+                <p className="text-[10px] text-red-400">{descriptionError}</p>
+              )}
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDraftDescription(item.description || '');
+                    setDescriptionError(null);
+                    setIsEditingDescription(false);
+                  }}
+                  disabled={isSavingDescription}
+                  className="rounded-full px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-white/45 hover:text-white disabled:opacity-40"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); void handleSaveDescription(); }}
+                  disabled={isSavingDescription}
+                  className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-black disabled:opacity-50"
+                >
+                  <Check size={12} />
+                  {isSavingDescription ? 'Salvando...' : 'Salvar'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {item.description && (
+                <p className="text-[9px] font-normal text-white/35 leading-relaxed lowercase break-words">
+                  {item.description.split(/(https?:\/\/[^\s]+|\B#\w+)/g).map((part, i) => {
+                    if (/^https?:\/\//.test(part)) {
+                      return (
+                        <a
+                          key={i}
+                          href={part}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-red-500 underline underline-offset-2 hover:text-red-400 transition-colors"
+                          style={{ wordBreak: 'break-all', overflowWrap: 'anywhere' }}
+                        >
+                          {part}
+                        </a>
+                      );
+                    }
+                    if (/^\B#\w+/.test(part) || part.startsWith('#')) {
+                      const tag = part.slice(1);
+                      return (
+                        <button
+                          key={i}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onHashtagClick) { onHashtagClick(tag); onClose(); }
+                          }}
+                          className={onHashtagClick ? 'text-blue-400 hover:text-blue-300 transition-colors cursor-pointer' : 'text-blue-400/50 cursor-default'}
+                        >
+                          {part}
+                        </button>
+                      );
+                    }
+                    return <span key={i}>{part}</span>;
+                  })}
+                </p>
+              )}
+              {isUserPost && onUpdateDescription && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDraftDescription(item.description || '');
+                    setDescriptionError(null);
+                    setIsEditingDescription(true);
+                  }}
+                  className="mt-2 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-white/35 hover:text-white/75 transition-colors"
+                >
+                  <Pencil size={11} />
+                  Editar descrição
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </motion.div>
     </motion.div>
   );

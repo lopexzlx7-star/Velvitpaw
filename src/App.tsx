@@ -1297,6 +1297,33 @@ export default function App() {
     }
   };
 
+  const handleUpdatePostDescription = async (id: string, description: string) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('Você precisa estar autenticado.');
+
+    const post = [...globalPosts, ...userPosts, ...(selectedPost ? [selectedPost] : [])]
+      .find(item => item.id === id);
+    if (!post || post.authorUid !== currentUser.uid) {
+      throw new Error('Somente o autor pode editar esta descrição.');
+    }
+
+    const cleanDescription = description.trim();
+    if (cleanDescription.split(/\s+/).filter(Boolean).length > 50) {
+      throw new Error('A descrição pode ter no máximo 50 palavras.');
+    }
+
+    await updateDoc(doc(db, 'posts', id), { description: cleanDescription });
+    const updateDescription = (items: ContentItem[]) =>
+      items.map(item => item.id === id ? { ...item, description: cleanDescription } : item);
+
+    setItems(updateDescription);
+    setGlobalPosts(updateDescription);
+    setUserPosts(updateDescription);
+    setSelectedPost(previous => previous?.id === id
+      ? { ...previous, description: cleanDescription }
+      : previous);
+  };
+
   const handleHomeClick = () => {
     if (currentTab !== 'feed') {
       setCurrentTab('feed');
@@ -2925,6 +2952,7 @@ export default function App() {
               onClose={() => setSelectedPost(null)}
               onLike={handleLike}
               onDelete={handleDeletePost}
+              onUpdateDescription={handleUpdatePostDescription}
               isLiked={likedIds.includes(selectedPost.id)}
               isSaved={savedIds.includes(selectedPost.id)}
               onSave={(id) => openSavePicker(id)}
